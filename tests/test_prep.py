@@ -379,4 +379,46 @@ def test_bandit_feedback_updates_and_shifts_preference(client, demo_trip):
     assert insurance_score < 0.3
 
 
+def test_reminders_unknown_trip_returns_404(client):
+    """Calling reminders GET or generate on an unknown trip returns 404."""
+    r_get = client.get("/api/prep/unknown_trip_xyz/reminders")
+    assert r_get.status_code == 404
+    assert r_get.json()["detail"] == "trip not found"
+
+    r_gen = client.post("/api/prep/unknown_trip_xyz/reminders/generate")
+    assert r_gen.status_code == 404
+    assert r_gen.json()["detail"] == "trip not found"
+
+
+def test_packing_user_cold_sensitivity_override(client, demo_trip, monkeypatch):
+    """When user has high cold sensitivity (q78=1), warm layer is added even in mild 18C weather."""
+    uid, trip_id = demo_trip
+
+    def mock_weather_mild(lat, lon, start, end):
+        return {
+            "temp_min_c": 18.0,
+            "temp_max_c": 22.0,
+            "wind_kmh": 10.0,
+            "rain_expected": False,
+            "daily_details": {},
+        }
+
+    monkeypatch.setattr(prep, "fetch_open_meteo", mock_weather_mild)
+
+    # Without cold sensitivity: no thermal base layer in 18°C mild weather
+    r_base = client.get(f"/api/prep/{trip_id}/packing")
+    assert r_base.status_code == 200
+    base_names = [i["name"] for i in r_base.json()["items"]]
+    assert not any("Thermal base" in n for n in base_names)
+
+    # Set cold tolerance to 1 (high cold sensitivity)
+    client.post(f"/api/profile/precision/{uid}", json={"answers": {"q78": 1}})
+
+    r_sens = client.get(f"/api/prep/{trip_id}/packing")
+    assert r_sens.status_code == 200
+    sens_names = [i["name"] for i in r_sens.json()["items"]]
+    assert any("Thermal base" in n for n in sens_names)
+
+
+
 
