@@ -10,7 +10,6 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.database import get_connection
-from app.api import router
 from app.services.suggestion_engine import get_linucb_alternatives
 
 # Router for timed itinerary endpoints
@@ -837,32 +836,3 @@ def get_timed_alternatives_endpoint(
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to fetch alternatives: {str(e)}")
-
-
-# ---------------------------------------------------------------------------
-# Route Registration Hooks
-# ---------------------------------------------------------------------------
-
-# Register routes on app.api.router (prefix "/api")
-router.include_router(timed_router)
-
-# Also expose standalone /api/itinerary/timed routes directly
-@router.post("/itinerary/timed/generate/{trip_id}")
-def direct_generate_timed(
-    trip_id: str,
-    pace: Optional[str] = Query(None),
-    user_id: Optional[str] = Query(None),
-    req: Optional[TimedGenerateRequest] = None
-):
-    return generate_timed_itinerary_endpoint(trip_id=trip_id, pace=pace, user_id=user_id, req=req)
-
-
-@router.get("/itinerary/timed/{trip_id}/alternatives/{activity_id}")
-def direct_get_timed_alternatives(
-    trip_id: str,
-    activity_id: str,
-    user_id: Optional[str] = Query(None),
-    day: Optional[int] = Query(1),
-    limit: Optional[int] = Query(3)
-):
-    return get_timed_alternatives_endpoint(trip_id=trip_id, activity_id=activity_id, user_id=user_id, day=day, limit=limit)

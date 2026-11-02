@@ -1068,3 +1068,10 @@ def get_user_empirical_metrics(user_id: str):
     """Retrieve actual measured interaction and learning statistics for the active user."""
     with get_connection() as conn:
         return get_user_live_evaluation(conn, user_id)
+
+# ---------------------------------------------------------------------------
+# Timed Day-by-Day Itinerary Engine Router
+# ---------------------------------------------------------------------------
+from app.services.timed_itinerary import timed_router
+
+router.include_router(timed_router)
