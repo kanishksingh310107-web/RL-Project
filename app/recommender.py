@@ -23,51 +23,37 @@ SCORING_WEIGHTS = {
 # Catalog of curated destinations with rich metadata and real photography
 DESTINATIONS: List[Dict[str, Any]] = [
     {
-        "id": "kyoto_japan",
-        "name": "Kyoto",
-        "country": "Japan",
-        "tagline": "Ancient temples, serene zen gardens, and timeless tea culture",
-        "image_url": "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=800&q=80",
-        "duration": "5 - 7 days",
-        "tags": ["culture", "history", "food", "cafes", "nature", "photography", "relaxation", "architecture"],
-        "style": "relaxed",
-        "crowd_level": "moderate",
-        "budget_tier": "balanced",
-        "estimated_cost": "$85 - $130 / day · Balanced",
-        "preferred_climate": ["mild", "cool"],
-        "suitable_companions": ["alone", "partner", "friends", "family_older"],
-        "best_seasons": ["Spring (Mar - May)", "Autumn (Oct - Nov)"],
-        "is_trending": False,
-        "is_seasonal": True,
-        "seasonal_event": "Autumn Foliage & Night Temple Illuminations (Oct - Nov)",
-        "available_experiences": [
-            "Walking through Arashiyama Bamboo Grove at sunrise",
-            "Traditional matcha tea ceremony in historic Gion",
-            "Exploring Fushimi Inari torii gates along mountain paths",
-            "Sampling artisan street food in Nishiki Market"
-        ],
-        "travel_style_and_atmosphere": "Serene, historic, pedestrian-friendly with rich traditional charm",
-        "practical_considerations": "Reserve temple tea ceremonies and popular restaurants 1-2 weeks in advance. Get an IC card for seamless bus and subway travel.",
-        "limitations_or_uncertainties": "Major shrines get crowded between 10 AM - 3 PM; involves extensive walking on stone paths.",
-        "avoidance_triggers": ["crowds", "steep_stairs", "long_walking"],
-        "icon": "fa-torii-gate",
-        "is_sample_data": True
-    },
-    {
         "id": "manali_spiti_india",
         "name": "Manali & Spiti Valley",
         "country": "India",
         "tagline": "High Himalayan passes, ancient cliffside monasteries, and crisp mountain air",
         "image_url": "https://images.unsplash.com/photo-1626621341517-bbf3d9990a23?auto=format&fit=crop&w=800&q=80",
         "duration": "7 - 10 days",
-        "tags": ["mountains", "nature", "adventure", "photography", "scenic_landscapes", "hiking"],
+        "tags": [
+            "mountains",
+            "nature",
+            "adventure",
+            "photography",
+            "scenic_landscapes",
+            "hiking"
+        ],
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "budget",
-        "estimated_cost": "₹2,500 - ₹4,500 ($30 - $55) / day · Budget",
-        "preferred_climate": ["cool", "cold"],
-        "suitable_companions": ["alone", "friends", "partner"],
-        "best_seasons": ["Summer (May - Jun) for Spiti", "Winter (Dec - Feb) for snow"],
+        "estimated_cost": "\u20b92,500 - \u20b94,500 ($30 - $55) / day \u00b7 Budget",
+        "preferred_climate": [
+            "cool",
+            "cold"
+        ],
+        "suitable_companions": [
+            "alone",
+            "friends",
+            "partner"
+        ],
+        "best_seasons": [
+            "Summer (May - Jun) for Spiti",
+            "Winter (Dec - Feb) for snow"
+        ],
         "is_trending": True,
         "trending_reason": "High demand for rugged Himalayan road trips and high-altitude dark-sky stargazing",
         "is_seasonal": True,
@@ -81,8 +67,835 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "travel_style_and_atmosphere": "Rugged, awe-inspiring, adventurous, and close to raw nature",
         "practical_considerations": "Spiti elevation (>3,500m) requires 48-hour acclimatization in Kaza or Manali. Carry cash as ATMs are sparse.",
         "limitations_or_uncertainties": "Mountain roads can be bumpy and weather-dependent during landslides or snowfall.",
-        "avoidance_triggers": ["high_altitude", "strenuous_hikes", "long_bus_rides", "motion_sickness"],
+        "avoidance_triggers": [
+            "high_altitude",
+            "strenuous_hikes",
+            "long_bus_rides",
+            "motion_sickness"
+        ],
         "icon": "fa-mountain-sun",
+        "is_sample_data": True
+    },
+    {
+        "id": "south_goa_india",
+        "name": "South Goa (Palolem & Agonda)",
+        "country": "India",
+        "tagline": "Pristine crescent beaches, serene coastal yoga retreats, and heritage Portuguese quarters",
+        "image_url": "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=800&q=80",
+        "duration": "4 - 7 days",
+        "tags": [
+            "beaches",
+            "coastal",
+            "relaxation",
+            "food",
+            "cafes",
+            "photography",
+            "wellness",
+            "nightlife"
+        ],
+        "style": "relaxed",
+        "crowd_level": "low",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,500 - \u20b96,000 ($45 - $75) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "warm",
+            "tropical"
+        ],
+        "suitable_companions": [
+            "partner",
+            "friends",
+            "alone"
+        ],
+        "best_seasons": [
+            "Winter (Nov - Feb) peak sunshine",
+            "Late Autumn (Oct) peaceful"
+        ],
+        "is_trending": True,
+        "trending_reason": "Surge in slow-travel remote workers preferring calm south beaches over crowded north strips",
+        "is_seasonal": True,
+        "seasonal_event": "Beach Shack Season & Dolphin Kayaking in Palolem (Nov - Feb)",
+        "available_experiences": [
+            "Early morning kayaking alongside wild dolphins in Palolem bay",
+            "Sunset dining with fresh garlic-butter tiger prawns right on the sand",
+            "Exploring 400-year-old pastel Portuguese mansions in Chandor and Fontainhas",
+            "Motorbike riding along coconut-lined coastal backroads to Cabo de Rama"
+        ],
+        "travel_style_and_atmosphere": "Bohemian, tranquil, laid-back beach bliss with golden sunsets",
+        "practical_considerations": "Renting a scooter (\u20b9350-500/day) is the most flexible way to explore hidden bays.",
+        "limitations_or_uncertainties": "Many beach shacks pack down between June and September during the heavy monsoon.",
+        "avoidance_triggers": [
+            "extreme_heat",
+            "intense_nightclubs",
+            "commercial_crowds"
+        ],
+        "icon": "fa-umbrella-beach",
+        "is_sample_data": True
+    },
+    {
+        "id": "udaipur_india",
+        "name": "Udaipur & Mewar",
+        "country": "India",
+        "tagline": "Gleaming marble lake palaces, romantic boat cruises, and vibrant Mewari craft bazaars",
+        "image_url": "https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=800&q=80",
+        "duration": "3 - 5 days",
+        "tags": [
+            "history",
+            "culture",
+            "photography",
+            "architecture",
+            "food",
+            "relaxation"
+        ],
+        "style": "comfort",
+        "crowd_level": "moderate",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 ($38 - $70) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "mild",
+            "warm"
+        ],
+        "suitable_companions": [
+            "partner",
+            "family_older",
+            "family_children",
+            "alone"
+        ],
+        "best_seasons": [
+            "Winter (Oct - Mar) pleasant cool days",
+            "Monsoon (Jul - Aug) lush lakes"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Shilpgram Crafts Fair & Lake Pichola Winter Music Nights (Dec - Jan)",
+        "available_experiences": [
+            "Sunset boat ride on Lake Pichola gliding past the floating Lake Palace",
+            "Walking through the ornate City Palace courtyards and crystal gallery",
+            "Evening Dharohar Rajasthani folk dance and puppet show at Bagore Ki Haveli",
+            "Rooftop dining with illuminated panoramic views of the water palace"
+        ],
+        "travel_style_and_atmosphere": "Regal, romantic, culturally rich with timeless Rajput grandeur",
+        "practical_considerations": "Old city streets are extremely narrow; use autorickshaws or walk rather than renting cars.",
+        "limitations_or_uncertainties": "Lake water levels fluctuate depending on monsoon rainfall.",
+        "avoidance_triggers": [
+            "extreme_heat",
+            "aggressive_touts"
+        ],
+        "icon": "fa-crown",
+        "is_sample_data": True
+    },
+    {
+        "id": "kerala_alleppey_india",
+        "name": "Kerala (Munnar & Alleppey)",
+        "country": "India",
+        "tagline": "Emerald rolling tea plantations, mist-covered mountain valleys, and tranquil palm-fringed backwaters",
+        "image_url": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=800&q=80",
+        "duration": "5 - 8 days",
+        "tags": [
+            "nature",
+            "relaxation",
+            "scenic_landscapes",
+            "food",
+            "wellness",
+            "photography"
+        ],
+        "style": "relaxed",
+        "crowd_level": "moderate",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,500 - \u20b96,500 ($42 - $80) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "mild",
+            "tropical"
+        ],
+        "suitable_companions": [
+            "partner",
+            "family_children",
+            "family_older",
+            "friends",
+            "alone"
+        ],
+        "best_seasons": [
+            "Winter (Sep - Mar) cool hills & pleasant backwaters"
+        ],
+        "is_trending": True,
+        "trending_reason": "Top-rated Ayurvedic wellness holidays and scenic glass-cab slow transit",
+        "is_seasonal": True,
+        "seasonal_event": "Winter Spice Harvest & Alleppey Houseboat Season (Nov - Feb)",
+        "available_experiences": [
+            "Overnight slow cruise on a traditional thatched houseboat through Vembanad Lake",
+            "Walking through century-old tea gardens in misty Top Station Munnar",
+            "Authentic Ayurvedic herbal massage and wellness rejuvenation session",
+            "Traditional Kerala Sadya feast served on fresh banana leaves"
+        ],
+        "travel_style_and_atmosphere": "Serene, lush green, spiritually restorative, and deeply natural",
+        "practical_considerations": "Winding mountain roads to Munnar can induce motion sickness; carry preventative mints.",
+        "limitations_or_uncertainties": "Heavy southwest monsoon rain showers from June to August.",
+        "avoidance_triggers": [
+            "motion_sickness",
+            "humidity"
+        ],
+        "icon": "fa-leaf",
+        "is_sample_data": True
+    },
+    {
+        "id": "ladakh_leh_india",
+        "name": "Leh & Ladakh",
+        "country": "India",
+        "tagline": "Dramatic cold desert moonscapes, turquoise high-altitude lakes, and centuries-old Tibetan gompas",
+        "image_url": "https://images.unsplash.com/photo-1581793745862-99fde7fa73d2?auto=format&fit=crop&w=800&q=80",
+        "duration": "6 - 9 days",
+        "tags": [
+            "mountains",
+            "adventure",
+            "nature",
+            "photography",
+            "culture",
+            "scenic_landscapes"
+        ],
+        "style": "active",
+        "crowd_level": "low",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,800 - \u20b96,800 ($45 - $82) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "cold",
+            "cool"
+        ],
+        "suitable_companions": [
+            "friends",
+            "alone",
+            "partner"
+        ],
+        "best_seasons": [
+            "Summer (May - Sep) open passes",
+            "Winter (Jan - Feb) for Chadar trek"
+        ],
+        "is_trending": True,
+        "trending_reason": "Unrivalled high-altitude photography, motorcycle expeditions, and pristine night skies",
+        "is_seasonal": True,
+        "seasonal_event": "Ladakh Festival & Hemis Tsechu Monastery Mask Dances (Jun - Jul)",
+        "available_experiences": [
+            "Watching the shifting blue waters of Pangong Tso lake at 14,000 feet",
+            "Riding across Khardung La, one of the world's highest motorable passes",
+            "Morning prayers with chanting Buddhist monks at Thiksey Monastery",
+            "Stargazing under Bortle-1 certified dark skies in Hanle"
+        ],
+        "travel_style_and_atmosphere": "Epic, spiritual, otherworldly high-altitude frontier",
+        "practical_considerations": "Strict 48-hour rest mandatory upon landing in Leh (3,500m) for altitude acclimatization.",
+        "limitations_or_uncertainties": "High mountain passes close during heavy winter snowfall.",
+        "avoidance_triggers": [
+            "high_altitude",
+            "extreme_cold",
+            "strenuous_hikes"
+        ],
+        "icon": "fa-mountain",
+        "is_sample_data": True
+    },
+    {
+        "id": "varanasi_kashi_india",
+        "name": "Varanasi (Kashi)",
+        "country": "India",
+        "tagline": "The spiritual heart of India: eternal Ganga ghats, devotional chanting, and labyrinthine silk alleys",
+        "image_url": "https://images.unsplash.com/photo-1561361513-2d000a50f0dc?auto=format&fit=crop&w=800&q=80",
+        "duration": "3 - 5 days",
+        "tags": [
+            "culture",
+            "history",
+            "spiritual",
+            "photography",
+            "food",
+            "architecture"
+        ],
+        "style": "active",
+        "crowd_level": "high",
+        "budget_tier": "budget",
+        "estimated_cost": "\u20b92,000 - \u20b94,000 ($25 - $50) / day \u00b7 Budget",
+        "preferred_climate": [
+            "mild",
+            "cool"
+        ],
+        "suitable_companions": [
+            "alone",
+            "family_older",
+            "partner",
+            "friends"
+        ],
+        "best_seasons": [
+            "Winter (Oct - Mar) cool pleasant weather"
+        ],
+        "is_trending": True,
+        "trending_reason": "Revitalized Kashi Vishwanath Corridor and surging interest in living ancient heritage",
+        "is_seasonal": True,
+        "seasonal_event": "Dev Deepawali with millions of earthen lamps along the ghats (Nov - Dec)",
+        "available_experiences": [
+            "Witnessing the mesmerizing grand evening Ganga Aarti at Dashashwamedh Ghat",
+            "Sunrise wooden rowboat cruise along the historic bathing ghats",
+            "Exploring the golden spire of Kashi Vishwanath and Sarnath Buddhist stupas",
+            "Sampling rich malaiyyo foam sweets, kachoris, and creamy Banarasi lassi"
+        ],
+        "travel_style_and_atmosphere": "Intense, mystical, deeply transformative, and sensory-rich",
+        "practical_considerations": "Wear slip-on shoes for temple visits. Navigate narrow galis on foot.",
+        "limitations_or_uncertainties": "Ghats can be crowded during auspicious festival dates.",
+        "avoidance_triggers": [
+            "crowds",
+            "sensory_overload",
+            "complex_walking"
+        ],
+        "icon": "fa-om",
+        "is_sample_data": True
+    },
+    {
+        "id": "jaipur_rajasthan_india",
+        "name": "Jaipur (The Pink City)",
+        "country": "India",
+        "tagline": "Monumental hilltop forts, honeycomb pink palaces, and world-renowned textile and jewelry bazaars",
+        "image_url": "https://images.unsplash.com/photo-1477587458883-47145ed94245?auto=format&fit=crop&w=800&q=80",
+        "duration": "3 - 5 days",
+        "tags": [
+            "history",
+            "culture",
+            "architecture",
+            "shopping",
+            "food",
+            "photography"
+        ],
+        "style": "balanced",
+        "crowd_level": "high",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 ($36 - $68) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "mild",
+            "cool"
+        ],
+        "suitable_companions": [
+            "family_children",
+            "partner",
+            "friends",
+            "alone"
+        ],
+        "best_seasons": [
+            "Winter (Oct - Mar) peak heritage season"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Jaipur Literature Festival & Elephant Festival (Jan - Mar)",
+        "available_experiences": [
+            "Walking up the ramparts of majestic Amer Fort at sunrise",
+            "Photographing the honeycomb facade of Hawa Mahal (Palace of Winds)",
+            "Browsing handcrafted gemstone jewelry and block-print textiles in Johari Bazaar",
+            "Feasting on traditional dal baati churma and ghewar sweets"
+        ],
+        "travel_style_and_atmosphere": "Vibrant, historic, regal, and bustling with colorful street life",
+        "practical_considerations": "Buy the composite monument entry ticket to save queues at major forts.",
+        "limitations_or_uncertainties": "Summer months (April to June) reach extreme 42\u00b0C+ temperatures.",
+        "avoidance_triggers": [
+            "extreme_heat",
+            "aggressive_vendors"
+        ],
+        "icon": "fa-fort-awesome",
+        "is_sample_data": True
+    },
+    {
+        "id": "rishikesh_haridwar_india",
+        "name": "Rishikesh & Haridwar",
+        "country": "India",
+        "tagline": "The Yoga Capital of the World: emerald river rafting, Himalayan foothills, and serene ashram life",
+        "image_url": "https://images.unsplash.com/photo-1596761427218-356a646c0a0c?auto=format&fit=crop&w=800&q=80",
+        "duration": "3 - 6 days",
+        "tags": [
+            "adventure",
+            "wellness",
+            "nature",
+            "spiritual",
+            "cafes",
+            "hiking"
+        ],
+        "style": "active",
+        "crowd_level": "moderate",
+        "budget_tier": "budget",
+        "estimated_cost": "\u20b92,200 - \u20b94,200 ($28 - $52) / day \u00b7 Budget",
+        "preferred_climate": [
+            "cool",
+            "mild"
+        ],
+        "suitable_companions": [
+            "alone",
+            "friends",
+            "partner"
+        ],
+        "best_seasons": [
+            "Spring (Feb - May) for rafting",
+            "Autumn (Sep - Nov) for yoga"
+        ],
+        "is_trending": True,
+        "trending_reason": "High demand for clean Himalayan wellness retreats, riverside camping, and white-water rapids",
+        "is_seasonal": True,
+        "seasonal_event": "International Yoga Festival & Ganga Kayak Festival (Feb - Mar)",
+        "available_experiences": [
+            "White-water rafting through Grade III & IV rapids on the crystal Ganga",
+            "Attending sunset musical Ganga Aarti at Parmarth Niketan ashram",
+            "Visiting the legendary Beatles Ashram with psychedelic mural art",
+            "Healthy vegan cafe hopping overlooking the river in Tapovan"
+        ],
+        "travel_style_and_atmosphere": "Peaceful, active, spiritually refreshing, and adventurous",
+        "practical_considerations": "Rishikesh is an alcohol-free and fully vegetarian sacred town.",
+        "limitations_or_uncertainties": "River rafting is strictly closed during the monsoon season (July to mid-September).",
+        "avoidance_triggers": [
+            "non_vegetarian",
+            "alcohol_seeking"
+        ],
+        "icon": "fa-spa",
+        "is_sample_data": True
+    },
+    {
+        "id": "hampi_karnataka_india",
+        "name": "Hampi & Tungabhadra",
+        "country": "India",
+        "tagline": "Surreal boulder-strewn landscapes, majestic ruined Vijayanagara temples, and sunset hippie hills",
+        "image_url": "https://images.unsplash.com/photo-1600100397608-f010f443b811?auto=format&fit=crop&w=800&q=80",
+        "duration": "3 - 5 days",
+        "tags": [
+            "history",
+            "architecture",
+            "photography",
+            "scenic_landscapes",
+            "adventure"
+        ],
+        "style": "active",
+        "crowd_level": "low",
+        "budget_tier": "budget",
+        "estimated_cost": "\u20b92,200 - \u20b94,000 ($26 - $48) / day \u00b7 Budget",
+        "preferred_climate": [
+            "mild",
+            "warm"
+        ],
+        "suitable_companions": [
+            "alone",
+            "friends",
+            "partner"
+        ],
+        "best_seasons": [
+            "Winter (Nov - Feb) pleasant daytime temperatures"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Hampi Utsav Cultural & Light Festival (Jan - Feb)",
+        "available_experiences": [
+            "Exploring the intricate musical stone pillars of the 15th-century Vijaya Vittala Temple",
+            "Climbing Matanga Hill for a panoramic 360-degree sunrise over the ruins",
+            "Crossing the Tungabhadra River in a traditional round woven coracle boat",
+            "Bicycle riding through the royal elephant stables and lotus mahal"
+        ],
+        "travel_style_and_atmosphere": "Ancient, surreal, open-air archaeological marvel with bohemian charm",
+        "practical_considerations": "Wear good walking shoes for climbing uneven granite boulders.",
+        "limitations_or_uncertainties": "Limited luxury hotel options; homestays and heritage lodges are standard.",
+        "avoidance_triggers": [
+            "steep_stairs",
+            "midday_heat"
+        ],
+        "icon": "fa-landmark",
+        "is_sample_data": True
+    },
+    {
+        "id": "meghalaya_shillong_india",
+        "name": "Meghalaya (Shillong & Cherrapunji)",
+        "country": "India",
+        "tagline": "The Abode of Clouds: bio-engineered living root bridges, crystal turquoise rivers, and roaring waterfalls",
+        "image_url": "https://images.unsplash.com/photo-1605335198108-724d27f27236?auto=format&fit=crop&w=800&q=80",
+        "duration": "5 - 8 days",
+        "tags": [
+            "nature",
+            "adventure",
+            "hiking",
+            "photography",
+            "scenic_landscapes"
+        ],
+        "style": "active",
+        "crowd_level": "low",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 ($36 - $66) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "cool",
+            "mild"
+        ],
+        "suitable_companions": [
+            "friends",
+            "alone",
+            "partner"
+        ],
+        "best_seasons": [
+            "Autumn (Oct - Nov) clear waterfalls",
+            "Spring (Feb - Apr) blooming hills"
+        ],
+        "is_trending": True,
+        "trending_reason": "High interest in sustainable eco-trekking and the crystal-clear waters of Dawki river",
+        "is_seasonal": True,
+        "seasonal_event": "Shillong Cherry Blossom Festival (Nov)",
+        "available_experiences": [
+            "Trekking down to the double-decker living root bridge in Nongriat",
+            "Boating on the transparent glass-like waters of Umngot River in Dawki",
+            "Standing in front of the thunderous plunge of Nohkalikai Falls in Cherrapunji",
+            "Caving through the limestone formations of Mawsmai and Arwah"
+        ],
+        "travel_style_and_atmosphere": "Untamed, mystical, pristine, and deeply connected to indigenous Khasi nature",
+        "practical_considerations": "Trekking down to Nongriat involves 3,000 stone steps; decent fitness needed.",
+        "limitations_or_uncertainties": "Heavy rainfall during monsoon; carry waterproof gear.",
+        "avoidance_triggers": [
+            "strenuous_hikes",
+            "steep_stairs"
+        ],
+        "icon": "fa-water",
+        "is_sample_data": True
+    },
+    {
+        "id": "darjeeling_sikkim_india",
+        "name": "Darjeeling & Gangtok",
+        "country": "India",
+        "tagline": "Panoramic views of Mount Kanchenjunga, heritage Himalayan toy train, and emerald tea valleys",
+        "image_url": "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80",
+        "duration": "5 - 7 days",
+        "tags": [
+            "mountains",
+            "tea",
+            "culture",
+            "nature",
+            "scenic_landscapes",
+            "food"
+        ],
+        "style": "balanced",
+        "crowd_level": "moderate",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,200 - \u20b95,800 ($38 - $70) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "cool",
+            "cold"
+        ],
+        "suitable_companions": [
+            "family_children",
+            "partner",
+            "family_older",
+            "friends"
+        ],
+        "best_seasons": [
+            "Spring (Mar - May) rhododendrons",
+            "Autumn (Oct - Nov) crystal mountain views"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Tiger Hill Golden Sunrise Viewing Season (Oct - Dec)",
+        "available_experiences": [
+            "Early morning sunrise over Mount Kanchenjunga from Tiger Hill summit",
+            "Riding the UNESCO World Heritage Darjeeling Himalayan Railway steam toy train",
+            "Tasting muscatel champagne teas at Glenburn Tea Estate",
+            "Visiting Rumtek Monastery and high-altitude Tsomgo Lake in Sikkim"
+        ],
+        "travel_style_and_atmosphere": "Colonial hill station charm blended with vibrant Tibetan Buddhist spirituality",
+        "practical_considerations": "Sikkim requires Inner Line Permits (ILP), easily obtained with passport/voter ID.",
+        "limitations_or_uncertainties": "Monsoon landslides can temporarily affect road transit to Gangtok.",
+        "avoidance_triggers": [
+            "extreme_cold",
+            "winding_roads"
+        ],
+        "icon": "fa-mountain-sun",
+        "is_sample_data": True
+    },
+    {
+        "id": "andaman_havelock_india",
+        "name": "Andaman Islands (Havelock & Neil)",
+        "country": "India",
+        "tagline": "Powder-white beaches, bioluminescent night kayaking, and world-class coral reef diving",
+        "image_url": "https://images.unsplash.com/photo-1589308078059-be1415eab4c3?auto=format&fit=crop&w=800&q=80",
+        "duration": "5 - 8 days",
+        "tags": [
+            "beaches",
+            "scuba",
+            "nature",
+            "relaxation",
+            "adventure",
+            "coastal"
+        ],
+        "style": "relaxed",
+        "crowd_level": "low",
+        "budget_tier": "luxury",
+        "estimated_cost": "\u20b95,000 - \u20b99,500 ($60 - $115) / day \u00b7 Luxury",
+        "preferred_climate": [
+            "warm",
+            "tropical"
+        ],
+        "suitable_companions": [
+            "partner",
+            "friends",
+            "alone",
+            "family_children"
+        ],
+        "best_seasons": [
+            "Winter (Oct - May) calm sea conditions and high underwater visibility"
+        ],
+        "is_trending": True,
+        "trending_reason": "Voted Asia's best beach destination with pristine marine sanctuaries",
+        "is_seasonal": True,
+        "seasonal_event": "Scuba Diving & Coral Spawning Season (Nov - Apr)",
+        "available_experiences": [
+            "Walking along Asia's top-rated Radhanagar Beach at sunset",
+            "Scuba diving and snorkeling amongst manta rays and turtles at Elephant Beach",
+            "Night kayaking through glowing bioluminescent mangrove creeks in Havelock",
+            "Catamaran ferry rides across azure Andaman sea waters"
+        ],
+        "travel_style_and_atmosphere": "Tropical, pristine island paradise with unmatched coastal luxury",
+        "practical_considerations": "Book private catamaran ferries (Makruzz/Nautika) between islands in advance.",
+        "limitations_or_uncertainties": "Ferry services depend on fair weather; monsoon brings strong sea swells.",
+        "avoidance_triggers": [
+            "seasickness",
+            "extreme_heat"
+        ],
+        "icon": "fa-water",
+        "is_sample_data": True
+    },
+    {
+        "id": "amritsar_punjab_india",
+        "name": "Amritsar & Wagah",
+        "country": "India",
+        "tagline": "The spiritual Golden Temple, heartfelt community langar, and patriotic Wagah border ceremony",
+        "image_url": "https://images.unsplash.com/photo-1588714477688-cf28a50e94f7?auto=format&fit=crop&w=800&q=80",
+        "duration": "2 - 4 days",
+        "tags": [
+            "culture",
+            "history",
+            "food",
+            "spiritual",
+            "photography"
+        ],
+        "style": "comfort",
+        "crowd_level": "high",
+        "budget_tier": "budget",
+        "estimated_cost": "\u20b92,000 - \u20b94,000 ($25 - $48) / day \u00b7 Budget",
+        "preferred_climate": [
+            "cool",
+            "mild"
+        ],
+        "suitable_companions": [
+            "family_older",
+            "family_children",
+            "partner",
+            "friends",
+            "alone"
+        ],
+        "best_seasons": [
+            "Winter (Oct - Mar) cool and crisp Punjab days"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Guru Nanak Jayanti & Baisakhi Celebrations (Nov & Apr)",
+        "available_experiences": [
+            "Sitting peacefully beside the illuminated Amrit Sarovar at the Golden Temple at night",
+            "Volunteering at the world's largest community free kitchen (Langar)",
+            "Experiencing the patriotic sunset Beating Retreat ceremony at the Wagah Border",
+            "Indulging in piping hot butter-drenched Amritsari kulchas and thick sweet lassi"
+        ],
+        "travel_style_and_atmosphere": "Devotional, welcoming, emotionally moving, and culinary paradise",
+        "practical_considerations": "Head covering is mandatory inside the temple complex; scarves available at entrance.",
+        "limitations_or_uncertainties": "Winter mornings can have thick fog affecting early transport.",
+        "avoidance_triggers": [
+            "crowds"
+        ],
+        "icon": "fa-place-of-worship",
+        "is_sample_data": True
+    },
+    {
+        "id": "ooty_coorg_india",
+        "name": "Ooty & Coorg (Nilgiris)",
+        "country": "India",
+        "tagline": "Aromatic coffee and spice plantations, misty Nilgiri blue mountains, and gushing forest waterfalls",
+        "image_url": "https://images.unsplash.com/photo-1596401057633-54a8fe8ef647?auto=format&fit=crop&w=800&q=80",
+        "duration": "4 - 6 days",
+        "tags": [
+            "nature",
+            "relaxation",
+            "scenic_landscapes",
+            "food",
+            "cafes"
+        ],
+        "style": "relaxed",
+        "crowd_level": "moderate",
+        "budget_tier": "balanced",
+        "estimated_cost": "\u20b93,200 - \u20b95,800 ($38 - $70) / day \u00b7 Balanced",
+        "preferred_climate": [
+            "cool",
+            "mild"
+        ],
+        "suitable_companions": [
+            "partner",
+            "family_children",
+            "family_older",
+            "alone"
+        ],
+        "best_seasons": [
+            "Year-round cool hills (Oct - May)"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Winter Coffee Berry Picking Season (Dec - Feb)",
+        "available_experiences": [
+            "Staying in an authentic heritage coffee planter's bungalow in Madikeri",
+            "Riding the historic Nilgiri Mountain Railway wooden toy train to Ooty",
+            "Walking through spice plantations tasting fresh cardamom and pepper",
+            "Tasting traditional Kodava pork curry (Pandi Curry) and homemade chocolates"
+        ],
+        "travel_style_and_atmosphere": "Cozy, verdant, aromatic, and tranquil colonial mountain getaway",
+        "practical_considerations": "Evenings are chilly; bring light woolens even in summer.",
+        "limitations_or_uncertainties": "Popular viewpoints around Ooty lake get busy on weekend afternoons.",
+        "avoidance_triggers": [
+            "winding_roads"
+        ],
+        "icon": "fa-mug-saucer",
+        "is_sample_data": True
+    },
+    {
+        "id": "rann_of_kutch_india",
+        "name": "Rann of Kutch",
+        "country": "India",
+        "tagline": "Endless surreal white salt desert, moonlit folk music, and vibrant Kutchi artisan embroidery",
+        "image_url": "https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?auto=format&fit=crop&w=800&q=80",
+        "duration": "3 - 5 days",
+        "tags": [
+            "culture",
+            "photography",
+            "scenic_landscapes",
+            "art",
+            "shopping"
+        ],
+        "style": "comfort",
+        "crowd_level": "moderate",
+        "budget_tier": "luxury",
+        "estimated_cost": "\u20b94,500 - \u20b98,500 ($55 - $105) / day \u00b7 Luxury",
+        "preferred_climate": [
+            "cool",
+            "mild"
+        ],
+        "suitable_companions": [
+            "partner",
+            "family_children",
+            "friends"
+        ],
+        "best_seasons": [
+            "Winter (Nov - Feb) dry salt desert season"
+        ],
+        "is_trending": True,
+        "trending_reason": "High acclaim for full-moon desert nights and world-renowned Rann Utsav tent cities",
+        "is_seasonal": True,
+        "seasonal_event": "The Great Rann Utsav Cultural & Music Festival (Nov - Feb)",
+        "available_experiences": [
+            "Walking across the gleaming white salt plains under a brilliant full moon",
+            "Meeting master artisan weavers and Rogan art painters in Nirona village",
+            "Watching the sunset from the highest peak of Kala Dungar (Black Hill)",
+            "Luxury glamping in traditional Bhunga mud cottages with Gujarati folk dance"
+        ],
+        "travel_style_and_atmosphere": "Otherworldly, festive, culturally rich, and visually magnificent",
+        "practical_considerations": "Permit is required for visiting the White Rann (easily obtained online or at checkpost).",
+        "limitations_or_uncertainties": "The salt marsh is fully submerged underwater from June to October.",
+        "avoidance_triggers": [
+            "extreme_heat"
+        ],
+        "icon": "fa-campground",
+        "is_sample_data": True
+    },
+    {
+        "id": "agra_braj_india",
+        "name": "Agra & Braj",
+        "country": "India",
+        "tagline": "The immortal marble poetry of the Taj Mahal, imperial Mughal palaces, and Braj heritage",
+        "image_url": "https://images.unsplash.com/photo-1564507592333-c60657eea523?auto=format&fit=crop&w=800&q=80",
+        "duration": "2 - 3 days",
+        "tags": [
+            "history",
+            "architecture",
+            "culture",
+            "photography",
+            "food"
+        ],
+        "style": "balanced",
+        "crowd_level": "high",
+        "budget_tier": "budget",
+        "estimated_cost": "\u20b92,500 - \u20b94,800 ($30 - $58) / day \u00b7 Budget",
+        "preferred_climate": [
+            "mild",
+            "cool"
+        ],
+        "suitable_companions": [
+            "partner",
+            "family_children",
+            "family_older",
+            "alone"
+        ],
+        "best_seasons": [
+            "Winter (Oct - Mar) pleasant daytime strolls"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Taj Mahotsav Artisan & Cultural Fair (Feb)",
+        "available_experiences": [
+            "Watching the sunrise illuminate the white marble dome of the Taj Mahal",
+            "Exploring the massive red sandstone walls and palaces of Agra Fort",
+            "Walking through the ghost city of Fatehpur Sikri and Buland Darwaza",
+            "Tasting authentic Agra petha sweets and bedmi puri breakfast"
+        ],
+        "travel_style_and_atmosphere": "Monumental, historic, iconic, and architectural world wonder",
+        "practical_considerations": "Taj Mahal is closed for tourists on Fridays.",
+        "limitations_or_uncertainties": "Dense winter morning fog in December and January can delay views.",
+        "avoidance_triggers": [
+            "crowds",
+            "touts"
+        ],
+        "icon": "fa-monument",
+        "is_sample_data": True
+    },
+    {
+        "id": "kyoto_japan",
+        "name": "Kyoto",
+        "country": "Japan",
+        "tagline": "Ancient temples, serene zen gardens, and timeless tea culture",
+        "image_url": "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=800&q=80",
+        "duration": "5 - 7 days",
+        "tags": [
+            "culture",
+            "history",
+            "food",
+            "cafes",
+            "nature",
+            "photography",
+            "relaxation",
+            "architecture"
+        ],
+        "style": "relaxed",
+        "crowd_level": "moderate",
+        "budget_tier": "balanced",
+        "estimated_cost": "$85 - $130 / day \u00b7 Balanced",
+        "preferred_climate": [
+            "mild",
+            "cool"
+        ],
+        "suitable_companions": [
+            "alone",
+            "partner",
+            "friends",
+            "family_older"
+        ],
+        "best_seasons": [
+            "Spring (Mar - May)",
+            "Autumn (Oct - Nov)"
+        ],
+        "is_trending": False,
+        "is_seasonal": True,
+        "seasonal_event": "Autumn Foliage & Night Temple Illuminations (Oct - Nov)",
+        "available_experiences": [
+            "Walking through Arashiyama Bamboo Grove at sunrise",
+            "Traditional matcha tea ceremony in historic Gion"
+        ],
+        "travel_style_and_atmosphere": "Serene, historic, pedestrian-friendly with rich traditional charm",
+        "practical_considerations": "Reserve temple tea ceremonies in advance.",
+        "limitations_or_uncertainties": "Major shrines get crowded.",
+        "avoidance_triggers": [
+            "crowds"
+        ],
+        "icon": "fa-torii-gate",
         "is_sample_data": True
     },
     {
@@ -92,14 +905,32 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "tagline": "Iconic whitewashed caldera villages, Aegean sunsets, and coastal relaxation",
         "image_url": "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?auto=format&fit=crop&w=800&q=80",
         "duration": "4 - 6 days",
-        "tags": ["beaches", "coastal", "relaxation", "photography", "food", "cafes", "culture"],
+        "tags": [
+            "beaches",
+            "coastal",
+            "relaxation",
+            "photography",
+            "food",
+            "cafes",
+            "culture"
+        ],
         "style": "relaxed",
         "crowd_level": "high",
         "budget_tier": "luxury",
-        "estimated_cost": "$180 - $320 / day · Luxury",
-        "preferred_climate": ["warm", "mild"],
-        "suitable_companions": ["partner", "friends", "alone"],
-        "best_seasons": ["Late Spring (May)", "Autumn (Sep - Oct)"],
+        "estimated_cost": "$180 - $320 / day \u00b7 Luxury",
+        "preferred_climate": [
+            "warm",
+            "mild"
+        ],
+        "suitable_companions": [
+            "partner",
+            "friends",
+            "alone"
+        ],
+        "best_seasons": [
+            "Late Spring (May)",
+            "Autumn (Sep - Oct)"
+        ],
         "is_trending": False,
         "is_seasonal": True,
         "seasonal_event": "Aegean Wine Harvest & Sunset Sailing Cruises (Sep - Oct)",
@@ -112,7 +943,12 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "travel_style_and_atmosphere": "Romantic, scenic, laid-back Mediterranean luxury with postcard panoramas",
         "practical_considerations": "Book sunset dinner tables and caldera view stays months in advance. Wear shoes with good grip on polished cobblestones.",
         "limitations_or_uncertainties": "Steep cobblestone caldera stairs with no vehicular access; high peak-season crowds.",
-        "avoidance_triggers": ["steep_stairs", "extreme_heat", "crowds", "high_prices"],
+        "avoidance_triggers": [
+            "steep_stairs",
+            "extreme_heat",
+            "crowds",
+            "high_prices"
+        ],
         "icon": "fa-water",
         "is_sample_data": True
     },
@@ -123,14 +959,32 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "tagline": "Glacier lakes, iconic Matterhorn views, and seamless mountain rail transit",
         "image_url": "https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?auto=format&fit=crop&w=800&q=80",
         "duration": "5 - 8 days",
-        "tags": ["mountains", "nature", "scenic_landscapes", "adventure", "photography", "relaxation"],
+        "tags": [
+            "mountains",
+            "nature",
+            "scenic_landscapes",
+            "adventure",
+            "photography",
+            "relaxation"
+        ],
         "style": "comfort",
         "crowd_level": "moderate",
         "budget_tier": "luxury",
-        "estimated_cost": "$210 - $360 / day · Luxury",
-        "preferred_climate": ["cool", "cold"],
-        "suitable_companions": ["partner", "family_children", "family_older", "alone"],
-        "best_seasons": ["Summer (Jul - Aug) for hiking", "Winter (Dec - Mar) for skiing"],
+        "estimated_cost": "$210 - $360 / day \u00b7 Luxury",
+        "preferred_climate": [
+            "cool",
+            "cold"
+        ],
+        "suitable_companions": [
+            "partner",
+            "family_children",
+            "family_older",
+            "alone"
+        ],
+        "best_seasons": [
+            "Summer (Jul - Aug) for hiking",
+            "Winter (Dec - Mar) for skiing"
+        ],
         "is_trending": False,
         "is_seasonal": True,
         "seasonal_event": "Winter Glacier Skiing & Mountain Village Christmas Markets (Dec - Jan)",
@@ -143,322 +997,12 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "travel_style_and_atmosphere": "Pristine, orderly, scenic alpine luxury with punctual transit",
         "practical_considerations": "A Swiss Travel Pass covers almost all trains, boats, and mountain discounts.",
         "limitations_or_uncertainties": "Higher dining and lodging costs; weather at mountain summits changes swiftly.",
-        "avoidance_triggers": ["extreme_cold", "extreme_heights", "high_prices"],
+        "avoidance_triggers": [
+            "extreme_cold",
+            "extreme_heights",
+            "high_prices"
+        ],
         "icon": "fa-snowflake",
-        "is_sample_data": True
-    },
-    {
-        "id": "south_goa_india",
-        "name": "South Goa (Palolem & Agonda)",
-        "country": "India",
-        "tagline": "Golden uncrowded sands, palm-fringed bays, and laid-back coastal cafes",
-        "image_url": "https://images.unsplash.com/photo-1512343879784-a960bf40e7f2?auto=format&fit=crop&w=800&q=80",
-        "duration": "4 - 6 days",
-        "tags": ["beaches", "relaxation", "food", "cafes", "nature", "coastal", "wellness"],
-        "style": "relaxed",
-        "crowd_level": "low",
-        "budget_tier": "budget",
-        "estimated_cost": "₹2,200 - ₹4,000 ($28 - $50) / day · Budget",
-        "preferred_climate": ["warm", "tropical"],
-        "suitable_companions": ["alone", "partner", "friends", "family_children"],
-        "best_seasons": ["November to February (dry and breezy)"],
-        "is_trending": True,
-        "trending_reason": "Top domestic winter getaway for peaceful beaches, remote work cafes, and sunset spots",
-        "is_seasonal": True,
-        "seasonal_event": "Winter Beach Season & Coastal Music Evenings (Nov - Feb)",
-        "available_experiences": [
-            "Morning kayak along silent backwaters near Cola Beach",
-            "Yoga classes overlooking gentle waves in Agonda",
-            "Sunset dining with fresh Konkani fish curry at beach shacks",
-            "Exploring Portuguese heritage mansions and spice plantations"
-        ],
-        "travel_style_and_atmosphere": "Laid-back coastal rhythm, warm breezes, unhurried and rejuvenating",
-        "practical_considerations": "Renting a scooter or booking pre-paid taxis is the most practical way to explore quiet southern beaches.",
-        "limitations_or_uncertainties": "Afternoon humidity can feel high; monsoons (June-August) bring rough seas.",
-        "avoidance_triggers": ["extreme_heat", "crowded_clubs"],
-        "icon": "fa-umbrella-beach",
-        "is_sample_data": True
-    },
-    {
-        "id": "rome_florence_italy",
-        "name": "Rome & Florence",
-        "country": "Italy",
-        "tagline": "Colosseum legends, Renaissance masterpieces, and world-class culinary art",
-        "image_url": "https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=800&q=80",
-        "duration": "6 - 8 days",
-        "tags": ["history", "heritage", "culture", "food", "museums", "architecture", "photography"],
-        "style": "balanced",
-        "crowd_level": "high",
-        "budget_tier": "balanced",
-        "estimated_cost": "$95 - $155 / day · Balanced",
-        "preferred_climate": ["mild", "warm"],
-        "suitable_companions": ["partner", "alone", "friends", "family_older"],
-        "best_seasons": ["Spring (Apr - May)", "Autumn (Oct - Nov)"],
-        "is_trending": False,
-        "is_seasonal": True,
-        "seasonal_event": "Autumn Truffle & New Olive Oil Harvest Festivals (Oct - Nov)",
-        "available_experiences": [
-            "Walking inside the ancient Roman Colosseum and Forum",
-            "Viewing Michelangelo's David at Florence's Accademia Gallery",
-            "Authentic pasta carbonara and gelato hopping in Trastevere",
-            "Sunset overlook of Florence from Piazzale Michelangelo"
-        ],
-        "travel_style_and_atmosphere": "Lively open-air museum, vibrant piazzas, deeply historic and artistic",
-        "practical_considerations": "Pre-book Vatican and Uffizi tickets weeks ahead to skip hours of queues. High-speed train connects Rome and Florence in 90 minutes.",
-        "limitations_or_uncertainties": "Walking averages 10-14 km per day; summer months (July-August) can be very hot.",
-        "avoidance_triggers": ["crowds", "long_walking", "tourist_traps"],
-        "icon": "fa-landmark",
-        "is_sample_data": True
-    },
-    {
-        "id": "banff_canada",
-        "name": "Banff National Park",
-        "country": "Canada",
-        "tagline": "Vivid turquoise glacial waters, rugged Rockies, and wild alpine beauty",
-        "image_url": "https://images.unsplash.com/photo-1503614472-8c93d56e92ce?auto=format&fit=crop&w=800&q=80",
-        "duration": "5 - 7 days",
-        "tags": ["nature", "mountains", "scenic_landscapes", "adventure", "photography", "relaxation"],
-        "style": "balanced",
-        "crowd_level": "moderate",
-        "budget_tier": "balanced",
-        "estimated_cost": "$120 - $190 / day · Balanced",
-        "preferred_climate": ["cool", "cold"],
-        "suitable_companions": ["family_children", "partner", "friends", "alone"],
-        "best_seasons": ["Summer (Jun - Aug) for lakes", "Winter (Dec - Mar) for snow"],
-        "is_trending": False,
-        "is_seasonal": True,
-        "seasonal_event": "Northern Lights Viewing & Frozen Lake Louise Ice Skating (Nov - Feb)",
-        "available_experiences": [
-            "Canoeing on the turquoise waters of Lake Louise and Moraine Lake",
-            "Gondola ride to the summit of Sulphur Mountain for 360-degree views",
-            "Soaking in Banff Upper Hot Springs surrounded by snow-capped peaks",
-            "Spotting elk and bighorn sheep along the Icefields Parkway"
-        ],
-        "travel_style_and_atmosphere": "Majestic wilderness, crisp pine-scented air, and cozy alpine lodge charm",
-        "practical_considerations": "Parks Canada park pass required. Parks shuttles for Moraine Lake must be booked early on the official portal.",
-        "limitations_or_uncertainties": "Winter temperatures can dip below -15°C; rental car with winter tires recommended.",
-        "avoidance_triggers": ["extreme_cold", "strenuous_hikes"],
-        "icon": "fa-tree",
-        "is_sample_data": True
-    },
-    {
-        "id": "chiang_mai_thailand",
-        "name": "Chiang Mai",
-        "country": "Thailand",
-        "tagline": "Golden mountain wats, lantern-filled skies, vibrant night markets, and artisan cafes",
-        "image_url": "https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=800&q=80",
-        "duration": "4 - 6 days",
-        "tags": ["culture", "food", "cafes", "relaxation", "shopping", "wellness", "local_traditions"],
-        "style": "relaxed",
-        "crowd_level": "moderate",
-        "budget_tier": "budget",
-        "estimated_cost": "$25 - $45 / day · Budget",
-        "preferred_climate": ["warm", "tropical"],
-        "suitable_companions": ["alone", "friends", "partner", "family_children"],
-        "best_seasons": ["November to February (cool and dry)"],
-        "is_trending": True,
-        "trending_reason": "High international interest for the magical Yi Peng Sky Lantern Festival",
-        "is_seasonal": True,
-        "seasonal_event": "Yi Peng & Loy Krathong Lantern Celebrations (November)",
-        "available_experiences": [
-            "Releasing floating lanterns during the annual Yi Peng festival",
-            "Taking a hands-on northern Thai cooking class at an organic farm",
-            "Visiting Wat Phra That Doi Suthep high above the city",
-            "Exploring artisan craft stalls at Sunday Walking Street"
-        ],
-        "travel_style_and_atmosphere": "Gentle, spiritual, culturally rich, and extremely affordable",
-        "practical_considerations": "Dress modestly (shoulders and knees covered) when visiting sacred temples.",
-        "limitations_or_uncertainties": "Agricultural burning season causes haze between February and April.",
-        "avoidance_triggers": ["extreme_heat", "poor_air_quality"],
-        "icon": "fa-fan",
-        "is_sample_data": True
-    },
-    {
-        "id": "reykjavik_iceland",
-        "name": "Reykjavik & South Coast",
-        "country": "Iceland",
-        "tagline": "Dancing Auroras, black sand shores, roaring waterfalls, and geothermal lagoons",
-        "image_url": "https://images.unsplash.com/photo-1504893524553-b855bce32c67?auto=format&fit=crop&w=800&q=80",
-        "duration": "5 - 7 days",
-        "tags": ["nature", "adventure", "scenic_landscapes", "photography", "wellness"],
-        "style": "active",
-        "crowd_level": "low",
-        "budget_tier": "luxury",
-        "estimated_cost": "$190 - $310 / day · Luxury",
-        "preferred_climate": ["cold", "cool"],
-        "suitable_companions": ["partner", "friends", "alone"],
-        "best_seasons": ["Oct - Mar for Auroras", "Jun - Aug for Midnight Sun"],
-        "is_trending": True,
-        "trending_reason": "Solar maximum cycle delivering the brightest Northern Lights displays in 11 years",
-        "is_seasonal": True,
-        "seasonal_event": "Peak Aurora Borealis Activity & Blue Ice Cave Treks (Oct - Mar)",
-        "available_experiences": [
-            "Hunting the Northern Lights across dark volcanic lava fields",
-            "Walking behind the roaring water curtains at Seljalandsfoss",
-            "Relaxing in warm silica waters of the Blue Lagoon",
-            "Exploring crystal-blue natural ice caves under Vatnajökull glacier"
-        ],
-        "travel_style_and_atmosphere": "Otherworldly volcanic beauty, crisp Arctic air, and peaceful wilderness",
-        "practical_considerations": "Rent a 4x4 vehicle with gravel and ash insurance. Check vedur.is daily for sudden weather shifts.",
-        "limitations_or_uncertainties": "Sudden Atlantic winter storms can close roads; dining and car rentals are pricey.",
-        "avoidance_triggers": ["extreme_cold", "wind_sensitivity", "high_prices"],
-        "icon": "fa-icicles",
-        "is_sample_data": True
-    },
-    {
-        "id": "oaxaca_mexico",
-        "name": "Oaxaca City",
-        "country": "Mexico",
-        "tagline": "UNESCO heritage architecture, indigenous craft markets, and legendary gastronomy",
-        "image_url": "https://images.unsplash.com/photo-1518638150340-f706e86654de?auto=format&fit=crop&w=800&q=80",
-        "duration": "4 - 6 days",
-        "tags": ["food", "culture", "history", "cafes", "shopping", "local_traditions", "photography"],
-        "style": "relaxed",
-        "crowd_level": "moderate",
-        "budget_tier": "budget",
-        "estimated_cost": "$35 - $60 / day · Budget",
-        "preferred_climate": ["mild", "warm"],
-        "suitable_companions": ["alone", "partner", "friends"],
-        "best_seasons": ["October to March"],
-        "is_trending": True,
-        "trending_reason": "Global acclaim for authentic indigenous food, artisan mezcal, and Day of the Dead traditions",
-        "is_seasonal": True,
-        "seasonal_event": "Día de los Muertos (Day of the Dead) Cultural Festivities (Late Oct - Early Nov)",
-        "available_experiences": [
-            "Tasting 7 styles of complex Oaxacan mole in Mercado 20 de Noviembre",
-            "Visiting Monte Albán's ancient Zapotec pyramids on a flattened mountaintop",
-            "Exploring traditional wool-weaving studios in Teotitlán del Valle",
-            "Sipping artisan hot chocolate in shaded colonial zócalo cafes"
-        ],
-        "travel_style_and_atmosphere": "Colorful, artistic, warm, and deeply immersed in culinary heritage",
-        "practical_considerations": "Carry cash in Mexican Pesos as most local markets and artisan workshops do not accept cards.",
-        "limitations_or_uncertainties": "Located at 1,550m altitude; streets can be bustling during festive weeks.",
-        "avoidance_triggers": ["crowds", "food_allergies"],
-        "icon": "fa-utensils",
-        "is_sample_data": True
-    },
-    {
-        "id": "udaipur_india",
-        "name": "Udaipur & Mewar",
-        "country": "India",
-        "tagline": "Royal marble lake palaces, shimmering waters, and romantic Rajput heritage",
-        "image_url": "https://images.unsplash.com/photo-1615836245337-f5b9b2303f10?auto=format&fit=crop&w=800&q=80",
-        "duration": "3 - 5 days",
-        "tags": ["history", "heritage", "culture", "photography", "relaxation", "architecture"],
-        "style": "relaxed",
-        "crowd_level": "moderate",
-        "budget_tier": "balanced",
-        "estimated_cost": "₹3,000 - ₹5,500 ($38 - $68) / day · Balanced",
-        "preferred_climate": ["warm", "mild"],
-        "suitable_companions": ["partner", "family_older", "alone", "family_children"],
-        "best_seasons": ["October to March (sunny days, cool evenings)"],
-        "is_trending": False,
-        "is_seasonal": True,
-        "seasonal_event": "Winter Heritage Season & Lake Pichola Sunset Cruises (Nov - Feb)",
-        "available_experiences": [
-            "Sunset boat cruise around Lake Pichola with views of Jag Mandir",
-            "Exploring the sprawling courtyards and mirrored halls of City Palace",
-            "Rooftop dining with Rajasthani thalis overlooking illuminated palace waters",
-            "Watching evening folk dances and puppet arts at Bagore Ki Haveli"
-        ],
-        "travel_style_and_atmosphere": "Regal, romantic, peaceful lakeside elegance with artistic craftsmanship",
-        "practical_considerations": "Old city streets are very narrow; walking or electric auto-rickshaws are the best way to get around.",
-        "limitations_or_uncertainties": "Summer months (April to June) can exceed 40°C.",
-        "avoidance_triggers": ["extreme_heat", "crowds"],
-        "icon": "fa-monument",
-        "is_sample_data": True
-    },
-    {
-        "id": "queenstown_nz",
-        "name": "Queenstown & Fiordland",
-        "country": "New Zealand",
-        "tagline": "Crystal alpine lakes, dramatic peaks, fiord cruises, and outdoor thrills",
-        "image_url": "https://images.unsplash.com/photo-1507699622108-4be3abd695ad?auto=format&fit=crop&w=800&q=80",
-        "duration": "5 - 8 days",
-        "tags": ["adventure", "mountains", "nature", "scenic_landscapes", "hiking", "photography"],
-        "style": "active",
-        "crowd_level": "moderate",
-        "budget_tier": "balanced",
-        "estimated_cost": "$125 - $210 / day · Balanced",
-        "preferred_climate": ["cool", "mild"],
-        "suitable_companions": ["friends", "partner", "alone"],
-        "best_seasons": ["Summer (Dec - Feb) for hiking", "Winter (Jun - Aug) for skiing"],
-        "is_trending": False,
-        "is_seasonal": True,
-        "seasonal_event": "Milford Sound Scenic Cruising & Routeburn Alpine Hike Season (Dec - Mar)",
-        "available_experiences": [
-            "Scenic day cruise under towering waterfalls in Milford Sound",
-            "Riding the Skyline Gondola for panoramic views of Lake Wakatipu",
-            "Jet boating through narrow canyons of the Shotover River",
-            "Wine tasting Central Otago Pinot Noir at boutique vineyard estates"
-        ],
-        "travel_style_and_atmosphere": "Energetic, breathtaking, pristine outdoors, and friendly Kiwi hospitality",
-        "practical_considerations": "Book Milford Sound coach/cruises in advance as day trips take around 12 hours from Queenstown.",
-        "limitations_or_uncertainties": "Fiordland gets frequent rainfall; long travel transit times from most global regions.",
-        "avoidance_triggers": ["extreme_heights", "strenuous_hikes", "long_bus_rides"],
-        "icon": "fa-compass",
-        "is_sample_data": True
-    },
-    {
-        "id": "kerala_alleppey_india",
-        "name": "Kerala (Munnar & Alleppey)",
-        "country": "India",
-        "tagline": "Rolling emerald tea plantations, gentle backwater houseboats, and spice coast wellness",
-        "image_url": "https://images.unsplash.com/photo-1602216056096-3b40cc0c9944?auto=format&fit=crop&w=800&q=80",
-        "duration": "5 - 7 days",
-        "tags": ["nature", "relaxation", "scenic_landscapes", "food", "wellness", "culture"],
-        "style": "relaxed",
-        "crowd_level": "low",
-        "budget_tier": "balanced",
-        "estimated_cost": "₹2,800 - ₹5,000 ($35 - $62) / day · Balanced",
-        "preferred_climate": ["mild", "warm", "tropical"],
-        "suitable_companions": ["partner", "family_children", "family_older", "alone"],
-        "best_seasons": ["September to March"],
-        "is_trending": True,
-        "trending_reason": "High domestic & global demand for peaceful houseboat stays and Ayurvedic healing",
-        "is_seasonal": True,
-        "seasonal_event": "Winter Backwater Sailing & Fresh Spice Harvest Season (Nov - Feb)",
-        "available_experiences": [
-            "Overnight stay on a traditional thatched houseboat cruising palm-fringed backwaters",
-            "Morning walk through misty tea estates in Munnar with fresh tea tasting",
-            "Traditional Ayurvedic rejuvenation massage and herbal steam therapy",
-            "Sampling Kerala sadhya feast served fresh on a banana leaf"
-        ],
-        "travel_style_and_atmosphere": "Tranquil, verdant, therapeutic, and deeply comforting",
-        "practical_considerations": "Hire a private cab for the scenic 4-hour drive between Kochi, Munnar, and Alleppey.",
-        "limitations_or_uncertainties": "Winding mountain roads up to Munnar can trigger motion sickness for sensitive travellers.",
-        "avoidance_triggers": ["motion_sickness", "long_bus_rides"],
-        "icon": "fa-leaf",
-        "is_sample_data": True
-    },
-    {
-        "id": "barcelona_spain",
-        "name": "Barcelona & Costa Brava",
-        "country": "Spain",
-        "tagline": "Gaudí's architectural wonders, golden Mediterranean beaches, and lively tapas culture",
-        "image_url": "https://images.unsplash.com/photo-1583422409516-2895a77efded?auto=format&fit=crop&w=800&q=80",
-        "duration": "4 - 7 days",
-        "tags": ["architecture", "food", "beaches", "culture", "nightlife", "photography", "cafes"],
-        "style": "balanced",
-        "crowd_level": "high",
-        "budget_tier": "balanced",
-        "estimated_cost": "$90 - $145 / day · Balanced",
-        "preferred_climate": ["warm", "mild"],
-        "suitable_companions": ["friends", "partner", "alone"],
-        "best_seasons": ["May to June", "September to October"],
-        "is_seasonal": False,
-        "is_trending": False,
-        "available_experiences": [
-            "Marveling at the stained glass light inside Sagrada Família",
-            "Strolling down pedestrian Las Ramblas into the historic Gothic Quarter",
-            "Tasting fresh seafood tapas and Iberian ham at La Boqueria Market",
-            "Relaxing on Barceloneta beach with afternoon sangria"
-        ],
-        "travel_style_and_atmosphere": "Vibrant, creative, sun-drenched, with celebrated gastronomy and lively street life",
-        "practical_considerations": "Book Sagrada Família and Park Güell entry tickets online in advance to avoid sold-out days.",
-        "limitations_or_uncertainties": "Pickpocketing is common in crowded transit stations; summer queues are long.",
-        "avoidance_triggers": ["crowds", "tourist_traps"],
-        "icon": "fa-palette",
         "is_sample_data": True
     },
     {
@@ -468,14 +1012,32 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "tagline": "Futuristic neon cityscapes, quiet hidden shrines, and the world's finest culinary scene",
         "image_url": "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80",
         "duration": "5 - 8 days",
-        "tags": ["food", "culture", "shopping", "nightlife", "museums", "technology", "cafes"],
+        "tags": [
+            "food",
+            "culture",
+            "shopping",
+            "nightlife",
+            "museums",
+            "technology",
+            "cafes"
+        ],
         "style": "active",
         "crowd_level": "high",
         "budget_tier": "balanced",
-        "estimated_cost": "$95 - $160 / day · Balanced",
-        "preferred_climate": ["mild", "cool"],
-        "suitable_companions": ["alone", "friends", "partner"],
-        "best_seasons": ["Spring (Mar - May)", "Autumn (Oct - Nov)"],
+        "estimated_cost": "$95 - $160 / day \u00b7 Balanced",
+        "preferred_climate": [
+            "mild",
+            "cool"
+        ],
+        "suitable_companions": [
+            "alone",
+            "friends",
+            "partner"
+        ],
+        "best_seasons": [
+            "Spring (Mar - May)",
+            "Autumn (Oct - Nov)"
+        ],
         "is_trending": True,
         "trending_reason": "Global culinary capital with unmatched transit convenience and modern pop culture",
         "is_seasonal": False,
@@ -488,40 +1050,11 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "travel_style_and_atmosphere": "Hyper-modern, ultra-clean, endlessly fascinating, and fast-paced",
         "practical_considerations": "Get a digital Suica or Pasmo transit card on your phone for seamless travel on all subways and trains.",
         "limitations_or_uncertainties": "Major transit stations can feel like mazes; dense crowds during peak morning hours.",
-        "avoidance_triggers": ["crowds", "complex_transit"],
-        "icon": "fa-city",
-        "is_sample_data": True
-    },
-    {
-        "id": "cape_town_south_africa",
-        "name": "Cape Town & Peninsula",
-        "country": "South Africa",
-        "tagline": "Towering ocean cliffs, coastal penguins, vineyard valleys, and vibrant waterfront dining",
-        "image_url": "https://images.unsplash.com/photo-1580618672591-eb180b1a973f?auto=format&fit=crop&w=800&q=80",
-        "duration": "6 - 9 days",
-        "tags": ["nature", "beaches", "scenic_landscapes", "adventure", "food", "photography"],
-        "style": "balanced",
-        "crowd_level": "moderate",
-        "budget_tier": "balanced",
-        "estimated_cost": "$70 - $120 / day · Balanced",
-        "preferred_climate": ["warm", "mild"],
-        "suitable_companions": ["partner", "friends", "alone"],
-        "best_seasons": ["November to March (warm summer)"],
-        "is_trending": True,
-        "trending_reason": "High traveler ratings for coastal drives, favorable exchange rate, and culinary vineyard tours",
-        "is_seasonal": True,
-        "seasonal_event": "Southern Summer Season & Boulders Beach Penguin Colony Visits (Nov - Feb)",
-        "available_experiences": [
-            "Taking the rotating cable car up to the flat top of Table Mountain",
-            "Visiting the wild African penguin colony at Boulders Beach",
-            "Scenic coastal drive along Chapman's Peak overlooking crashing waves",
-            "Wine tasting at historical vineyards in Franschhoek and Stellenbosch"
+        "avoidance_triggers": [
+            "crowds",
+            "complex_transit"
         ],
-        "travel_style_and_atmosphere": "Dramatic natural spectacle where mountains drop right into two oceans",
-        "practical_considerations": "Rent a car for flexibility along the coast and Cape Peninsula. Check Table Mountain cable car operational status on windy mornings.",
-        "limitations_or_uncertainties": "Windy weather can temporarily close mountain cable cars.",
-        "avoidance_triggers": ["wind_sensitivity", "extreme_heights"],
-        "icon": "fa-sun",
+        "icon": "fa-city",
         "is_sample_data": True
     }
 ]
@@ -743,8 +1276,12 @@ def get_categorized_recommendations(
     """
     shortlist_set = set(shortlisted_ids or [])
 
+    # Serve 100% authentic Indian destinations for user exploration and recommendations
+    indian_destinations = [d for d in DESTINATIONS if d.get("country") == "India"]
+    candidate_pool = indian_destinations if indian_destinations else DESTINATIONS
+
     scored = []
-    for d in DESTINATIONS:
+    for d in candidate_pool:
         sc = score_destination_for_user(d, profile, detailed_profile, past_trips)
         sc["is_shortlisted"] = sc["id"] in shortlist_set
         scored.append(sc)
