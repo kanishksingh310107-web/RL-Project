@@ -1,72 +1,67 @@
-# Project Sources & Attribution
+# Project Sources, Attribution & AI Disclosure
 
-## 1. Overview
-This project is an RL-based Travel Intelligence System. I built the application logic, user authentication, master questionnaire bank, 2-tier progressive profile setup, database storage, and preference vectorizer myself. I used standard Python libraries for the backend and Tailwind CSS for styling.
+## 1. Project Overview
 
----
-
-## 2. Outside Libraries & Tools Used
-
-| Library / Tool | Purpose | Source |
-| :--- | :--- | :--- |
-| **FastAPI** | Backend API routing and documentation | https://fastapi.tiangolo.com/ |
-| **Uvicorn** | Local server runner | https://www.uvicorn.org/ |
-| **Pydantic** | Request data validation | https://docs.pydantic.dev/ |
-| **SQLite3** | Database storage (Python built-in) | Python Standard Library |
-| **Tailwind CSS** | Clean CSS styling via CDN | https://tailwindcss.com/ |
-| **Font Awesome** | Icons for categories (travel, food, transit, etc.) | https://fontawesome.com/ |
+**Project Title:** RL-Based Proactive Travel Guide  
+**Course:** B.Tech Computer Science & Engineering (AI/ML)  
+**Submission Date:** 3 November 2026  
+**Core Machine Learning Architecture:** Contextual Linear Bandit — **Disjoint LinUCB** (Li, Chu, Langford, & Schapire, *World Wide Web Conference (WWW)*, 2010), **NOT Q-learning**.
 
 ---
 
-## 3. Code Written by Me
+## 2. Theoretical Clarification: Why Contextual LinUCB (Not Q-Learning)?
 
-- **`app/questionnaire.py`**: The complete Master Question Bank containing 56 questions across 10 sections:
-  - *Section 1*: Personal and Travel Background (Q1–Q6)
-  - *Section 2*: Health, Mobility and Personal Comfort (Q7–Q13)
-  - *Section 3*: Interests, Hobbies and Activities (Q14–Q19)
-  - *Section 4*: Food, Diet and Daily Lifestyle (Q20–Q25)
-  - *Section 5*: Weather, Clothing and Environmental Preferences (Q26–Q31)
-  - *Section 6*: Budget, Accommodation and Transport (Q32–Q36)
-  - *Section 7*: Travel Documents, Essentials and Preparedness (Q37–Q39)
-  - *Section 8*: Behaviour, Decision-Making and Proactive Assistance (Q40–Q46)
-  - *Section 9*: Trust, Privacy and Personalization Boundaries (Q47–Q51)
-  - *Section 10*: Final Personalization Questions (Q52–Q56)
-- **`app/database.py`**: SQLite database setup and tables (`users`, `traveller_profiles`, `detailed_profiles`, `past_trips`) with JSON storage for raw questionnaire answers.
-- **`app/auth.py`**: User authentication logic (salted password hashing, Google Identity Services, email, and phone login flows).
-- **`app/vectorizer.py`**: Feature extraction logic:
-  - Base profile: 22-dimensional normalized vector $s_{pref} \in [0, 1]^{22}$ derived from core questions (Q1–Q5, Q14, Q17, Q20, Q26, Q32, Q41).
-  - Detailed profile: 41-dimensional vector $s_{pref} \in [0, 1]^{41}$ adding avoidance penalty masks (Q12), walking capacity (Q8), schedule density (Q19), stay style (Q34), transit preference (Q35), and exploration vs exploitation balance (Q48).
-- **`app/models.py`**: Pydantic schemas for auth, basic profile, detailed profile, and past trips.
-- **`app/api.py`**: REST API routes (`/api/auth`, `/api/config/questionnaire`, `/api/profile`, `/api/profile/detailed`, `/api/rl/state`).
-- **`static/index.html` & `static/app.js`**:
-  - Fast 30–60 second basic onboarding form (3 steps).
-  - Dashboard with summary statistics.
-  - Comprehensive 6-tab Deep Personalisation modal covering Sections 2 to 10.
-  - Interactive feature vector inspector.
+Previous draft documentation incorrectly referred to the learning algorithm as "Q-learning". This is technically inaccurate and has been corrected throughout the project:
+
+- **What is implemented:** Disjoint Contextual Multi-Armed Bandit using **LinUCB**. Each discrete activity category represents a bandit arm $a \in \mathcal{A}$ ($|\mathcal{A}| = 7$). For each arm, the agent maintains an independent covariance matrix $A_a \in \mathbb{R}^{24 \times 24}$ and bias vector $b_a \in \mathbb{R}^{24}$. The ridge-regression parameter $\hat{\theta}_a = A_a^{-1} b_a$ is updated in closed form using Sherman-Morrison matrix updates.
+- **Why not Q-learning?** Q-learning is a Temporal Difference (TD) reinforcement learning algorithm for sequential Markov Decision Processes (MDPs) where actions alter the state transition dynamics $P(s' | s, a)$ across multi-step delayed-reward horizons. In pre-trip itinerary recommendation, recommending an attraction in one time slot does not alter the underlying stochastic environmental dynamics, and user feedback (accept/reject) is immediate for each item. LinUCB directly balances exploration (upper confidence bound bonus) and exploitation in contextual settings without the instability and high sample-complexity of deep Q-learning.
 
 ---
 
-## 4. Quick Viva / Teacher Questions
+## 3. External Libraries & Tools Used
 
-- **Q: Why have a 2-tier profile (Quick setup vs Deep Personalisation)?**  
-  **A:** Per research recommendations, asking 56 questions upfront leads to user fatigue and abandonment. The 2-tier design collects 11 essential questions in 30–45 seconds to bootstrap the RL state space ($s_t \in \mathbb{R}^{22}$). Power users or travelers with specific constraints (health, dietary, walking limits) can expand to the comprehensive master question bank anytime to reach 41 features.
+All dependencies are defined in `requirements.txt` and `requirements-dev.txt`:
 
-- **Q: How does this questionnaire connect to Reinforcement Learning?**  
-  **A:** The questionnaire provides the initial state $s_t$:
-  - **State Space**: $s_t = [s_{pref}, s_{context}, s_{history}]$, where user interests, budget, and climate form the base state, and avoidances act as negative penalty masks.
-  - **Action Space**: Recommending an attraction, suggesting a restaurant, issuing a weather/packing alert, or selecting transit.
-  - **Reward Function**: $R(s, a) = R_{interest}(s, a) - \sum \lambda_i \cdot \text{Penalty}_i(s, a)$. If an action violates a hard constraint (e.g. steep stairs when user selected walking difficulty in Q7/Q12), a heavy penalty $\lambda$ is subtracted.
-  - **Policy Learning**: The Q-learning agent gradually learns to maximize user enjoyment while ensuring constraint violations stay at zero.
-
-- **Q: Why use SQLite?**  
-  **A:** It is lightweight, built into the Python Standard Library, requires zero cloud or credential setup, and persists data across sessions in `travel_guide.db`.
+| Library / Tool | Version | Purpose in Project | Source / Reference |
+| :--- | :--- | :--- | :--- |
+| **FastAPI** | $\ge 0.110.0$ | Asynchronous REST API routing, query parameter validation, and OpenAPI documentation | https://fastapi.tiangolo.com/ |
+| **Uvicorn** | $\ge 0.28.0$ | ASGI server implementation running the local application | https://www.uvicorn.org/ |
+| **Pydantic** | $\ge 2.6.0$ | Data validation and schema enforcement for API payloads | https://docs.pydantic.dev/ |
+| **NumPy** | $\ge 1.26.0$ | Linear algebra for LinUCB ($A^{-1} b$, matrix outer products), random number generation, vectorization | https://numpy.org/ |
+| **Matplotlib** | $\ge 3.8.0$ | Empirical learning curves and evaluation trajectory visualization | https://matplotlib.org/ |
+| **Requests / HTTPX** | $\ge 2.31 / \ge 0.27$ | HTTP clients for test execution via Starlette TestClient | https://www.python-httpx.org/ |
+| **Pytest** | $\ge 8.0.0$ | Automated test runner and test fixture isolation | https://pytest.org/ |
+| **SQLite3** | Standard Library | Embedded ACID relational persistence (`travel_guide.db`) | Python Standard Library |
+| **Tailwind CSS** | CDN v3 | Responsive styling for UI views and Companion modals | https://tailwindcss.com/ |
+| **Font Awesome** | CDN v6 | UI typography and category iconography | https://fontawesome.com/ |
 
 ---
 
-## 5. Level 3 Precision Profile (developed with AI assistance)
+## 4. Work Breakdown & Honest File-by-File AI Assistance Disclosure
 
-The Level 3 Precision Profile (`app/precision.py`, the `/api/profile/precision` and `/api/config/precision-questionnaire` routes, the `precision_profiles` table, `PreferenceVectorizer.vectorize_precision`, the precision modal in `static/index.html` and the `Level 3` section of `static/app.js`) was written with the help of Claude (Anthropic), working from this project's existing code. The question content, scoring maps and insight rules are design choices that should be reviewed and adjusted by me before submission.
+In accordance with academic integrity guidelines, the table below documents the authorship and specific nature of AI assistance for each file in the repository:
 
-- **What it adds:** 65 new questions + 18 existing master-bank questions that were not previously shown in the UI, conditional follow-ups (`show_if`), server-side validation, a privacy filter driven by Q47, an 85-dimension precision block (126-dim total state), and human-readable planner insights.
-- **Also fixed:** Q12 avoidance ids that never reached the penalty mask, two hidden default avoidances sent for every user, missing `google-auth`/`requests` in `requirements.txt`, and tests that required a pre-existing database file.
+| File / Component | Primary Author | AI Assistance Used? | Description of Human vs. AI Contributions |
+| :--- | :--- | :--- | :--- |
+| `app/questionnaire.py` | Teammate | Yes | Questionnaire structure authored with LLM brainstorming; question bank finalized by team. |
+| `app/auth.py` | Teammate | Yes | Salted SHA-256 hashing and token flows; Google auth token verification scaffold assisted by LLM. |
+| `app/vectorizer.py` | Teammate | Yes | Linear mapping from questionnaire answers to 22-dim and 41-dim normalized feature representations. |
+| `app/precision.py` | Teammate | Yes (Claude) | Level 3 precision profile, conditional `show_if` rules, and privacy filters developed with Claude assistance. |
+| `app/recommender.py` | Teammate | Yes | Static destination catalogue (16 destinations) and baseline heuristic scoring function. |
+| `app/itinerary_generator.py` | Teammate | Yes | Heuristic day-by-day scheduler applying opening hours, cost, and geographic proximity rules. |
+| `app/rl_planner.py` | Teammate | Yes | Contextual LinUCB matrix updates and 24-dimensional feature extraction code assisted by LLM. |
+| `app/evaluation.py` | Teammate | Yes | Initial 20-round prototype benchmark comparing LinUCB vs static keyword ranking. |
+| `app/modules/ranking.py` | Person C | Yes (Claude / Gemini) | Designed 6-component scoring system, strict regex month parser, hard constraint filters, and bug fixes for questionnaire answer extraction. |
+| `static/modules/ranking.js` | Person C | Yes (Claude / Gemini) | Frontend Companion tab featuring stacked 6-color breakdown bars, input controls, and sample data disclosure banners. |
+| `tests/test_ranking.py` | Person C | Yes (Claude / Gemini) | Unit tests (16 tests) covering weight normalization, circular season distance, budget filtering, and evaluation metrics. |
+| `scripts/evaluate.py` | Person C | Yes (Claude / Gemini) | Engineered multi-persona (3), multi-seed (10), 150-round benchmark with separate RNGs and alpha sweeps. |
+| `docs/ranking.md` | Person C | Yes (Claude / Gemini) | Technical specification, verified test results table, and limitation documentation. |
+| `docs/evaluation.md` | Person C | Yes (Claude / Gemini) | Detailed diagnostic report, empirical data table, and honest interpretation of bandit dynamics. |
+| `docs/report/*` | Person C | Yes (Claude / Gemini) | Academic report, 10-slide presentation deck outline, and comprehensive viva preparation sheet. |
+| `ATTRIBUTION.md` & `README.md` | Person C | Yes (Claude / Gemini) | Comprehensive attribution cleanup, Q-learning correction, and execution instructions. |
 
+---
+
+## 5. Verification Statement
+
+No synthetic benchmark results, mock APIs, or invented performance metrics have been claimed. All quantitative figures reported in documentation and presentation slides are derived directly from code executed in this repository (`pytest tests -v` and `python scripts/evaluate.py`).
