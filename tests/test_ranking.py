@@ -213,3 +213,22 @@ def test_bad_date_or_negative_weight_returns_400(client, demo_user):
         f"/api/ranking/{demo_user}?w_interest=0&w_season=0&w_popularity=0&w_feasibility=0&w_live=0&w_feedback=0"
     )
     assert r_all_zero.status_code == 400
+
+
+def test_evaluation_experiment_output_shape():
+    """Verifies scripts/evaluate.py run_experiment generates valid metrics and rates in [0, 1]."""
+    from scripts.evaluate import run_experiment
+    results = run_experiment(
+        personas=["nature_enthusiast"],
+        seeds=[42, 43],
+        alphas=[0.5],
+        rounds=20
+    )
+    # Expected policies per seed: Oracle, Static Baseline, Random, LinUCB (alpha=0.5) -> 4 * 2 seeds = 8 runs
+    assert len(results) == 8
+    for r in results:
+        assert 0.0 <= r["acceptance_rate"] <= 1.0
+        assert r["rounds"] == 20
+        assert -20.0 <= r["cumulative_reward"] <= 20.0
+        assert len(r["window_acceptance"]) == 2  # 20 rounds / 10-round window = 2 windows
+
