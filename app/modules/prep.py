@@ -299,3 +299,348 @@ def get_trip_weather(trip_id: str):
     if not trip:
         raise HTTPException(status_code=404, detail="trip not found")
     return get_weather_for_trip(trip)
+
+
+# ============================================================================
+# D2: Rule-Based Dynamic Packing List
+# ============================================================================
+
+def build_packing_list(
+    trip: Dict[str, Any],
+    weather: Dict[str, Any],
+    user_ctx: Dict[str, Any],
+    itinerary: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Generates a transparent, rule-based packing list.
+    Inputs:
+    - Weather summary (temp_min_c, temp_max_c, wind_kmh, rain_expected)
+    - Trip duration and destination
+    - Itinerary activities (hiking, beach, culture/temples, dining, etc.)
+    - User context (precision profile: cold/heat/wind tolerance, carry-on luggage, medication/allergies)
+    """
+    items: List[Dict[str, str]] = []
+    days = int(trip.get("duration_days") or 4)
+
+    summary = weather.get("summary", {})
+    t_min = float(summary.get("temp_min_c", 15.0))
+    t_max = float(summary.get("temp_max_c", 22.0))
+    wind = float(summary.get("wind_kmh", 15.0))
+    rain = bool(summary.get("rain_expected", False))
+
+    # Read precision profile answers if available
+    prec = user_ctx.get("precision") or {}
+    answers = prec.get("answers_json") or {}
+
+    q78 = answers.get("q78")  # cold tolerance (1-5)
+    q79 = answers.get("q79")  # heat tolerance (1-5)
+    q80 = answers.get("q80")  # wind tolerance (1-5)
+    luggage = answers.get("q61")  # luggage capacity: carry_on / backpack / one_checked
+    allergies = answers.get("q10") or []
+    medication = answers.get("q11") or []
+    food_allergens = answers.get("q95") or []
+    med_reqs = answers.get("q103") or []
+
+    # Climate classifications
+    is_hot = (t_min >= 20.0 and t_max >= 25.0) and (q78 is None or q78 >= 3)
+    is_cold = (t_min < 15.0) or (q78 is not None and q78 <= 2)
+    is_windy = (wind >= 25.0) or (q80 is not None and q80 <= 2)
+    is_carry_on = (luggage == "carry_on")
+
+    # 1. CLOTHING (Weather and Sensitivity Rules)
+    if is_cold and is_windy and not is_hot:
+        items.append({
+            "name": "Windproof & insulating layer (outer shell jacket)",
+            "category": "Clothing",
+            "reason": (
+                f"Destination low of {t_min:.1f}°C combined with {wind:.1f} km/h wind "
+                f"(or user sensitivity q78={q78}, q80={q80}) triggers windproof outer shell (Scotland coat rule)"
+            ),
+            "quantity": "1",
+        })
+        items.append({
+            "name": "Thermal base layer & warm fleece sweater",
+            "category": "Clothing",
+            "reason": f"Low temperature forecast ({t_min:.1f}°C) requires warm insulating mid-layer",
+            "quantity": "1-2",
+        })
+    elif is_cold and not is_hot:
+        items.append({
+            "name": "Thermal base layers / warm fleece sweater",
+            "category": "Clothing",
+            "reason": f"Expected lows ({t_min:.1f}°C) below 15°C or personal cold sensitivity (q78={q78})",
+            "quantity": "1-2",
+        })
+    elif is_hot:
+        items.append({
+            "name": "Lightweight breathable shirts (linen / moisture-wicking)",
+            "category": "Clothing",
+            "reason": f"Warm weather forecast ({t_min:.1f}°C to {t_max:.1f}°C); heavy insulation omitted",
+            "quantity": "3-4" if is_carry_on else f"{min(days, 6)}",
+        })
+        items.append({
+            "name": "UV sun protection hat & polarized sunglasses",
+            "category": "Clothing",
+            "reason": f"Warm sunny weather forecast ({t_max:.1f}°C) and UV protection",
+            "quantity": "1 each",
+        })
+    else:
+        # Mild temperate weather
+        items.append({
+            "name": "Light layering cardigan or jacket",
+            "category": "Clothing",
+            "reason": f"Mild weather conditions ({t_min:.1f}°C - {t_max:.1f}°C)",
+            "quantity": "1",
+        })
+
+    # Standard apparel scaling with luggage rule
+    if is_carry_on:
+        items.append({
+            "name": "T-shirts / tops (quick-dry, sink-washable)",
+            "category": "Clothing",
+            "reason": "Compact count optimized for carry-on only luggage (q61=carry_on)",
+            "quantity": "3-4",
+        })
+        items.append({
+            "name": "Travel pants / versatile bottoms",
+            "category": "Clothing",
+            "reason": "Compact capsule wardrobe for carry-on luggage",
+            "quantity": "2",
+        })
+        items.append({
+            "name": "Undergarments & quick-dry socks",
+            "category": "Clothing",
+            "reason": "Compact set suitable for carry-on rotation",
+            "quantity": "4 pairs",
+        })
+        # Mandatory Liquids Bag for Carry-On
+        items.append({
+            "name": "Liquids pouch (containers max 100ml in transparent 1L bag)",
+            "category": "Toiletries/Health",
+            "reason": "Mandatory airport security rule for carry-on cabin luggage (q61=carry_on)",
+            "quantity": "1 clear pouch",
+        })
+    else:
+        # Checked baggage: higher quantities plus non-carry-on allowances
+        items.append({
+            "name": "T-shirts / daytime tops",
+            "category": "Clothing",
+            "reason": f"Scaled for {days}-day trip with checked luggage capacity",
+            "quantity": f"{min(days + 1, 7)}",
+        })
+        items.append({
+            "name": "Comfortable pants / jeans / bottoms",
+            "category": "Clothing",
+            "reason": f"Standard rotation for {days}-day trip",
+            "quantity": f"{min(max(2, days // 2), 4)}",
+        })
+        items.append({
+            "name": "Undergarments & everyday socks",
+            "category": "Clothing",
+            "reason": f"Full trip supply for {days} days",
+            "quantity": f"{min(days + 2, 8)} pairs",
+        })
+        # Standard luggage items avoided by carry-on users
+        items.append({
+            "name": "Spare casual walking shoes (alternate pair for rotation)",
+            "category": "Footwear",
+            "reason": "Checked baggage allows packing a backup pair for shoe rotation and wet days",
+            "quantity": "1 pair",
+        })
+        items.append({
+            "name": "Evening dining outfit",
+            "category": "Clothing",
+            "reason": "Checked luggage allows dedicated evening outfit",
+            "quantity": "1 outfit",
+        })
+        items.append({
+            "name": "Full-size toiletries & travel towel pack",
+            "category": "Toiletries/Health",
+            "reason": "Checked baggage accommodates standard toiletries without 100ml limit",
+            "quantity": "1 kit",
+        })
+
+    # Rain protection
+    if rain:
+        items.append({
+            "name": "Compact windproof travel umbrella & water-resistant rain jacket",
+            "category": "Activity gear",
+            "reason": "Precipitation forecast during trip dates",
+            "quantity": "1",
+        })
+
+    # 2. ACTIVITY-BASED GEAR & FOOTWEAR
+    has_itinerary = itinerary is not None and len(itinerary.get("activities", [])) > 0
+    if not has_itinerary:
+        items.append({
+            "name": "Comfortable all-day walking sneakers",
+            "category": "Footwear",
+            "reason": "Default footwear recommendation (itinerary not generated yet)",
+            "quantity": "1 pair",
+        })
+        items.append({
+            "name": "Everyday city daypack (15-20L)",
+            "category": "Activity gear",
+            "reason": "Default daypack recommendation (itinerary not generated yet)",
+            "quantity": "1",
+        })
+    else:
+        acts = itinerary.get("activities", [])
+        categories = {a.get("category", "") for a in acts}
+        text_corpus = " ".join(
+            (a.get("title") or "") + " " + (a.get("description") or "") for a in acts
+        ).lower()
+
+        # Hiking / Nature / Adventure
+        if (
+            "nature_outdoors" in categories
+            or "adventure" in categories
+            or "hike" in text_corpus
+            or "trail" in text_corpus
+            or "mountain" in text_corpus
+        ):
+            items.append({
+                "name": "Sturdy hiking boots or trail walking shoes",
+                "category": "Footwear",
+                "reason": "Planned outdoor nature trails or hiking activities in your itinerary",
+                "quantity": "1 pair",
+            })
+            items.append({
+                "name": "Outdoor daypack (20-30L) & reusable water bottle",
+                "category": "Activity gear",
+                "reason": "Active nature and adventure activities scheduled in itinerary",
+                "quantity": "1",
+            })
+
+        # Cultural / Religious / Shrines
+        if (
+            "culture_history" in categories
+            or "temple" in text_corpus
+            or "shrine" in text_corpus
+            or "mosque" in text_corpus
+            or "church" in text_corpus
+        ):
+            items.append({
+                "name": "Modest clothing covering shoulders & knees",
+                "category": "Clothing",
+                "reason": "Visiting religious shrines and historical cultural monuments in itinerary",
+                "quantity": "1-2 outfits",
+            })
+            items.append({
+                "name": "Comfortable slip-on walking shoes",
+                "category": "Footwear",
+                "reason": "Frequent shoe removal required at sacred sites and traditional venues",
+                "quantity": "1 pair",
+            })
+        else:
+            items.append({
+                "name": "Comfortable cushioned walking sneakers",
+                "category": "Footwear",
+                "reason": "Urban exploration and general sightseeing",
+                "quantity": "1 pair",
+            })
+
+        # Water / Beach / Swimming
+        if (
+            "beach" in text_corpus
+            or "swim" in text_corpus
+            or "boat" in text_corpus
+            or "snorkel" in text_corpus
+        ):
+            items.append({
+                "name": "Swimwear & quick-dry microfiber towel",
+                "category": "Activity gear",
+                "reason": "Beach, boating, or water activities planned in itinerary",
+                "quantity": "1-2 sets",
+            })
+
+        # Local markets & shopping
+        if "shopping_local" in categories or "market" in text_corpus:
+            items.append({
+                "name": "Packable lightweight shopping tote",
+                "category": "Activity gear",
+                "reason": "Visiting local markets and shopping districts in itinerary",
+                "quantity": "1",
+            })
+
+        # Dining & Food
+        if "food_dining" in categories or "food" in text_corpus:
+            items.append({
+                "name": "Pocket hand sanitizer & refreshing wet wipes",
+                "category": "Toiletries/Health",
+                "reason": "Dining and street food exploration activities scheduled in itinerary",
+                "quantity": "1 pack",
+            })
+
+    # 3. HEALTH, ALLERGIES & MEDICATION (Neutral, Non-Medical Information)
+    medication_vals = [medication] if isinstance(medication, str) else (medication or [])
+    allergies_vals = [allergies] if isinstance(allergies, str) else (allergies or [])
+
+    has_med = (
+        any(m in medication_vals for m in ["personal_medication", "medical_equipment", "emergency_supplies"])
+        or (med_reqs and "none" not in med_reqs)
+    )
+    has_allergies = (
+        any(a in allergies_vals for a in ["food_allergies", "medication_allergies", "pollen_environmental", "insect_stings"])
+        or bool(food_allergens)
+    )
+    if has_med or has_allergies:
+        items.append({
+            "name": "Personal prescription medication in original packaging (cabin luggage)",
+            "category": "Toiletries/Health",
+            "reason": (
+                "User indicated personal medication or allergies in profile. Bring in original labeled packaging "
+                "in carry-on bag with doctor's prescription copy; check destination border import rules. "
+                "(Neutral informational reminder, no medical advice provided)"
+            ),
+            "quantity": "Trip supply + 2-3 days backup",
+        })
+
+    # 4. ELECTRONICS & CORE DOCUMENTS
+    items.append({
+        "name": "Universal travel plug adapter & USB cables",
+        "category": "Electronics",
+        "reason": "Required for charging personal devices across international socket standards",
+        "quantity": "1 adapter + cables",
+    })
+    items.append({
+        "name": "Portable power bank (10,000mAh, carry-on compliant)",
+        "category": "Electronics",
+        "reason": "Maintaining phone battery for daylong mobile maps, tickets, and camera",
+        "quantity": "1",
+    })
+    items.append({
+        "name": "Printed travel documents in waterproof zip pouch",
+        "category": "Documents-related",
+        "reason": "Offline backup for boarding passes, insurance policy, and hotel confirmations",
+        "quantity": "1 pouch",
+    })
+
+    return {
+        "trip_id": trip["id"],
+        "destination_name": trip["destination_name"],
+        "trip_length_days": days,
+        "weather_summary": summary,
+        "weather_source": weather.get("source"),
+        "weather_label": weather.get("label"),
+        "itinerary_status": "generated" if has_itinerary else "not_generated",
+        "user_luggage_tier": "carry_on" if is_carry_on else "standard",
+        "total_items": len(items),
+        "items": items,
+    }
+
+
+@router.get("/{trip_id}/packing")
+def get_trip_packing_list(trip_id: str):
+    """GET /api/prep/{trip_id}/packing
+    Returns dynamic rule-based packing list driven by weather, itinerary, and user sensitivities.
+    """
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+
+    weather = get_weather_for_trip(trip)
+    user_ctx = get_user_context(trip["user_id"])
+    itinerary = get_itinerary(trip["id"])
+
+    return build_packing_list(trip, weather, user_ctx, itinerary)
+
