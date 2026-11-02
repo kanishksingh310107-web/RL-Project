@@ -4,14 +4,14 @@ essential travel documents checklists, and personalized pre-trip reminders
 powered by a Thompson Sampling contextual bandit.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 import json
 import random
 import uuid
 import httpx
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.database import get_connection
 from app.modules.common import get_itinerary, get_trip, get_user_context
@@ -778,5 +778,322 @@ def get_trip_documents(trip_id: str):
     if not trip:
         raise HTTPException(status_code=404, detail="trip not found")
     return build_documents_checklist(trip)
+
+
+# ============================================================================
+# D4 & D5: Reminders Schedule & Thompson Sampling Bandit
+# ============================================================================
+
+ALERT_BUDGET = 3  # Maximum number of active reminders displayed per day
+
+REMINDER_TEMPLATES = [
+    {
+        "category": "documents",
+        "days_before": 30,
+        "text": "Verify passport validity (at least 6 months) and check official visa requirements.",
+    },
+    {
+        "category": "insurance",
+        "days_before": 14,
+        "text": "Secure comprehensive travel medical and cancellation insurance.",
+    },
+    {
+        "category": "packing",
+        "days_before": 3,
+        "text": "Review personalized packing list and prepare activity gear and footwear.",
+    },
+    {
+        "category": "weather",
+        "days_before": 2,
+        "text": "Check updated destination forecast to make final clothing adjustments.",
+    },
+    {
+        "category": "checkin",
+        "days_before": 1,
+        "text": "Complete airline / transit online check-in and save boarding passes offline.",
+    },
+    {
+        "category": "logistics",
+        "days_before": 1,
+        "text": "Prepare cabin bag: verify 100ml liquid limits, pack prescription medications and adapters.",
+    },
+]
+
+ALL_REMINDER_CATEGORIES = [
+    "documents",
+    "insurance",
+    "packing",
+    "weather",
+    "checkin",
+    "logistics",
+]
+
+
+class ReminderFeedbackRequest(BaseModel):
+    feedback: str
+
+    @field_validator("feedback")
+    @classmethod
+    def validate_feedback(cls, v: str) -> str:
+        allowed = {"useful", "not_useful", "done"}
+        if v not in allowed:
+            raise ValueError(f"Invalid feedback '{v}'. Must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+
+def generate_reminders_for_trip(trip: Dict[str, Any]) -> int:
+    """Creates reminders for a trip if not already created (idempotent).
+    Returns count of newly created reminders.
+    """
+    trip_id = trip["id"]
+    start_date_str = trip.get("start_date", "")
+
+    try:
+        start_dt = datetime.strptime(start_date_str, "%Y-%m-%d")
+    except ValueError:
+        start_dt = datetime.now(timezone.utc)
+
+    created_count = 0
+    with get_connection() as conn:
+        for tpl in REMINDER_TEMPLATES:
+            # Check if this exact reminder already exists for the trip
+            existing = conn.execute(
+                "SELECT 1 FROM prep_reminders WHERE trip_id = ? AND category = ? AND text = ?",
+                (trip_id, tpl["category"], tpl["text"]),
+            ).fetchone()
+
+            if not existing:
+                due_dt = start_dt - timedelta(days=tpl["days_before"])
+                due_str = due_dt.strftime("%Y-%m-%d")
+                rem_id = str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO prep_reminders (id, trip_id, text, category, due_date, status, shown_count)
+                    VALUES (?, ?, ?, ?, ?, 'pending', 0)
+                    """,
+                    (rem_id, trip_id, tpl["text"], tpl["category"], due_str),
+                )
+                created_count += 1
+        conn.commit()
+
+    return created_count
+
+
+def get_user_bandit_priors(conn, user_id: str) -> Dict[str, Tuple[float, float]]:
+    """Loads Beta(alpha, beta) priors per reminder category for a user.
+    Unseen categories default to Beta(1.0, 1.0) uniform prior.
+    """
+    rows = conn.execute(
+        "SELECT category, alpha, beta FROM prep_bandit WHERE user_id = ?",
+        (user_id,),
+    ).fetchall()
+
+    priors: Dict[str, Tuple[float, float]] = {c: (1.0, 1.0) for c in ALL_REMINDER_CATEGORIES}
+    for r in rows:
+        priors[r["category"]] = (float(r["alpha"]), float(r["beta"]))
+    return priors
+
+
+def sample_bandit_preferences(
+    priors: Dict[str, Tuple[float, float]], seed: Optional[int] = None
+) -> Dict[str, float]:
+    """Thompson Sampling: draws theta ~ Beta(alpha, beta) for each reminder category."""
+    rng = random.Random(seed) if seed is not None else random.Random()
+    sampled = {}
+    for cat, (alpha, beta) in priors.items():
+        # Ensure positive parameters for betavariate
+        a = max(0.01, alpha)
+        b = max(0.01, beta)
+        sampled[cat] = rng.betavariate(a, b)
+    return sampled
+
+
+@router.post("/{trip_id}/reminders/generate")
+def create_trip_reminders(trip_id: str):
+    """POST /api/prep/{trip_id}/reminders/generate
+    Idempotently creates scheduled reminders based on trip start date.
+    """
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+
+    created = generate_reminders_for_trip(trip)
+    return {
+        "trip_id": trip_id,
+        "created_count": created,
+        "message": f"Successfully created {created} new reminder(s)." if created else "Reminders already exist (idempotent).",
+    }
+
+
+@router.get("/{trip_id}/reminders")
+def list_trip_reminders(trip_id: str, seed: Optional[int] = Query(None)):
+    """GET /api/prep/{trip_id}/reminders
+    Returns reminders ranked by Thompson Sampling contextual bandit.
+    Enforces alert budget (max N active reminders displayed).
+    """
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+
+    user_id = trip["user_id"]
+
+    with get_connection() as conn:
+        # Check if reminders have been generated; if none exist, generate automatically
+        count_existing = conn.execute(
+            "SELECT COUNT(*) FROM prep_reminders WHERE trip_id = ?", (trip_id,)
+        ).fetchone()[0]
+        if count_existing == 0:
+            generate_reminders_for_trip(trip)
+
+        rows = conn.execute(
+            "SELECT * FROM prep_reminders WHERE trip_id = ? ORDER BY due_date ASC",
+            (trip_id,),
+        ).fetchall()
+        priors = get_user_bandit_priors(conn, user_id)
+
+    thetas = sample_bandit_preferences(priors, seed=seed)
+
+    reminders = []
+    for r in rows:
+        d = dict(r)
+        cat = d["category"]
+        d["bandit_score"] = round(thetas.get(cat, 0.5), 4)
+        reminders.append(d)
+
+    # Sort logic:
+    # 1. 'pending' items come first, ordered by highest sampled Thompson theta, then earlier due_date
+    # 2. 'done' and 'dismissed' items follow
+    def sort_key(rem):
+        is_pending = 0 if rem["status"] == "pending" else 1
+        return (is_pending, -rem["bandit_score"], rem["due_date"])
+
+    reminders.sort(key=sort_key)
+
+    # Apply alert budget (max ALERT_BUDGET active pending items)
+    pending_shown = 0
+    with get_connection() as conn:
+        for rem in reminders:
+            if rem["status"] == "pending" and pending_shown < ALERT_BUDGET:
+                rem["is_active"] = True
+                pending_shown += 1
+                # Increment shown_count in persistent store
+                conn.execute(
+                    "UPDATE prep_reminders SET shown_count = shown_count + 1 WHERE id = ?",
+                    (rem["id"],),
+                )
+            else:
+                rem["is_active"] = False
+        conn.commit()
+
+    bandit_state = [
+        {
+            "category": cat,
+            "alpha": round(priors[cat][0], 2),
+            "beta": round(priors[cat][1], 2),
+            "mean": round(priors[cat][0] / (priors[cat][0] + priors[cat][1]), 3),
+        }
+        for cat in ALL_REMINDER_CATEGORIES
+    ]
+
+    return {
+        "trip_id": trip_id,
+        "alert_budget": ALERT_BUDGET,
+        "active_count": pending_shown,
+        "waiting_count": max(0, sum(1 for r in reminders if r["status"] == "pending") - pending_shown),
+        "total_count": len(reminders),
+        "reminders": reminders,
+        "bandit_state": bandit_state,
+        "disclaimer": "learned from your feedback in this app; simulated/demo data, not a real user study",
+    }
+
+
+@router.post("/{trip_id}/reminders/{reminder_id}/feedback")
+def submit_reminder_feedback(
+    trip_id: str, reminder_id: str, payload: ReminderFeedbackRequest
+):
+    """POST /api/prep/{trip_id}/reminders/{reminder_id}/feedback
+    Records explicit user feedback ('useful', 'not_useful', 'done')
+    and updates Thompson Sampling Beta(alpha, beta) parameters.
+    """
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+
+    user_id = trip["user_id"]
+    feedback = payload.feedback
+
+    with get_connection() as conn:
+        rem_row = conn.execute(
+            "SELECT * FROM prep_reminders WHERE id = ? AND trip_id = ?",
+            (reminder_id, trip_id),
+        ).fetchone()
+
+        if not rem_row:
+            raise HTTPException(status_code=404, detail="reminder not found")
+
+        category = rem_row["category"]
+
+        # 1. Update reminder status
+        if feedback == "done":
+            new_status = "done"
+        elif feedback == "not_useful":
+            new_status = "dismissed"
+        else:  # 'useful'
+            new_status = "done"
+
+        conn.execute(
+            "UPDATE prep_reminders SET status = ? WHERE id = ?",
+            (new_status, reminder_id),
+        )
+
+        # 2. Update Thompson Sampling Beta posterior:
+        # - useful / done -> reward = +1 (alpha += 1.0)
+        # - not_useful -> reward = -1 (beta += 1.0)
+        # - dismissed without feedback -> weak penalty (beta += 0.1)
+        bandit_row = conn.execute(
+            "SELECT alpha, beta FROM prep_bandit WHERE user_id = ? AND category = ?",
+            (user_id, category),
+        ).fetchone()
+
+        if bandit_row:
+            curr_alpha = float(bandit_row["alpha"])
+            curr_beta = float(bandit_row["beta"])
+        else:
+            curr_alpha = 1.0
+            curr_beta = 1.0
+
+        if feedback in ("useful", "done"):
+            new_alpha = curr_alpha + 1.0
+            new_beta = curr_beta
+        elif feedback == "not_useful":
+            new_alpha = curr_alpha
+            new_beta = curr_beta + 1.0
+        else:
+            new_alpha = curr_alpha
+            new_beta = curr_beta + 0.1
+
+        conn.execute(
+            """
+            INSERT INTO prep_bandit (user_id, category, alpha, beta, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id, category) DO UPDATE SET
+                alpha = excluded.alpha,
+                beta = excluded.beta,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (user_id, category, new_alpha, new_beta),
+        )
+        conn.commit()
+
+    return {
+        "reminder_id": reminder_id,
+        "trip_id": trip_id,
+        "category": category,
+        "feedback": feedback,
+        "status": new_status,
+        "new_alpha": round(new_alpha, 2),
+        "new_beta": round(new_beta, 2),
+    }
+
 
 

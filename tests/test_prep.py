@@ -240,3 +240,143 @@ def test_documents_checklist_never_invents_visa_rules(client, demo_trip):
     assert "Type A / B" in power_item["note"] or "Japan" in power_item["note"]  # Kyoto trip
 
 
+def test_reminders_generation_and_due_dates(client, demo_trip):
+    """Reminder due dates equal start_date - N days for each template."""
+    uid, trip_id = demo_trip
+    # demo_trip start_date is "2026-11-10"
+
+    gen_resp = client.post(f"/api/prep/{trip_id}/reminders/generate")
+    assert gen_resp.status_code == 200
+    assert gen_resp.json()["created_count"] == 6
+
+    # Verify idempotency
+    gen_again = client.post(f"/api/prep/{trip_id}/reminders/generate")
+    assert gen_again.status_code == 200
+    assert gen_again.json()["created_count"] == 0
+
+    list_resp = client.get(f"/api/prep/{trip_id}/reminders")
+    assert list_resp.status_code == 200
+    reminders = list_resp.json()["reminders"]
+    assert len(reminders) == 6
+
+    by_cat = {r["category"]: r["due_date"] for r in reminders}
+    # 2026-11-10 minus 30 days = 2026-10-11
+    assert by_cat["documents"] == "2026-10-11"
+    # 2026-11-10 minus 14 days = 2026-10-27
+    assert by_cat["insurance"] == "2026-10-27"
+    # 2026-11-10 minus 3 days = 2026-11-07
+    assert by_cat["packing"] == "2026-11-07"
+    # 2026-11-10 minus 2 days = 2026-11-08
+    assert by_cat["weather"] == "2026-11-08"
+    # 2026-11-10 minus 1 day = 2026-11-09
+    assert by_cat["checkin"] == "2026-11-09"
+    assert by_cat["logistics"] == "2026-11-09"
+
+
+def test_reminders_alert_budget_enforcement(client, demo_trip):
+    """Alert budget caps the number of active reminders returned."""
+    uid, trip_id = demo_trip
+
+    client.post(f"/api/prep/{trip_id}/reminders/generate")
+    list_resp = client.get(f"/api/prep/{trip_id}/reminders")
+    assert list_resp.status_code == 200
+    data = list_resp.json()
+
+    assert data["alert_budget"] == 3
+    assert data["active_count"] == 3
+    assert data["waiting_count"] == 3
+
+    active_items = [r for r in data["reminders"] if r.get("is_active")]
+    assert len(active_items) == 3
+
+
+def test_reminders_feedback_validation_and_errors(client, demo_trip):
+    """Validation checks on feedback endpoint: unknown trip, unknown reminder, invalid value."""
+    uid, trip_id = demo_trip
+
+    client.post(f"/api/prep/{trip_id}/reminders/generate")
+
+    # 404 on unknown trip
+    r404_trip = client.post(
+        "/api/prep/unknown_trip/reminders/some_id/feedback",
+        json={"feedback": "useful"},
+    )
+    assert r404_trip.status_code == 404
+
+    # 404 on unknown reminder
+    r404_rem = client.post(
+        f"/api/prep/{trip_id}/reminders/non_existent_reminder/feedback",
+        json={"feedback": "useful"},
+    )
+    assert r404_rem.status_code == 404
+
+    # Get a real reminder ID
+    rems = client.get(f"/api/prep/{trip_id}/reminders").json()["reminders"]
+    rem_id = rems[0]["id"]
+
+    # 422 on invalid feedback string
+    r422 = client.post(
+        f"/api/prep/{trip_id}/reminders/{rem_id}/feedback",
+        json={"feedback": "super_awesome"},
+    )
+    assert r422.status_code == 422
+
+
+def test_bandit_feedback_updates_and_shifts_preference(client, demo_trip):
+    """Feedback updates Thompson Sampling Beta(alpha, beta) parameters.
+    Sustained feedback changes sampled preferences under deterministic seed.
+    """
+    uid, trip_id = demo_trip
+
+    client.post(f"/api/prep/{trip_id}/reminders/generate")
+    initial_rems = client.get(f"/api/prep/{trip_id}/reminders?seed=42").json()["reminders"]
+    packing_rem = next(r for r in initial_rems if r["category"] == "packing")
+    insurance_rem = next(r for r in initial_rems if r["category"] == "insurance")
+
+    # 1. Single positive feedback updates alpha
+    fb1 = client.post(
+        f"/api/prep/{trip_id}/reminders/{packing_rem['id']}/feedback",
+        json={"feedback": "useful"},
+    )
+    assert fb1.status_code == 200
+    assert fb1.json()["new_alpha"] == 2.0
+    assert fb1.json()["new_beta"] == 1.0
+
+    # 2. Single negative feedback updates beta
+    fb2 = client.post(
+        f"/api/prep/{trip_id}/reminders/{insurance_rem['id']}/feedback",
+        json={"feedback": "not_useful"},
+    )
+    assert fb2.status_code == 200
+    assert fb2.json()["new_alpha"] == 1.0
+    assert fb2.json()["new_beta"] == 2.0
+
+    # 3. Apply 15x negative feedback to insurance, 15x positive feedback to packing
+    for _ in range(15):
+        client.post(
+            f"/api/prep/{trip_id}/reminders/{insurance_rem['id']}/feedback",
+            json={"feedback": "not_useful"},
+        )
+        client.post(
+            f"/api/prep/{trip_id}/reminders/{packing_rem['id']}/feedback",
+            json={"feedback": "useful"},
+        )
+
+    updated_data = client.get(f"/api/prep/{trip_id}/reminders?seed=42").json()
+    bandit_state = {s["category"]: s for s in updated_data["bandit_state"]}
+
+    assert bandit_state["packing"]["alpha"] >= 16.0
+    assert bandit_state["packing"]["mean"] > 0.8
+    assert bandit_state["insurance"]["beta"] >= 16.0
+    assert bandit_state["insurance"]["mean"] < 0.2
+
+    # Under seed=42, packing sampled score must significantly exceed insurance score
+    rems_seeded = updated_data["reminders"]
+    packing_score = next(r["bandit_score"] for r in rems_seeded if r["category"] == "packing")
+    insurance_score = next(r["bandit_score"] for r in rems_seeded if r["category"] == "insurance")
+    assert packing_score > insurance_score
+    assert packing_score > 0.6
+    assert insurance_score < 0.3
+
+
+
