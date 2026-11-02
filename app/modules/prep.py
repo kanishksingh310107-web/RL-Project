@@ -84,6 +84,18 @@ DESTINATION_COORDS: Dict[str, Tuple[float, float]] = {
     "barcelona_spain": (41.3879, 2.1699),
     "tokyo_japan": (35.6762, 139.6503),
     "cape_town_south_africa": (-33.9249, 18.4241),
+    "ladakh_leh_india": (34.1526, 77.5771),
+    "varanasi_kashi_india": (25.3176, 82.9739),
+    "jaipur_rajasthan_india": (26.9124, 75.7873),
+    "rishikesh_haridwar_india": (30.0869, 78.2676),
+    "hampi_karnataka_india": (15.3350, 76.4600),
+    "meghalaya_shillong_india": (25.5788, 91.8933),
+    "darjeeling_sikkim_india": (27.0410, 88.2663),
+    "andaman_havelock_india": (11.9761, 92.9876),
+    "amritsar_punjab_india": (31.6340, 74.8723),
+    "ooty_coorg_india": (11.4102, 76.6950),
+    "rann_of_kutch_india": (23.8344, 69.8396),
+    "agra_braj_india": (27.1767, 78.0081),
 }
 
 # Rough climatological estimate, hand-written, not measured data.
