@@ -205,3 +205,38 @@ def test_packing_without_itinerary_and_without_precision_profile(client, demo_us
     assert len(data["items"]) > 0
     assert any("sneakers" in i["name"].lower() or "shoes" in i["name"].lower() for i in data["items"])
 
+
+def test_documents_endpoint_404_on_unknown_trip(client):
+    """Unknown trip ID must return 404 for documents endpoint."""
+    resp = client.get("/api/prep/non_existent_trip_id_777/documents")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "trip not found"
+
+
+def test_documents_checklist_never_invents_visa_rules(client, demo_trip):
+    """Documents endpoint provides verified checklist and directs user to official government sites."""
+    uid, trip_id = demo_trip
+
+    resp = client.get(f"/api/prep/{trip_id}/documents")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "disclaimer" in data
+    items = data["items"]
+    assert len(items) >= 8
+
+    # Check passport and visa items specifically
+    visa_item = next((i for i in items if "visa" in i["name"].lower()), None)
+    assert visa_item is not None
+    assert "official" in visa_item["note"].lower()
+    assert visa_item["official_check_required"] is True
+
+    passport_item = next((i for i in items if "passport" in i["name"].lower()), None)
+    assert passport_item is not None
+    assert "official" in passport_item["note"].lower()
+    assert passport_item["official_check_required"] is True
+
+    power_item = next((i for i in items if "power" in i["name"].lower() or "adapter" in i["name"].lower()), None)
+    assert power_item is not None
+    assert "Type A / B" in power_item["note"] or "Japan" in power_item["note"]  # Kyoto trip
+
+

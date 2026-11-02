@@ -644,3 +644,139 @@ def get_trip_packing_list(trip_id: str):
 
     return build_packing_list(trip, weather, user_ctx, itinerary)
 
+
+# ============================================================================
+# D3: Documents and Entry Requirements Checklist
+# ============================================================================
+
+# Known electrical plug and voltage standards for the 16 destinations.
+# All items require user verification on the official destination site.
+DESTINATION_POWER_STANDARDS: Dict[str, Dict[str, str]] = {
+    "kyoto_japan": {"plug_types": "Type A / B", "voltage": "100V, 50/60Hz", "country": "Japan"},
+    "tokyo_japan": {"plug_types": "Type A / B", "voltage": "100V, 50/60Hz", "country": "Japan"},
+    "manali_spiti_india": {"plug_types": "Type C / D / M", "voltage": "230V, 50Hz", "country": "India"},
+    "south_goa_india": {"plug_types": "Type C / D / M", "voltage": "230V, 50Hz", "country": "India"},
+    "udaipur_india": {"plug_types": "Type C / D / M", "voltage": "230V, 50Hz", "country": "India"},
+    "kerala_alleppey_india": {"plug_types": "Type C / D / M", "voltage": "230V, 50Hz", "country": "India"},
+    "santorini_greece": {"plug_types": "Type C / F", "voltage": "230V, 50Hz", "country": "Greece"},
+    "rome_florence_italy": {"plug_types": "Type C / F / L", "voltage": "230V, 50Hz", "country": "Italy"},
+    "barcelona_spain": {"plug_types": "Type C / F", "voltage": "230V, 50Hz", "country": "Spain"},
+    "swiss_alps": {"plug_types": "Type J (accepts Europlug C)", "voltage": "230V, 50Hz", "country": "Switzerland"},
+    "banff_canada": {"plug_types": "Type A / B", "voltage": "120V, 60Hz", "country": "Canada"},
+    "chiang_mai_thailand": {"plug_types": "Type A / B / C", "voltage": "220V, 50Hz", "country": "Thailand"},
+    "reykjavik_iceland": {"plug_types": "Type C / F", "voltage": "230V, 50Hz", "country": "Iceland"},
+    "oaxaca_mexico": {"plug_types": "Type A / B", "voltage": "127V, 60Hz", "country": "Mexico"},
+    "queenstown_nz": {"plug_types": "Type I", "voltage": "230V, 50Hz", "country": "New Zealand"},
+    "cape_town_south_africa": {"plug_types": "Type M / C / N", "voltage": "230V, 50Hz", "country": "South Africa"},
+}
+
+
+def build_documents_checklist(trip: Dict[str, Any]) -> Dict[str, Any]:
+    """Generates the mandatory pre-trip documents, entry requirements,
+    and power adapter checklist. NEVER invents visa regulations.
+    """
+    dest_id = trip.get("destination_id", "")
+    dest_name = trip.get("destination_name", "Destination")
+    power_info = DESTINATION_POWER_STANDARDS.get(dest_id)
+
+    if power_info:
+        power_note = (
+            f"{power_info['country']} uses {power_info['plug_types']} sockets at {power_info['voltage']}. "
+            f"Verify your electronics support dual-voltage (100-240V) and verify on the official site."
+        )
+    else:
+        power_note = f"Check electrical plug type and voltage standards for {dest_name} on the official site."
+
+    checklist = [
+        {
+            "name": "Passport validity (6 months rule)",
+            "category": "Identity & Entry",
+            "note": (
+                f"Most international destinations require at least 6 months validity from your arrival "
+                f"or departure date, plus 2 blank pages. Verify requirements on the official government/embassy site."
+            ),
+            "official_check_required": True,
+        },
+        {
+            "name": "Visa / Entry authorization & border forms",
+            "category": "Identity & Entry",
+            "note": (
+                f"Check requirements on the official government/embassy site for your passport and {dest_name}. "
+                f"Verify whether an e-Visa, Visa-on-Arrival, or advance electronic travel authorization is mandated."
+            ),
+            "official_check_required": True,
+        },
+        {
+            "name": "Comprehensive travel insurance",
+            "category": "Insurance & Health",
+            "note": (
+                "Ensure policy covers medical emergencies, trip disruption/cancellation, and adventurous activities. "
+                "Keep emergency hotline number saved offline. Verify terms on the official insurer portal."
+            ),
+            "official_check_required": True,
+        },
+        {
+            "name": "Transport tickets & lodging confirmations",
+            "category": "Transit & Bookings",
+            "note": (
+                "Save offline digital copies (Apple/Google Wallet, PDFs) and 1 printed copy of flight tickets, "
+                "train bookings, and hotel reservation vouchers."
+            ),
+            "official_check_required": False,
+        },
+        {
+            "name": "Power adapter & voltage compatibility",
+            "category": "Electronics & Power",
+            "note": power_note,
+            "official_check_required": True,
+        },
+        {
+            "name": "International mobile SIM / eSIM",
+            "category": "Finance & Connectivity",
+            "note": (
+                f"Confirm international roaming pass or pre-install a regional travel eSIM for {dest_name} "
+                "to ensure immediate connectivity upon arrival."
+            ),
+            "official_check_required": False,
+        },
+        {
+            "name": "Payment cards & modest emergency cash",
+            "category": "Finance & Connectivity",
+            "note": (
+                "Notify your bank of international travel to prevent card freezes. Carry cards with zero foreign "
+                "exchange fees plus a small amount of local currency for transit and markets."
+            ),
+            "official_check_required": False,
+        },
+        {
+            "name": "Prescription medication in cabin bag",
+            "category": "Insurance & Health",
+            "note": (
+                f"Keep all personal medications in original labeled containers inside your carry-on luggage with a "
+                f"physician's prescription note. Verify customs import restrictions for {dest_name} on official government site."
+            ),
+            "official_check_required": True,
+        },
+    ]
+
+    return {
+        "trip_id": trip["id"],
+        "destination_name": dest_name,
+        "disclaimer": "Informational checklist only. Always verify entry, visa, and health requirements with official embassy resources.",
+        "total_items": len(checklist),
+        "items": checklist,
+    }
+
+
+@router.get("/{trip_id}/documents")
+def get_trip_documents(trip_id: str):
+    """GET /api/prep/{trip_id}/documents
+    Returns verified documents checklist with official site verification notices.
+    Never invents legal or visa requirements.
+    """
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+    return build_documents_checklist(trip)
+
+
