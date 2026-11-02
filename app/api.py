@@ -1,0 +1,1070 @@
+# API routes for authentication, profile, master questionnaire, and RL state
+import json
+import uuid
+import numpy as np
+from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, HTTPException, status
+
+from app.models import (
+    AuthRequest, AuthResponse, ShortProfileCreate, ProfileResponse,
+    GoogleTokenRequest, GoogleClientConfig, DetailedProfileCreate, DetailedProfileResponse,
+    PrecisionProfileCreate, PrecisionProfileResponse,
+    DestinationRecommendation, RecommendationsResponse,
+    ShortlistToggleRequest, ShortlistResponse,
+    TripCreate, TripResponse, ItineraryResponse,
+    ActivityFeedbackRequest, ActivityFeedbackResponse, ItineraryRegenerateRequest,
+    PolicyArmState, PolicyInspectionResponse
+)
+from app.auth import (
+    authenticate_or_register, get_user_by_id,
+    verify_google_credential, get_google_client_id, set_google_client_id
+)
+from app.database import get_connection
+from app.recommender import get_categorized_recommendations, DESTINATIONS
+from app.itinerary_generator import (
+    generate_itinerary, get_itinerary_details, get_slot_alternatives
+)
+from app.rl_planner import (
+    load_user_policy, process_activity_feedback, FEATURE_NAMES, CANONICAL_ARMS
+)
+from app.evaluation import run_comparative_simulation, get_user_live_evaluation
+from app.vectorizer import (
+    PreferenceVectorizer, INTERESTS, COMPANIONS,
+    AVOIDANCES, STAY_STYLES, TRANSIT_PREFS
+)
+from app.questionnaire import (
+    QUESTIONNAIRE_SECTIONS, QUESTIONS, BASIC_QUESTION_IDS
+)
+
+from app import precision as prec
+
+router = APIRouter(prefix="/api")
+
+# Master Questionnaire Bank (56 Questions, 10 Sections)
+@router.get("/config/questionnaire")
+def get_master_questionnaire():
+    return {
+        "sections": QUESTIONNAIRE_SECTIONS,
+        "questions": QUESTIONS,
+        "basic_question_ids": BASIC_QUESTION_IDS
+    }
+
+# Legacy/Quick Options for basic components
+@router.get("/config/options")
+def get_options():
+    return {
+        "interests": [
+            {"id": i, "label": i.replace("_", " ").title()} 
+            for i in INTERESTS
+        ],
+        "companions": [
+            {"id": c, "label": c.title()} 
+            for c in COMPANIONS
+        ],
+        "budget_tiers": [
+            {"id": "budget", "label": "Budget", "desc": "Affordable options"},
+            {"id": "balanced", "label": "Balanced", "desc": "Good mix of comfort & cost"},
+            {"id": "luxury", "label": "Luxury", "desc": "High comfort & premium stays"}
+        ],
+        "climates": [
+            {"id": "cold", "label": "Cold"},
+            {"id": "mild", "label": "Mild"},
+            {"id": "warm", "label": "Warm"},
+            {"id": "tropical", "label": "Tropical"}
+        ],
+        "experiences": [
+            {"id": "beginner", "label": "Beginner", "desc": "New to travelling"},
+            {"id": "intermediate", "label": "Intermediate", "desc": "Have travelled a few times"},
+            {"id": "seasoned", "label": "Experienced", "desc": "Travel frequently"}
+        ]
+    }
+
+# Deep personalisation options
+@router.get("/config/detailed-options")
+def get_detailed_options():
+    return {
+        "avoidances": [
+            {"id": a, "label": a.replace("_", " ").title()} 
+            for a in AVOIDANCES
+        ],
+        "walking_tolerances": [
+            {"id": "low", "label": "Low (<5 km/day)", "desc": "Prefer relaxing, taxis or transit"},
+            {"id": "medium", "label": "Moderate (5-10 km/day)", "desc": "Comfortable with standard walking"},
+            {"id": "high", "label": "High (10-15+ km/day)", "desc": "Active walker, rarely tires"}
+        ],
+        "schedule_densities": [
+            {"id": "relaxed_1_major", "label": "1 Major Activity/Day", "desc": "Lots of open, spontaneous free time"},
+            {"id": "balanced_2_3", "label": "2-3 Activities/Day", "desc": "Balanced pacing with rest breaks"},
+            {"id": "packed_all_day", "label": "Packed Schedule", "desc": "See as much as possible morning to night"}
+        ],
+        "stay_styles": [
+            {"id": "boutique", "label": "Boutique & Heritage Hotels"},
+            {"id": "budget_hostel", "label": "Hostels & Guesthouses"},
+            {"id": "resort", "label": "Luxury Resorts"},
+            {"id": "apartment", "label": "Apartments / Airbnb"}
+        ],
+        "transit_prefs": [
+            {"id": "public_transit", "label": "Metro & Public Transit"},
+            {"id": "walking", "label": "Walking Everywhere"},
+            {"id": "rental_car", "label": "Rental Car / Scooter"},
+            {"id": "taxi", "label": "Cabs / Ride-Sharing"}
+        ],
+        "repetition_strategies": [
+            {"id": "explore_new", "label": "Pure Exploration", "desc": "Prioritize completely new styles & unseen cultures"},
+            {"id": "similar_vibes", "label": "Vibe Match", "desc": "Destinations sharing qualities of past favorites"},
+            {"id": "familiar_return", "label": "Familiar Twist", "desc": "Return to beloved places with new hidden spots"}
+        ],
+        "dietary_options": [
+            {"id": "none", "label": "No Restrictions"},
+            {"id": "vegetarian", "label": "Vegetarian"},
+            {"id": "vegan", "label": "Vegan"},
+            {"id": "halal", "label": "Halal"},
+            {"id": "gluten_free", "label": "Gluten-Free"}
+        ]
+    }
+
+# Login or signup
+@router.post("/auth", response_model=AuthResponse)
+def login_or_signup(payload: AuthRequest):
+    try:
+        user_data = authenticate_or_register(
+            provider=payload.provider,
+            identifier=payload.identifier,
+            password=payload.password,
+            display_name=payload.display_name,
+            avatar_url=payload.avatar_url
+        )
+        return user_data
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error: {str(e)}")
+
+# Real Google Identity Services (GIS) token login
+@router.post("/auth/google-token", response_model=AuthResponse)
+def google_token_login(payload: GoogleTokenRequest):
+    try:
+        return verify_google_credential(payload.credential)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error: {str(e)}")
+
+# Get/Set Google Client ID
+@router.get("/config/google")
+def get_google_config():
+    return {"client_id": get_google_client_id()}
+
+@router.post("/config/google")
+def set_google_config(payload: GoogleClientConfig):
+    set_google_client_id(payload.client_id)
+    return {"status": "ok", "client_id": payload.client_id}
+
+# Save traveller profile (Basic Profile)
+@router.post("/profile/{user_id}", response_model=ProfileResponse)
+def save_profile(user_id: str, profile: ShortProfileCreate):
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    profile_dict = profile.model_dump()
+
+    # Convert profile to numerical vector
+    state_vector, feature_names = PreferenceVectorizer.vectorize(profile_dict)
+    summary = PreferenceVectorizer.summarize_profile(profile_dict)
+    state_vector_json = json.dumps(state_vector)
+
+    raw_json = json.dumps(profile.raw_answers or profile_dict)
+
+    # Save in database
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO traveller_profiles (
+                user_id, profile_type, interests, pace, crowd_tolerance, structure,
+                companions, has_children, budget_tier, preferred_climate,
+                planning_experience, stated_vector_json, raw_answers_json, updated_at
+            ) VALUES (?, 'short', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                interests=excluded.interests,
+                pace=excluded.pace,
+                crowd_tolerance=excluded.crowd_tolerance,
+                structure=excluded.structure,
+                companions=excluded.companions,
+                has_children=excluded.has_children,
+                budget_tier=excluded.budget_tier,
+                preferred_climate=excluded.preferred_climate,
+                planning_experience=excluded.planning_experience,
+                stated_vector_json=excluded.stated_vector_json,
+                raw_answers_json=excluded.raw_answers_json,
+                updated_at=CURRENT_TIMESTAMP
+        """, (
+            user_id,
+            json.dumps(profile.interests or profile.place_interests or profile.travel_goals),
+            profile.pace,
+            profile.crowd_tolerance,
+            profile.structure,
+            profile.companions,
+            1 if profile.has_children else 0,
+            profile.budget_tier,
+            profile.preferred_climate,
+            profile.planning_experience,
+            state_vector_json,
+            raw_json
+        ))
+        conn.commit()
+
+    return ProfileResponse(
+        user_id=user_id,
+        profile_type="short",
+        interests=profile.interests or profile.place_interests or profile.travel_goals,
+        travel_goals=profile.travel_goals,
+        place_interests=profile.place_interests,
+        age_group=profile.age_group,
+        travel_experience=profile.travel_experience,
+        companions=profile.companions,
+        planning_approach=profile.planning_approach,
+        experience_preference=profile.experience_preference,
+        dietary=profile.dietary,
+        pace=profile.pace,
+        crowd_tolerance=profile.crowd_tolerance,
+        structure=profile.structure,
+        has_children=profile.has_children,
+        budget_tier=profile.budget_tier,
+        preferred_climate=profile.preferred_climate,
+        assistance_autonomy=profile.assistance_autonomy,
+        planning_experience=profile.planning_experience,
+        rl_state_vector=state_vector,
+        feature_dimension=len(state_vector),
+        feature_names=feature_names,
+        summary_text=summary,
+        raw_answers=profile.raw_answers
+    )
+
+# Get profile
+@router.get("/profile/{user_id}", response_model=ProfileResponse)
+def get_profile(user_id: str):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        
+        interests = json.loads(row["interests"])
+        state_vector = json.loads(row["stated_vector_json"])
+        feature_names = PreferenceVectorizer.get_feature_names()
+
+        raw_answers = {}
+        if "raw_answers_json" in row.keys() and row["raw_answers_json"]:
+            try:
+                raw_answers = json.loads(row["raw_answers_json"])
+            except Exception:
+                raw_answers = {}
+
+        profile_dict = {
+            "interests": interests,
+            "pace": row["pace"],
+            "crowd_tolerance": row["crowd_tolerance"],
+            "structure": row["structure"],
+            "companions": row["companions"],
+            "has_children": bool(row["has_children"]),
+            "budget_tier": row["budget_tier"],
+            "preferred_climate": row["preferred_climate"],
+            "planning_experience": row["planning_experience"]
+        }
+        if raw_answers:
+            profile_dict.update(raw_answers)
+
+        # Check if detailed profile exists
+        cursor.execute("SELECT 1 FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        has_detailed = cursor.fetchone() is not None
+
+        cursor.execute("SELECT 1 FROM precision_profiles WHERE user_id = ?", (user_id,))
+        has_precision = cursor.fetchone() is not None
+
+        return ProfileResponse(
+            user_id=user_id,
+            profile_type=row["profile_type"],
+            interests=interests,
+            travel_goals=raw_answers.get("travel_goals", []),
+            place_interests=raw_answers.get("place_interests", []),
+            age_group=raw_answers.get("age_group", "18_24"),
+            travel_experience=raw_answers.get("travel_experience", row["planning_experience"]),
+            companions=row["companions"],
+            planning_approach=raw_answers.get("planning_approach", "plan_essentials"),
+            experience_preference=raw_answers.get("experience_preference", "balanced_mix"),
+            dietary=raw_answers.get("dietary", []),
+            pace=row["pace"],
+            crowd_tolerance=row["crowd_tolerance"],
+            structure=row["structure"],
+            has_children=bool(row["has_children"]),
+            budget_tier=row["budget_tier"],
+            preferred_climate=row["preferred_climate"],
+            assistance_autonomy=raw_answers.get("assistance_autonomy", "shortlist_explain"),
+            planning_experience=row["planning_experience"],
+            rl_state_vector=state_vector,
+            feature_dimension=len(state_vector),
+            feature_names=feature_names,
+            summary_text=PreferenceVectorizer.summarize_profile(profile_dict),
+            has_detailed_profile=has_detailed,
+            has_precision_profile=has_precision,
+            raw_answers=raw_answers
+        )
+
+# Save Detailed Profile (Sections 2 through 10)
+@router.post("/profile/detailed/{user_id}", response_model=DetailedProfileResponse)
+def save_detailed_profile(user_id: str, payload: DetailedProfileCreate):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        base_row = cursor.fetchone()
+        if not base_row:
+            raise HTTPException(status_code=404, detail="Please create a basic profile first.")
+
+        base_dict = {
+            "interests": json.loads(base_row["interests"]),
+            "pace": base_row["pace"],
+            "crowd_tolerance": base_row["crowd_tolerance"],
+            "structure": base_row["structure"],
+            "companions": base_row["companions"],
+            "has_children": bool(base_row["has_children"]),
+            "budget_tier": base_row["budget_tier"],
+            "preferred_climate": base_row["preferred_climate"]
+        }
+        if "raw_answers_json" in base_row.keys() and base_row["raw_answers_json"]:
+            try:
+                base_dict.update(json.loads(base_row["raw_answers_json"]))
+            except Exception:
+                pass
+
+        detailed_dict = payload.model_dump()
+        detailed_vector, feature_names = PreferenceVectorizer.vectorize_detailed(base_dict, detailed_dict)
+        summary = PreferenceVectorizer.summarize_detailed(base_dict, detailed_dict)
+        vector_json = json.dumps(detailed_vector)
+        raw_json = json.dumps(payload.raw_answers or detailed_dict)
+
+        cursor.execute("""
+            INSERT INTO detailed_profiles (
+                user_id, avoidances, walking_tolerance, schedule_density,
+                accessibility, dietary, stay_style, transit_pref,
+                repetition_strategy, detailed_vector_json, raw_answers_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                avoidances=excluded.avoidances,
+                walking_tolerance=excluded.walking_tolerance,
+                schedule_density=excluded.schedule_density,
+                accessibility=excluded.accessibility,
+                dietary=excluded.dietary,
+                stay_style=excluded.stay_style,
+                transit_pref=excluded.transit_pref,
+                repetition_strategy=excluded.repetition_strategy,
+                detailed_vector_json=excluded.detailed_vector_json,
+                raw_answers_json=excluded.raw_answers_json,
+                updated_at=CURRENT_TIMESTAMP
+        """, (
+            user_id,
+            json.dumps(payload.avoidances),
+            payload.walking_tolerance,
+            payload.schedule_density,
+            json.dumps(payload.accessibility),
+            json.dumps(payload.dietary),
+            payload.stay_style,
+            payload.transit_pref,
+            payload.repetition_strategy,
+            vector_json,
+            raw_json
+        ))
+
+        if payload.past_trips:
+            for trip in payload.past_trips:
+                cursor.execute("""
+                    INSERT INTO past_trips (id, user_id, destination, rating, favorite_activity, skipped_or_disliked)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    str(uuid.uuid4()), user_id, trip.destination, trip.rating,
+                    trip.favorite_activity, trip.skipped_or_disliked
+                ))
+
+        conn.commit()
+
+        cursor.execute("SELECT destination, rating, favorite_activity, skipped_or_disliked FROM past_trips WHERE user_id = ?", (user_id,))
+        trips = [dict(r) for r in cursor.fetchall()]
+
+        return DetailedProfileResponse(
+            user_id=user_id,
+            avoidances=payload.avoidances,
+            health_factors=payload.health_factors,
+            physical_demand=payload.physical_demand,
+            walking_tolerance=payload.walking_tolerance,
+            schedule_density=payload.schedule_density,
+            accessibility=payload.accessibility,
+            dietary=payload.dietary,
+            stay_style=payload.stay_style,
+            transit_pref=payload.transit_pref,
+            repetition_strategy=payload.repetition_strategy,
+            past_trips=trips,
+            rl_state_vector=detailed_vector,
+            feature_dimension=len(detailed_vector),
+            feature_names=feature_names,
+            summary_text=summary,
+            raw_answers=payload.raw_answers
+        )
+
+# Get Detailed Profile
+@router.get("/profile/detailed/{user_id}", response_model=DetailedProfileResponse)
+def get_detailed_profile(user_id: str):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Detailed profile not found.")
+
+        cursor.execute("SELECT * FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        base_row = cursor.fetchone()
+
+        base_dict = {
+            "interests": json.loads(base_row["interests"]),
+            "pace": base_row["pace"],
+            "crowd_tolerance": base_row["crowd_tolerance"],
+            "structure": base_row["structure"],
+            "companions": base_row["companions"],
+            "has_children": bool(base_row["has_children"]),
+            "budget_tier": base_row["budget_tier"],
+            "preferred_climate": base_row["preferred_climate"]
+        }
+
+        raw_answers = {}
+        if "raw_answers_json" in row.keys() and row["raw_answers_json"]:
+            try:
+                raw_answers = json.loads(row["raw_answers_json"])
+            except Exception:
+                raw_answers = {}
+
+        detailed_dict = {
+            "avoidances": json.loads(row["avoidances"]),
+            "walking_tolerance": row["walking_tolerance"],
+            "schedule_density": row["schedule_density"],
+            "accessibility": json.loads(row["accessibility"]),
+            "dietary": json.loads(row["dietary"]),
+            "stay_style": row["stay_style"],
+            "transit_pref": row["transit_pref"],
+            "repetition_strategy": row["repetition_strategy"]
+        }
+        if raw_answers:
+            detailed_dict.update(raw_answers)
+
+        cursor.execute("SELECT destination, rating, favorite_activity, skipped_or_disliked FROM past_trips WHERE user_id = ?", (user_id,))
+        trips = [dict(r) for r in cursor.fetchall()]
+
+        state_vector = json.loads(row["detailed_vector_json"])
+        feature_names = PreferenceVectorizer.get_detailed_feature_names()
+
+        return DetailedProfileResponse(
+            user_id=user_id,
+            avoidances=detailed_dict.get("avoidances", []),
+            health_factors=detailed_dict.get("health_factors", []),
+            physical_demand=detailed_dict.get("physical_demand", "moderate_walking"),
+            walking_tolerance=detailed_dict.get("walking_tolerance", "medium"),
+            schedule_density=detailed_dict.get("schedule_density", "balanced_2_3"),
+            accessibility=detailed_dict.get("accessibility", []),
+            dietary=detailed_dict.get("dietary", []),
+            stay_style=detailed_dict.get("stay_style", "boutique"),
+            transit_pref=detailed_dict.get("transit_pref", "public_transit"),
+            repetition_strategy=detailed_dict.get("repetition_strategy", "similar_vibes"),
+            past_trips=trips,
+            rl_state_vector=state_vector,
+            feature_dimension=len(state_vector),
+            feature_names=feature_names,
+            summary_text=PreferenceVectorizer.summarize_detailed(base_dict, detailed_dict),
+            raw_answers=raw_answers
+        )
+
+# Get RL state vector for inspection (22-dim basic, 41-dim detailed, or precision)
+@router.get("/rl/state/{user_id}")
+def get_rl_state_vector(user_id: str):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Level 3 (precision) first. It is recomputed from stored answers so it never goes stale
+        cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+        prec_row = cursor.fetchone()
+        cursor.execute("SELECT detailed_vector_json FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        det_row = cursor.fetchone()
+
+        if prec_row:
+            state = _precision_state(cursor, user_id, json.loads(prec_row["answers_json"]))
+            vector = state["rl_state_vector"]
+            feature_names = state["feature_names"]
+            level = f"precision ({len(vector)}-dim: 41 detailed + precision block with allergen/avoidance masks)"
+            has_detailed = True
+        elif det_row:
+            vector = json.loads(det_row["detailed_vector_json"])
+            feature_names = PreferenceVectorizer.get_detailed_feature_names()
+            level = "detailed (41-dim extended with penalty masks)"
+            has_detailed = True
+        else:
+            cursor.execute("SELECT stated_vector_json FROM traveller_profiles WHERE user_id = ?", (user_id,))
+            base_row = cursor.fetchone()
+            if not base_row:
+                raise HTTPException(status_code=404, detail="No profile found")
+            vector = json.loads(base_row["stated_vector_json"])
+            feature_names = PreferenceVectorizer.get_feature_names()
+            level = "basic (22-dim core preferences)"
+            has_detailed = False
+
+        feature_breakdown = [
+            {
+                "dimension": i,
+                "feature_name": name,
+                "value": vector[i],
+                "is_constraint_mask": name.startswith(("avoid_", "allergen_"))
+            }
+            for i, name in enumerate(feature_names)
+        ]
+
+        return {
+            "user_id": user_id,
+            "level": level,
+            "has_detailed_profile": has_detailed,
+            "dimension_count": len(vector),
+            "state_vector_raw": vector,
+            "feature_breakdown": feature_breakdown
+        }
+
+
+# Travel Recommendations (General Profile Recommender)
+@router.get("/recommendations/{user_id}", response_model=RecommendationsResponse)
+def get_recommendations_for_user(user_id: str, offset: int = 0):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # 1. Fetch base profile
+        cursor.execute("SELECT * FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        base_row = cursor.fetchone()
+        if not base_row:
+            raise HTTPException(status_code=404, detail="Please complete basic onboarding to view recommendations.")
+
+        base_dict = {
+            "interests": json.loads(base_row["interests"]),
+            "pace": base_row["pace"],
+            "crowd_tolerance": base_row["crowd_tolerance"],
+            "structure": base_row["structure"],
+            "companions": base_row["companions"],
+            "has_children": bool(base_row["has_children"]),
+            "budget_tier": base_row["budget_tier"],
+            "preferred_climate": base_row["preferred_climate"],
+            "planning_experience": base_row["planning_experience"]
+        }
+        if "raw_answers_json" in base_row.keys() and base_row["raw_answers_json"]:
+            try:
+                base_dict.update(json.loads(base_row["raw_answers_json"]))
+            except Exception:
+                pass
+
+        # 2. Check for detailed profile
+        cursor.execute("SELECT * FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        det_row = cursor.fetchone()
+        detailed_dict = None
+        if det_row:
+            detailed_dict = {
+                "avoidances": json.loads(det_row["avoidances"]),
+                "walking_tolerance": det_row["walking_tolerance"],
+                "schedule_density": det_row["schedule_density"],
+                "accessibility": json.loads(det_row["accessibility"]),
+                "dietary": json.loads(det_row["dietary"]),
+                "stay_style": det_row["stay_style"],
+                "transit_pref": det_row["transit_pref"],
+                "repetition_strategy": det_row["repetition_strategy"]
+            }
+            if "raw_answers_json" in det_row.keys() and det_row["raw_answers_json"]:
+                try:
+                    detailed_dict.update(json.loads(det_row["raw_answers_json"]))
+                except Exception:
+                    pass
+
+        # 3. Check for past trips
+        cursor.execute("SELECT destination, rating, favorite_activity, skipped_or_disliked FROM past_trips WHERE user_id = ?", (user_id,))
+        past_trips = [dict(r) for r in cursor.fetchall()]
+
+        # 4. Check for shortlisted destinations
+        cursor.execute("SELECT destination_id FROM shortlisted_destinations WHERE user_id = ?", (user_id,))
+        shortlisted_ids = [r["destination_id"] for r in cursor.fetchall()]
+
+        # Generate categorized recommendations with offset rotation
+        recs = get_categorized_recommendations(
+            base_dict,
+            detailed_dict,
+            past_trips,
+            offset=offset,
+            shortlisted_ids=shortlisted_ids
+        )
+        
+        return RecommendationsResponse(
+            user_id=user_id,
+            basis_summary=recs["basis_summary"],
+            total_candidates=recs["total_candidates"],
+            offset=recs["offset"],
+            recommended_for_you=recs["recommended_for_you"],
+            trending_trips=recs["trending_trips"],
+            seasonal_and_upcoming=recs["seasonal_and_upcoming"]
+        )
+
+# Shortlist / Save Destinations Endpoints
+@router.post("/shortlist/{user_id}", response_model=ShortlistResponse)
+def toggle_shortlist_destination(user_id: str, payload: ShortlistToggleRequest):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM shortlisted_destinations WHERE user_id = ? AND destination_id = ?",
+                       (user_id, payload.destination_id))
+        exists = cursor.fetchone() is not None
+        if exists:
+            cursor.execute("DELETE FROM shortlisted_destinations WHERE user_id = ? AND destination_id = ?",
+                           (user_id, payload.destination_id))
+            msg = "Removed from your shortlisted destinations"
+        else:
+            cursor.execute("INSERT INTO shortlisted_destinations (user_id, destination_id) VALUES (?, ?)",
+                           (user_id, payload.destination_id))
+            msg = "Saved to your shortlisted destinations"
+        conn.commit()
+        cursor.execute("SELECT destination_id FROM shortlisted_destinations WHERE user_id = ?", (user_id,))
+        items = [r["destination_id"] for r in cursor.fetchall()]
+        return ShortlistResponse(
+            user_id=user_id,
+            destination_id=payload.destination_id,
+            is_shortlisted=not exists,
+            shortlisted_ids=items,
+            message=msg
+        )
+
+@router.get("/shortlist/{user_id}", response_model=ShortlistResponse)
+def get_user_shortlist(user_id: str):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT destination_id FROM shortlisted_destinations WHERE user_id = ?", (user_id,))
+        items = [r["destination_id"] for r in cursor.fetchall()]
+        return ShortlistResponse(user_id=user_id, shortlisted_ids=items)
+
+
+
+
+# ==========================================================================
+# Level 3: Precision Profile (adaptive questionnaire, see app/precision.py)
+# ==========================================================================
+def _load_base_dict(cursor, user_id: str) -> Optional[Dict[str, Any]]:
+    cursor.execute("SELECT * FROM traveller_profiles WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    base = {
+        "interests": json.loads(row["interests"]),
+        "pace": row["pace"],
+        "crowd_tolerance": row["crowd_tolerance"],
+        "structure": row["structure"],
+        "companions": row["companions"],
+        "has_children": bool(row["has_children"]),
+        "budget_tier": row["budget_tier"],
+        "preferred_climate": row["preferred_climate"],
+    }
+    if row["raw_answers_json"]:
+        try:
+            base.update(json.loads(row["raw_answers_json"]))
+        except Exception:
+            pass
+    return base
+
+def _load_detailed_dict(cursor, user_id: str) -> Dict[str, Any]:
+    """Level 2 answers if they exist, otherwise the model defaults (so Level 3 works on its own)."""
+    cursor.execute("SELECT * FROM detailed_profiles WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    detailed = DetailedProfileCreate().model_dump()
+    if row:
+        detailed.update({
+            "avoidances": json.loads(row["avoidances"]),
+            "walking_tolerance": row["walking_tolerance"],
+            "schedule_density": row["schedule_density"],
+            "accessibility": json.loads(row["accessibility"]),
+            "dietary": json.loads(row["dietary"]),
+            "stay_style": row["stay_style"],
+            "transit_pref": row["transit_pref"],
+            "repetition_strategy": row["repetition_strategy"],
+        })
+        if row["raw_answers_json"]:
+            try:
+                detailed.update(json.loads(row["raw_answers_json"]))
+            except Exception:
+                pass
+    return detailed
+
+def _precision_state(cursor, user_id: str, answers: Dict[str, Any], dropped: List[str] = None, exists: bool = True) -> Dict[str, Any]:
+    base = _load_base_dict(cursor, user_id)
+    detailed = _load_detailed_dict(cursor, user_id)
+    context = prec.build_context_answers(base, detailed)
+    n_ans, n_vis = prec.coverage(answers, context)
+    vector, names = PreferenceVectorizer.vectorize_precision(base, detailed, answers, context)
+    return {
+        "user_id": user_id,
+        "exists": exists,
+        "answers": answers,
+        "context_answers": context,
+        "answered": n_ans,
+        "applicable": n_vis,
+        "coverage": round(n_ans / n_vis, 4) if n_vis else 0.0,
+        "dropped_for_privacy": dropped or [],
+        "insights": prec.derive_insights(answers, context),
+        "rl_state_vector": vector,
+        "feature_dimension": len(vector),
+        "feature_names": names,
+        "summary_text": prec.summarize_precision(answers, context),
+    }
+
+@router.get("/config/precision-questionnaire")
+def get_precision_questionnaire():
+    return prec.public_bank()
+
+@router.post("/profile/precision/{user_id}", response_model=PrecisionProfileResponse)
+def save_precision_profile(user_id: str, payload: PrecisionProfileCreate):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        base = _load_base_dict(cursor, user_id)
+        if base is None:
+            raise HTTPException(status_code=404, detail="Please create a basic profile first.")
+        context = prec.build_context_answers(base, _load_detailed_dict(cursor, user_id))
+
+        clean, errors = prec.validate_answers(payload.answers, context)
+        if errors:
+            raise HTTPException(status_code=422, detail={"message": "Some answers are invalid", "errors": errors})
+        clean, dropped = prec.apply_privacy_filter(clean)
+
+        state = _precision_state(cursor, user_id, clean, dropped)
+        cursor.execute("""
+            INSERT INTO precision_profiles (user_id, answers_json, vector_json, coverage, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                answers_json=excluded.answers_json,
+                vector_json=excluded.vector_json,
+                coverage=excluded.coverage,
+                updated_at=CURRENT_TIMESTAMP
+        """, (user_id, json.dumps(clean), json.dumps(state["rl_state_vector"]), state["coverage"]))
+
+        # Synchronize detailed_profiles so unified profile is reflected in both tables
+        avoidances = clean.get("q12", [])
+        if not isinstance(avoidances, list):
+            avoidances = [avoidances] if avoidances else []
+        walking = "medium"
+        q64_val = str(clean.get("q64", "")).lower()
+        if any(x in q64_val for x in ["low", "under_5km", "short", "lt_5"]):
+            walking = "low"
+        elif any(x in q64_val for x in ["high", "over_10km", "long", "gt_10"]):
+            walking = "high"
+
+        cursor.execute("""
+            INSERT INTO detailed_profiles (
+                user_id, avoidances, walking_tolerance, schedule_density,
+                accessibility, dietary, stay_style, transit_pref,
+                repetition_strategy, detailed_vector_json, raw_answers_json, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                avoidances=excluded.avoidances,
+                walking_tolerance=excluded.walking_tolerance,
+                schedule_density=excluded.schedule_density,
+                accessibility=excluded.accessibility,
+                dietary=excluded.dietary,
+                stay_style=excluded.stay_style,
+                transit_pref=excluded.transit_pref,
+                detailed_vector_json=excluded.detailed_vector_json,
+                raw_answers_json=excluded.raw_answers_json,
+                updated_at=CURRENT_TIMESTAMP
+        """, (
+            user_id,
+            json.dumps(avoidances),
+            walking,
+            str(clean.get("q19", "balanced_2_3")),
+            json.dumps(clean.get("q9", []) if isinstance(clean.get("q9"), list) else []),
+            json.dumps(clean.get("q20", []) if isinstance(clean.get("q20"), list) else []),
+            str(clean.get("q34", "boutique")),
+            str(clean.get("q35", "public_transit")),
+            "similar_vibes",
+            json.dumps(state["rl_state_vector"][:41]),
+            json.dumps(clean)
+        ))
+
+        conn.commit()
+        return PrecisionProfileResponse(**state)
+
+@router.get("/profile/precision/{user_id}", response_model=PrecisionProfileResponse)
+def get_precision_profile(user_id: str):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        if _load_base_dict(cursor, user_id) is None:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        answers = json.loads(row["answers_json"]) if row else {}
+        return PrecisionProfileResponse(**_precision_state(cursor, user_id, answers, exists=bool(row)))
+
+
+# =============================================================
+# ADAPTIVE PRE-TRIP ITINERARY PLANNER ENDPOINTS
+# =============================================================
+
+from datetime import datetime
+
+@router.post("/trips/{user_id}", response_model=TripResponse)
+def create_trip(user_id: str, payload: TripCreate):
+    """Create a new trip configuration pre-filling from profile if needed."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    try:
+        start_d = datetime.strptime(payload.start_date, "%Y-%m-%d")
+        end_d = datetime.strptime(payload.end_date, "%Y-%m-%d")
+        duration = (end_d - start_d).days + 1
+        if duration < 1:
+            raise ValueError("End date must be on or after start date")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
+
+    dest_name = payload.destination_name
+    if not dest_name:
+        dest_match = next((d for d in DESTINATIONS if d["id"] == payload.destination_id), None)
+        dest_name = dest_match["name"] if dest_match else payload.destination_id.replace("_", " ").title()
+
+    trip_id = str(uuid.uuid4())
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO trips (
+                id, user_id, destination_id, destination_name, start_date, end_date,
+                duration_days, travellers_count, total_budget, currency,
+                accommodation_tier, transit_pref, travel_pace, specific_interests
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            trip_id,
+            user_id,
+            payload.destination_id,
+            dest_name,
+            payload.start_date,
+            payload.end_date,
+            duration,
+            payload.travellers_count,
+            payload.total_budget,
+            payload.currency,
+            payload.accommodation_tier,
+            payload.transit_pref,
+            payload.travel_pace,
+            json.dumps(payload.specific_interests)
+        ))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM trips WHERE id = ?", (trip_id,))
+        row = cursor.fetchone()
+        t_dict = dict(row)
+        t_dict["specific_interests"] = json.loads(t_dict["specific_interests"]) if t_dict["specific_interests"] else []
+        return TripResponse(**t_dict)
+
+@router.get("/trips/{user_id}", response_model=List[TripResponse])
+def get_user_trips(user_id: str):
+    """Retrieve all trips created by the user."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM trips WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
+            result.append(TripResponse(**d))
+        return result
+
+@router.get("/trips/detail/{trip_id}", response_model=TripResponse)
+def get_trip_detail(trip_id: str):
+    """Retrieve details for a single trip."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM trips WHERE id = ?", (trip_id,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+        d = dict(row)
+        d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
+        return TripResponse(**d)
+
+@router.post("/itinerary/generate/{trip_id}", response_model=ItineraryResponse)
+def generate_trip_itinerary(trip_id: str, user_id: str):
+    """Generate or regenerate a structured day-by-day itinerary via Contextual LinUCB."""
+    with get_connection() as conn:
+        try:
+            itinerary = generate_itinerary(conn, user_id=user_id, trip_id=trip_id)
+            return ItineraryResponse(**itinerary)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Generation failed: {str(e)}")
+
+@router.get("/itinerary/{trip_id}", response_model=ItineraryResponse)
+def get_itinerary(trip_id: str, user_id: str):
+    """Fetch existing itinerary with all activity cards and feedback states."""
+    with get_connection() as conn:
+        itin = get_itinerary_details(conn, user_id=user_id, trip_id=trip_id)
+        if not itin:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found for this trip")
+        return ItineraryResponse(**itin)
+
+@router.post("/itinerary/feedback/{user_id}", response_model=ActivityFeedbackResponse)
+def submit_activity_feedback(user_id: str, payload: ActivityFeedbackRequest):
+    """
+    Submits user interaction feedback (ACCEPT, REJECT, MODIFY) on a specific activity card.
+    Updates LinUCB parameters (if not trip-specific) and logs interaction history.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT trip_id FROM itineraries WHERE id = ?", (payload.itinerary_id,))
+        i_row = cursor.fetchone()
+        if not i_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+        trip_id = i_row[0]
+
+        try:
+            res = process_activity_feedback(
+                conn=conn,
+                user_id=user_id,
+                trip_id=trip_id,
+                itinerary_id=payload.itinerary_id,
+                activity_id=payload.activity_id,
+                action_type=payload.action_type,
+                rejection_reason=payload.rejection_reason,
+                is_trip_specific=payload.is_trip_specific,
+                is_implicit=False
+            )
+
+            # If user provided a replacement activity ID for modify
+            replacement_model = None
+            if payload.action_type.lower() == "modify" and payload.replacement_activity_id:
+                cursor.execute("SELECT * FROM destination_activities WHERE id = ?", (payload.replacement_activity_id,))
+                r_row = cursor.fetchone()
+                if r_row:
+                    rep_data = dict(r_row)
+                    # Update the slot in itinerary_activities
+                    cursor.execute("""
+                        UPDATE itinerary_activities
+                        SET activity_id = ?, title = ?, category = ?, description = ?,
+                            location_name = ?, neighborhood = ?, latitude = ?, longitude = ?,
+                            duration_minutes = ?, cost_estimate = ?, status = 'accepted'
+                        WHERE itinerary_id = ? AND activity_id = ?
+                    """, (
+                        rep_data["id"], rep_data["name"], rep_data["category"], rep_data["description"],
+                        rep_data["name"], rep_data["neighborhood"], rep_data["latitude"], rep_data["longitude"],
+                        rep_data["duration_minutes"], rep_data["cost_amount"],
+                        payload.itinerary_id, payload.activity_id
+                    ))
+                    conn.commit()
+
+                    # Reward the accepted alternative (+1.0)
+                    process_activity_feedback(
+                        conn=conn,
+                        user_id=user_id,
+                        trip_id=trip_id,
+                        itinerary_id=payload.itinerary_id,
+                        activity_id=rep_data["id"],
+                        action_type="accept",
+                        is_trip_specific=payload.is_trip_specific,
+                        is_implicit=False
+                    )
+
+            return ActivityFeedbackResponse(
+                status=res["status"],
+                message=f"Recorded {payload.action_type.upper()} feedback with reward {res['reward_assigned']}.",
+                reward_assigned=res["reward_assigned"],
+                is_trip_specific=res["is_trip_specific"],
+                policy_updated=res["policy_updated"]
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Feedback error: {str(e)}")
+
+@router.get("/itinerary/alternatives/{itinerary_id}/{activity_id}")
+def get_alternatives(itinerary_id: str, activity_id: str, user_id: str):
+    """Retrieve top alternative recommendations for a slot during MODIFY action."""
+    with get_connection() as conn:
+        alts = get_slot_alternatives(conn, user_id, itinerary_id, activity_id)
+        return {"activity_id": activity_id, "alternatives": alts}
+
+@router.get("/rl/policy/{user_id}", response_model=PolicyInspectionResponse)
+def inspect_user_policy(user_id: str):
+    """
+    Academic Model Inspector endpoint for LinUCB parameters.
+    Returns per-arm theta weights, covariance norms, pull counts, and feedback history.
+    """
+    with get_connection() as conn:
+        policy = load_user_policy(conn, user_id)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT activity_id, arm_id, action_type, rejection_reason, is_trip_specific, reward, created_at
+            FROM rl_feedback_log
+            WHERE user_id = ?
+            ORDER BY created_at DESC LIMIT 10
+        """, (user_id,))
+        feedback_rows = [
+            {
+                "activity_id": r[0],
+                "arm_id": r[1],
+                "action_type": r[2],
+                "rejection_reason": r[3],
+                "is_trip_specific": bool(r[4]),
+                "reward": r[5],
+                "timestamp": r[6]
+            }
+            for r in cursor.fetchall()
+        ]
+
+        arm_states = []
+        total_pulls = 0
+        for arm_id in CANONICAL_ARMS:
+            weights = policy.get_arm_weights(arm_id)
+            pull_cnt = policy.arms[arm_id]["pull_count"]
+            tot_rew = policy.arms[arm_id].get("total_reward", 0.0)
+            total_pulls += pull_cnt
+
+            top_indices = np.argsort(np.abs(weights))[-4:][::-1]
+            top_dict = {FEATURE_NAMES[idx]: round(float(weights[idx]), 3) for idx in top_indices}
+
+            arm_states.append(PolicyArmState(
+                arm_id=arm_id,
+                pull_count=pull_cnt,
+                estimated_theta_norm=round(float(np.linalg.norm(weights)), 4),
+                top_feature_weights=top_dict,
+                average_reward=round(tot_rew / max(1, pull_cnt), 3)
+            ))
+
+        return PolicyInspectionResponse(
+            user_id=user_id,
+            algorithm="Disjoint Contextual LinUCB",
+            feature_dimension=policy.dimension,
+            feature_names=FEATURE_NAMES,
+            arms=arm_states,
+            total_interactions=total_pulls,
+            exploration_param_alpha=policy.alpha,
+            recent_feedback=feedback_rows
+        )
+
+@router.get("/evaluation/benchmark")
+def get_evaluation_benchmark(persona: str = "nature_enthusiast", rounds: int = 20):
+    """Run comparative simulation: Adaptive LinUCB vs Static Baseline Recommender."""
+    return run_comparative_simulation(user_persona=persona, rounds=min(50, max(5, rounds)))
+
+@router.get("/evaluation/live/{user_id}")
+def get_user_empirical_metrics(user_id: str):
+    """Retrieve actual measured interaction and learning statistics for the active user."""
+    with get_connection() as conn:
+        return get_user_live_evaluation(conn, user_id)

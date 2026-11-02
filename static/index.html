@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RL Travel Guide</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Official Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
+
+  <!-- Navbar -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-2.5 cursor-pointer" onclick="showView('auth')">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+          <i class="fa-solid fa-compass text-lg"></i>
+        </div>
+        <div>
+          <span class="font-bold text-base text-slate-900 tracking-tight">RL Travel Guide</span>
+          <span class="block text-[11px] text-indigo-600 font-medium">Personalised Travel Intelligence</span>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <!-- Academic Model Inspector Button -->
+        <button onclick="openModal('academicModal')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5" title="For evaluation and viva: inspect the mathematical RL state vector and MDP formulation">
+          <i class="fa-solid fa-graduation-cap text-indigo-600"></i>
+          <span>Model Inspector</span>
+        </button>
+
+        <!-- Project Info Button -->
+        <button onclick="openModal('infoModal')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
+          <i class="fa-solid fa-circle-info"></i>
+          <span>Project Info</span>
+        </button>
+
+        <!-- User profile badge -->
+        <div id="navUserBadge" class="hidden flex items-center space-x-2 pl-3 border-l border-slate-200">
+          <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs" id="navAvatar">
+            U
+          </div>
+          <span class="text-xs font-semibold text-slate-700 hidden sm:inline" id="navUserName">User</span>
+          <button onclick="logout()" class="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 transition ml-1 flex items-center gap-1">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Log out</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 my-auto">
+
+    <!-- VIEW 1: AUTH / LOGIN -->
+    <section id="authView" class="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
+      <div class="text-center mb-6">
+        <div class="inline-flex items-center justify-center w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl mb-2">
+          <i class="fa-solid fa-plane-departure text-xl"></i>
+        </div>
+        <h1 class="text-xl font-bold text-slate-900">Welcome</h1>
+        <p class="text-xs text-slate-500 mt-1">Sign in or create an account to start your profile</p>
+      </div>
+
+      <!-- Auth Tabs -->
+      <div class="flex rounded-xl bg-slate-100 p-1 mb-6 text-xs font-semibold">
+        <button type="button" onclick="switchAuthTab('google')" id="tab-google" class="flex-1 py-2 rounded-lg text-slate-600 transition flex items-center justify-center gap-1.5">
+          <i class="fa-brands fa-google text-red-500"></i> Google
+        </button>
+        <button type="button" onclick="switchAuthTab('manual')" id="tab-manual" class="flex-1 py-2 rounded-lg text-slate-600 transition flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-envelope text-indigo-500"></i> Email
+        </button>
+        <button type="button" onclick="switchAuthTab('phone')" id="tab-phone" class="flex-1 py-2 rounded-lg text-slate-600 transition flex items-center justify-center gap-1.5">
+          <i class="fa-solid fa-phone text-emerald-500"></i> Phone
+        </button>
+      </div>
+
+      <!-- GOOGLE SIGN-IN -->
+      <div id="authContent-google" class="space-y-3 py-2">
+        <p class="text-xs text-slate-500 text-center">Use your Google account to create and sync your travel profile.</p>
+        
+        <!-- Official Google GIS Button Container -->
+        <div id="googleOfficialBtn" class="flex justify-center w-full"></div>
+
+        <!-- 1-Click Google Account Chooser Button -->
+        <button id="googleChooserBtn" type="button" onclick="openGoogleModal()" class="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-slate-300 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition shadow-sm hover:shadow">
+          <svg class="w-5 h-5" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <span id="googleBtnLabel">Sign in with Google</span>
+        </button>
+
+        <div class="text-center pt-1">
+          <button type="button" onclick="openModal('googleConfigModal')" class="text-[11px] text-blue-600 hover:underline">
+            <i class="fa-solid fa-gear text-[10px] mr-1"></i> Connect Google Cloud Client ID (For device accounts)
+          </button>
+        </div>
+      </div>
+
+      <!-- EMAIL & PASSWORD -->
+      <form id="authContent-manual" onsubmit="handleManualAuth(event)" class="hidden space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Name</label>
+          <input type="text" id="manualName" placeholder="Alex" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+          <input type="email" id="manualEmail" required placeholder="alex@example.com" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+          <input type="password" id="manualPassword" required minlength="6" placeholder="At least 6 characters" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <button type="submit" class="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl transition">
+          Continue with Email
+        </button>
+      </form>
+
+      <!-- PHONE NUMBER -->
+      <form id="authContent-phone" onsubmit="handlePhoneAuth(event)" class="hidden space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
+          <div class="flex">
+            <span class="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-slate-200 bg-slate-50 text-slate-500 text-sm font-medium">+91</span>
+            <input type="tel" id="phoneNumber" required pattern="[0-9]{10}" placeholder="9876543210" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-r-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+        <div id="otpSection" class="hidden space-y-1.5">
+          <label class="block text-xs font-semibold text-slate-700">Enter OTP</label>
+          <input type="text" id="otpCode" placeholder="123456" class="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-center tracking-widest font-mono text-base focus:ring-2 focus:ring-emerald-500">
+          <p class="text-[11px] text-emerald-600 font-medium">Demo OTP: <b>123456</b></p>
+        </div>
+        <button type="submit" id="phoneSubmitBtn" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl transition">
+          Send OTP
+        </button>
+      </form>
+
+      <!-- Quick Demo Login -->
+      <div class="mt-5 pt-4 border-t border-slate-100 text-center">
+        <button onclick="handleGuestSignIn()" class="text-xs text-slate-500 hover:text-indigo-600 font-medium flex items-center justify-center gap-1.5 mx-auto">
+          <i class="fa-solid fa-bolt text-amber-500"></i> Quick Demo Login
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 2: INITIAL PROFILE ONBOARDING (Takes ~30–60 Seconds) -->
+    <section id="onboardingView" class="hidden w-full bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
+      
+      <!-- Stepper Progress Header -->
+      <div class="mb-6">
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <span class="text-xs font-bold text-indigo-600" id="stepIndicator">Step 1 of 3</span>
+            <span class="text-xs text-slate-400 ml-2" id="stepSubheading">Background & Travel Style</span>
+          </div>
+          <span class="text-[11px] text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded-full">
+            <i class="fa-regular fa-clock mr-1"></i> ~30-45 sec setup
+          </span>
+        </div>
+        <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+          <div id="progressBar" class="bg-indigo-600 h-full w-1/3 transition-all duration-300"></div>
+        </div>
+      </div>
+
+      <form id="profileForm" onsubmit="handleProfileSubmit(event)">
+
+        <!-- STEP 1: BACKGROUND & STYLE -->
+        <div id="step-1" class="space-y-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Tell us a bit about how you travel</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Section 1: Personal & Travel Background</p>
+          </div>
+
+          <!-- Age Group -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">Which age group do you belong to?</label>
+            <div class="flex flex-wrap gap-2" id="basicAgeGroupGrid"></div>
+          </div>
+
+          <!-- Travel Experience -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">How would you describe your travel experience?</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="basicExperienceGrid"></div>
+          </div>
+
+          <!-- Companions -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">Who do you usually travel with?</label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicCompanionsGrid"></div>
+          </div>
+
+          <!-- Planning Approach -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">What is your usual approach to planning a trip?</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="basicPlanningGrid"></div>
+          </div>
+
+          <div class="flex justify-end pt-3 border-t border-slate-100">
+            <button type="button" onclick="goToStep(2)" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl transition flex items-center gap-2 shadow-sm">
+              Next: Goals & Places <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2: GOALS, PLACES & EXPERIENCE STYLE -->
+        <div id="step-2" class="hidden space-y-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">What do you want to see and experience?</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Section 2: Interests, Goals & Activities</p>
+          </div>
+
+          <!-- Travel Goals (Up to 4) -->
+          <div>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="text-xs font-bold text-slate-800">What do you most want to get out of travelling? (Up to 4)</label>
+              <span class="text-[11px] text-indigo-600 font-semibold" id="goalsCounter">0 / 4</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicGoalsGrid"></div>
+          </div>
+
+          <!-- Place Types (Up to 5) -->
+          <div>
+            <div class="flex justify-between items-center mb-1.5">
+              <label class="text-xs font-bold text-slate-800">Which types of places interest you most? (Up to 5)</label>
+              <span class="text-[11px] text-indigo-600 font-semibold" id="placesCounter">0 / 5</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicPlacesGrid"></div>
+          </div>
+
+          <!-- Experience Style -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">What kinds of experiences do you generally prefer?</label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2" id="basicExpStyleGrid"></div>
+          </div>
+
+          <div class="flex justify-between pt-3 border-t border-slate-100">
+            <button type="button" onclick="goToStep(1)" class="px-4 py-2 border border-slate-200 text-slate-600 font-semibold text-xs rounded-xl hover:bg-slate-50">
+              Back
+            </button>
+            <button type="button" onclick="goToStep(3)" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl transition flex items-center gap-2 shadow-sm">
+              Next: Food, Climate & Budget <i class="fa-solid fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 3: FOOD, CLIMATE, BUDGET & ASSISTANCE -->
+        <div id="step-3" class="hidden space-y-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900">Food, climate, budget and assistance</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Final essential questions to set your baseline travel profile</p>
+          </div>
+
+          <!-- Dietary Needs -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">Dietary preferences or restrictions</label>
+            <div class="flex flex-wrap gap-2" id="basicDietaryGrid"></div>
+          </div>
+
+          <!-- Preferred Temperature -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">Which temperatures do you feel most comfortable in?</label>
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2" id="basicClimateGrid"></div>
+          </div>
+
+          <!-- Budget Level -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">How would you describe your typical travel budget?</label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5" id="basicBudgetGrid"></div>
+          </div>
+
+          <!-- Assistance Autonomy -->
+          <div>
+            <label class="block text-xs font-bold text-slate-800 mb-2">How much independence do you want when making travel decisions?</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="basicAutonomyGrid"></div>
+          </div>
+
+          <div class="flex justify-between pt-4 border-t border-slate-100">
+            <button type="button" onclick="goToStep(2)" class="px-4 py-2 border border-slate-200 text-slate-600 font-semibold text-xs rounded-xl hover:bg-slate-50">
+              Back
+            </button>
+            <button type="submit" id="saveProfileBtn" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-2 shadow-md">
+              <i class="fa-solid fa-check"></i> Complete Setup & Open Dashboard
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- VIEW 3: DASHBOARD -->
+    <section id="dashboardView" class="hidden space-y-6">
+      
+      <!-- Starting Profile Card -->
+      <div class="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 mb-2">
+              <i class="fa-solid fa-circle-check"></i> Profile Active
+            </div>
+            <h1 class="text-xl font-bold text-slate-900" id="dashWelcomeName">Welcome</h1>
+            <p class="text-xs text-slate-500 mt-1 max-w-xl" id="dashSummaryText">Loading profile...</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="editProfile()" class="px-3.5 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs rounded-xl transition flex items-center gap-1.5">
+              <i class="fa-solid fa-pen-to-square"></i>
+              <span>Edit Setup</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Highlights Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-5">
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Experience</span>
+            <span class="text-xs font-bold text-slate-800" id="dashExperience">Occasional</span>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Companions</span>
+            <span class="text-xs font-bold text-slate-800" id="dashCompanions">Solo</span>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Budget</span>
+            <span class="text-xs font-bold text-slate-800" id="dashBudget">Mid-range</span>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Preferred Weather</span>
+            <span class="text-xs font-bold text-slate-800" id="dashClimate">Mild</span>
+          </div>
+        </div>
+
+        <!-- Goals & Place Chips -->
+        <div class="pt-5 space-y-3">
+          <div>
+            <span class="text-xs font-semibold text-slate-700 block mb-1.5">Travel Goals:</span>
+            <div class="flex flex-wrap gap-1.5" id="dashGoalsContainer"></div>
+          </div>
+          <div>
+            <span class="text-xs font-semibold text-slate-700 block mb-1.5">Favorite Place Types:</span>
+            <div class="flex flex-wrap gap-1.5" id="dashPlacesContainer"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ONE UNIFIED PERSONALISATION SECTION -->
+      <!-- State A: Banner when profile is not yet completed -->
+      <div id="personalProfileBanner" class="bg-gradient-to-r from-blue-900 via-indigo-900 to-indigo-800 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg border border-indigo-700/50">
+        <div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-900 mb-2">
+            <i class="fa-solid fa-sparkles"></i> Optional Deep Personalisation
+          </div>
+          <h3 class="text-lg font-bold">Create My Personal Travel Profile</h3>
+          <p class="text-xs text-blue-100 mt-1 max-w-xl leading-relaxed">
+            Help us understand your interests, previous travel experiences, comfort requirements, and travel style. We will use this information to create more relevant recommendations and provide personalised assistance before, during, and after your trips.
+          </p>
+        </div>
+        <button onclick="openPersonalProfileModal()" class="whitespace-nowrap px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-xs rounded-xl transition shadow">
+          Create My Personal Travel Profile &rarr;
+        </button>
+      </div>
+
+      <!-- State B: Active Profile Summary Card when profile is completed -->
+      <div id="personalProfileSummaryCard" class="hidden bg-white rounded-2xl shadow-lg border border-slate-200 p-6 space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <i class="fa-solid fa-circle-check"></i> Personal Travel Profile Active
+            </span>
+            <span class="text-xs text-slate-500 font-medium" id="personalProfileStatus">Recommendations tailored to your travel style</span>
+          </div>
+          <button onclick="openPersonalProfileModal()" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 transition">
+            <i class="fa-solid fa-pen-to-square"></i>
+            <span>Update Profile</span>
+          </button>
+        </div>
+
+        <!-- Key Preferences Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            <span class="text-[10px] text-slate-400 block uppercase font-bold">Walking Limit</span>
+            <span class="font-bold text-slate-800" id="dashWalkLimit">Moderate (5–10 km)</span>
+          </div>
+          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            <span class="text-[10px] text-slate-400 block uppercase font-bold">Schedule Density</span>
+            <span class="font-bold text-slate-800" id="dashDensity">2–3 Activities</span>
+          </div>
+          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            <span class="text-[10px] text-slate-400 block uppercase font-bold">Stay Style</span>
+            <span class="font-bold text-slate-800" id="dashStay">Boutique</span>
+          </div>
+          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+            <span class="text-[10px] text-slate-400 block uppercase font-bold">Local Transit</span>
+            <span class="font-bold text-slate-800" id="dashTransit">Public Transit</span>
+          </div>
+        </div>
+
+        <!-- Special Considerations & Avoidances -->
+        <div id="dashAvoidancesWrapper" class="pt-1">
+          <span class="text-xs font-semibold text-slate-700 block mb-1.5">Special Preferences & Things to Avoid:</span>
+          <div class="flex flex-wrap gap-1.5" id="dashAvoidancesContainer"></div>
+        </div>
+
+        <!-- Assistant Rules -->
+        <div id="dashRulesWrapper" class="pt-1">
+          <span class="text-xs font-semibold text-slate-700 block mb-1.5">How your guide will tailor trips for you:</span>
+          <div id="personalProfileRulesList" class="space-y-1.5"></div>
+        </div>
+
+        <!-- Past Trip Experiences (Memory Engine) -->
+        <div id="dashPastTripsWrapper" class="pt-1">
+          <span class="text-xs font-semibold text-slate-700 block mb-1.5">Past Trip Experiences & Highlights:</span>
+          <div class="space-y-1.5" id="dashPastTripsContainer"></div>
+        </div>
+      </div>
+
+      <!-- VIEW 3B: TRAVEL RECOMMENDATIONS (FEATURE TWO) -->
+      <div id="recommendationsSection" class="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 space-y-7">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 mb-1.5">
+              <i class="fa-solid fa-compass"></i> Recommendations
+            </div>
+            <h2 class="text-xl font-bold text-slate-900">Recommended For You</h2>
+            <p class="text-xs text-slate-500 mt-0.5" id="recBasisSummary">
+              Discover destinations and experiences selected around your travel interests and preferences.
+            </p>
+          </div>
+          <button onclick="refreshRecommendations()" id="refreshRecBtn" class="self-start sm:self-auto text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 hover:bg-indigo-50 transition">
+            <i class="fa-solid fa-arrows-rotate" id="refreshIcon"></i>
+            <span>Refresh Options</span>
+          </button>
+        </div>
+
+        <!-- Category 1: Recommended For You -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <h3 class="text-sm font-bold text-slate-900">Selected For Your Profile</h3>
+            </div>
+            <span class="text-[11px] text-slate-400 font-medium">Ranked by preference match & travel interests</span>
+          </div>
+          <div id="recommendedGrid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Category 2: Trending Trips -->
+        <div class="space-y-3 pt-4 border-t border-slate-100">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <h3 class="text-sm font-bold text-slate-900">Trending Destinations</h3>
+            </div>
+            <span class="text-[11px] text-slate-400 font-medium">Popular destinations with great feedback right now</span>
+          </div>
+          <div id="trendingGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Category 3: Seasonal & Upcoming Experiences -->
+        <div class="space-y-3 pt-4 border-t border-slate-100">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
+              <h3 class="text-sm font-bold text-slate-900">Seasonal & Upcoming Experiences</h3>
+            </div>
+            <span class="text-[11px] text-slate-400 font-medium">Timed to upcoming seasons, weather & local events</span>
+          </div>
+          <div id="seasonalGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 3C: ADAPTIVE PRE-TRIP ITINERARY PLANNER -->
+      <div id="itineraryPlannerSection" class="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 space-y-7">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 mb-1.5">
+              <i class="fa-solid fa-route"></i> Adaptive Pre-Trip Planner
+            </div>
+            <h2 class="text-xl font-bold text-slate-900">Personalised Itinerary & Daily Schedule</h2>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Powered by Contextual LinUCB Reinforcement Learning. Recommendations adapt as you accept, reject, or modify activities.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="userTripsSelect" onchange="onTripSelectChanged(this.value)" class="text-xs border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <option value="">-- Select Planned Trip --</option>
+            </select>
+            <button onclick="toggleTripFormModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition shadow-sm">
+              <i class="fa-solid fa-plus"></i>
+              <span>Plan New Trip</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Trip Status / Empty State -->
+        <div id="itineraryEmptyState" class="text-center py-12 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+          <div class="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+            <i class="fa-solid fa-map-location-dot text-xl"></i>
+          </div>
+          <h3 class="text-base font-bold text-slate-800">No active itinerary selected</h3>
+          <p class="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
+            Configure your destination, travel dates, and travel pace to generate a tailored day-by-day plan.
+          </p>
+          <button onclick="toggleTripFormModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition">
+            Plan My Trip Now &rarr;
+          </button>
+        </div>
+
+        <!-- Active Itinerary Display Container -->
+        <div id="itineraryDisplayContainer" class="hidden space-y-6">
+          <!-- Active Trip Banner -->
+          <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div class="flex items-center gap-2 mb-1">
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">Active Itinerary</span>
+                <span class="text-xs text-slate-400" id="itinDatesBadge">Nov 10 – Nov 14, 2026 (5 Days)</span>
+              </div>
+              <h3 class="text-lg font-bold" id="itinDestinationTitle">Kyoto, Japan</h3>
+              <p class="text-xs text-slate-300 mt-0.5" id="itinSummaryNotes">Generated via LinUCB Contextual Bandit policy.</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-right">
+                <span class="text-[10px] text-slate-400 block uppercase font-bold">Estimated Cost</span>
+                <span class="text-base font-mono font-bold text-emerald-400" id="itinTotalCostDisplay">$0.00</span>
+              </div>
+              <button onclick="regenerateEntireItinerary()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-arrows-rotate"></i>
+                <span>Regenerate Itinerary</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Day-by-Day Timeline Accordion / Tabs -->
+          <div id="itineraryDaysContainer" class="space-y-6">
+            <!-- Populated via JavaScript -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: GOOGLE ACCOUNT CHOOSER -->
+  <div id="googleAuthModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100">
+      <div class="text-center mb-4">
+        <svg class="w-8 h-8 mx-auto mb-2" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <h3 class="text-base font-bold text-slate-900">Sign in with Google</h3>
+        <p class="text-xs text-slate-500 mt-0.5">to continue to RL Travel Guide</p>
+      </div>
+
+      <div id="googleAccountsSection">
+        <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Choose an account</p>
+        <div id="googleSavedAccounts" class="space-y-2 mb-3"></div>
+        <button type="button" onclick="showGoogleManualForm()" class="w-full text-xs text-blue-600 font-semibold py-2.5 rounded-xl hover:bg-blue-50 transition flex items-center justify-center gap-1.5 border border-dashed border-blue-200">
+          <i class="fa-solid fa-plus text-[10px]"></i> Use another account
+        </button>
+      </div>
+
+      <form id="googleCustomForm" onsubmit="submitGoogleModal(event)" class="hidden space-y-3 pt-2">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Your Full Name</label>
+          <input type="text" id="gModalName" placeholder="e.g. Alex Sharma" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Google Email Address</label>
+          <input type="email" id="gModalEmail" placeholder="e.g. alex@gmail.com" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <div class="pt-2 flex gap-2">
+          <button type="button" onclick="hideGoogleManualForm()" class="flex-1 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50">
+            Back
+          </button>
+          <button type="submit" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm">
+            Sign In
+          </button>
+        </div>
+      </form>
+
+      <div class="mt-4 pt-3 border-t border-slate-100 flex justify-center">
+        <button type="button" onclick="closeModal('googleAuthModal')" class="text-xs text-slate-400 hover:text-slate-600">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: GOOGLE CLIENT ID CONFIGURATION -->
+  <div id="googleConfigModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+        <h3 class="text-base font-bold text-slate-900">Real Google Account Setup</h3>
+        <button onclick="closeModal('googleConfigModal')" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="mt-3 text-xs text-slate-600 space-y-2.5">
+        <p>
+          To let Chrome automatically read the Google accounts signed into your Windows device, Google requires an authorized <b>OAuth Client ID</b>:
+        </p>
+        <ol class="list-decimal list-inside space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-700">
+          <li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-blue-600 underline font-semibold">Google Cloud Credentials</a></li>
+          <li>Click <b>Create Credentials &rarr; OAuth client ID</b> (Web application)</li>
+          <li>Add Authorized JS Origins: <code class="bg-slate-200 px-1 rounded">http://localhost:8000</code> and <code class="bg-slate-200 px-1 rounded">http://127.0.0.1:8000</code></li>
+          <li>Copy your Client ID and paste below:</li>
+        </ol>
+        <div class="pt-2">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Google OAuth Client ID</label>
+          <input type="text" id="googleClientIdInput" placeholder="xxxx-yyyy.apps.googleusercontent.com" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg">
+        </div>
+      </div>
+      <div class="mt-4 flex justify-end gap-2">
+        <button onclick="closeModal('googleConfigModal')" class="px-3 py-1.5 text-xs text-slate-600 border border-slate-200 rounded-lg">Cancel</button>
+        <button onclick="saveGoogleClientId()" class="px-4 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg">Save & Enable</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ONE UNIFIED PERSONAL PROFILE QUESTIONNAIRE -->
+  <div id="personalProfileModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-100">
+
+      <div class="p-5 pb-3 border-b border-slate-200">
+        <div class="flex justify-between items-start">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-700 rounded">Deep Personalisation</span>
+              <h2 class="text-lg font-bold text-slate-900">Create My Personal Travel Profile</h2>
+            </div>
+            <p class="text-xs text-slate-500 mt-0.5">Everything is optional. Answer what matters to you and skip the rest. Follow-ups appear only when relevant.</p>
+          </div>
+          <button onclick="closePersonalProfileModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+        </div>
+        <div class="mt-3">
+          <div class="flex justify-between text-[11px] text-slate-500 mb-1">
+            <span id="personalProgressText">0 questions answered</span>
+            <span id="personalProgressPct">0%</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div id="personalProgressBar" class="h-1.5 bg-indigo-600 rounded-full transition-all" style="width:0%"></div>
+          </div>
+        </div>
+        <div id="personalTabs" class="flex overflow-x-auto text-xs font-semibold gap-1 mt-3 pb-1"></div>
+      </div>
+
+      <!-- Questions Form Pane -->
+      <div id="personalFormPane" class="flex flex-col flex-1 min-h-0">
+        <div id="personalBody" class="flex-1 overflow-y-auto p-5 space-y-4">
+          <p id="personalSectionPurpose" class="text-xs text-slate-500 italic"></p>
+          
+          <div id="personalQuestions" class="space-y-3"></div>
+
+          <!-- Past Trips Box (Only shown in Memories / Past Trips tab) -->
+          <div id="personalPastTripsSection" class="hidden bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="text-xs font-bold text-slate-800">Log Past Trip Experiences</h4>
+                <p class="text-[11px] text-slate-500">Tell us what you liked or disliked on past journeys</p>
+              </div>
+              <span class="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded">Memory Log</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <input type="text" id="pastTripDest" placeholder="Destination (e.g. Kyoto, Alps, Goa)" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+              <select id="pastTripRating" class="px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white">
+                <option value="5">5 ★ (Loved it)</option>
+                <option value="4" selected>4 ★ (Very good)</option>
+                <option value="3">3 ★ (Average)</option>
+                <option value="2">2 ★ (Disappointing)</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <input type="text" id="pastTripFav" placeholder="Highlight / Favorite memory" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+              <input type="text" id="pastTripDislike" placeholder="Skipped or disliked aspects" class="px-3 py-1.5 text-xs border border-slate-300 rounded-lg">
+            </div>
+            <button type="button" onclick="addPastTripEntry()" class="text-xs text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1">
+              <i class="fa-solid fa-plus text-[10px]"></i> Add Trip Experience
+            </button>
+            <div id="pastTripsList" class="space-y-1.5 pt-1"></div>
+          </div>
+
+        </div>
+
+        <div class="p-4 border-t border-slate-200 flex items-center justify-between gap-2">
+          <button type="button" id="personalPrevBtn" onclick="personalStep(-1)" class="px-3 py-2 border border-slate-200 text-slate-600 font-semibold text-xs rounded-xl hover:bg-slate-50">&larr; Back</button>
+          <div class="flex items-center gap-2">
+            <button type="button" id="personalNextBtn" onclick="personalStep(1)" class="px-3 py-2 border border-slate-200 text-slate-700 font-semibold text-xs rounded-xl hover:bg-slate-50">Next section &rarr;</button>
+            <button type="button" onclick="submitPersonalProfile()" id="personalSaveBtn" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-2">
+              <i class="fa-solid fa-check"></i> Save Personal Travel Profile
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result Pane (After saving) -->
+      <div id="personalResultPane" class="hidden flex-1 overflow-y-auto p-5 space-y-4">
+        <div class="text-center py-2">
+          <div class="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-2">
+            <i class="fa-solid fa-check text-lg"></i>
+          </div>
+          <h3 class="text-base font-bold text-slate-900">Personal Travel Profile Saved!</h3>
+          <p class="text-xs text-slate-500">Your preferences and rules are now actively tailoring your travel recommendations.</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center text-xs">
+          <div class="bg-slate-50 border border-slate-100 rounded-lg p-2.5">
+            <span class="block text-[10px] text-slate-400 font-bold uppercase">Questions Answered</span>
+            <span class="font-bold text-slate-800" id="precResAnswered">-</span>
+          </div>
+          <div class="bg-slate-50 border border-slate-100 rounded-lg p-2.5">
+            <span class="block text-[10px] text-slate-400 font-bold uppercase">Active Constraints</span>
+            <span class="font-bold text-slate-800" id="precResConstraints">-</span>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-xs font-bold text-slate-800 block mb-1.5">Rules the assistant will follow for you:</span>
+          <div id="precResInsights" class="space-y-1.5"></div>
+        </div>
+
+        <div class="flex justify-between pt-2">
+          <button type="button" onclick="showPersonalPane('form')" class="px-3 py-2 border border-slate-200 text-slate-600 font-semibold text-xs rounded-xl hover:bg-slate-50">&larr; Keep editing</button>
+          <button type="button" onclick="closePersonalProfileModal()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl">View Dashboard &rarr;</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: EXPLORE DESTINATION DETAILS -->
+  <div id="exploreModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 flex flex-col">
+      <div class="relative h-52 w-full shrink-0">
+        <img id="exploreImg" src="" alt="Destination" class="w-full h-full object-cover rounded-t-2xl">
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent rounded-t-2xl"></div>
+        <button onclick="closeModal('exploreModal')" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/60 text-white hover:bg-slate-900/90 flex items-center justify-center transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+        <div class="absolute bottom-3 left-4 right-4 text-white">
+          <div class="flex items-center gap-2 mb-1">
+            <span id="exploreBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white"></span>
+            <span id="exploreCountry" class="text-xs text-slate-200 font-medium"></span>
+          </div>
+          <h2 id="exploreTitle" class="text-xl font-bold tracking-tight"></h2>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-5 flex-1">
+        <!-- Tags & Meta -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div id="exploreTags" class="flex flex-wrap gap-1.5"></div>
+          <div class="flex items-center gap-2 text-xs font-semibold text-slate-700">
+            <span id="exploreDuration" class="px-2 py-0.5 rounded bg-slate-100"></span>
+            <span id="exploreBudget" class="px-2 py-0.5 rounded bg-slate-100"></span>
+          </div>
+        </div>
+
+        <!-- Why it fits you -->
+        <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 text-xs text-slate-800">
+          <h4 class="font-bold text-indigo-900 flex items-center gap-1.5 mb-1 text-xs">
+            <i class="fa-solid fa-compass text-indigo-600"></i> Why this fits your profile
+          </h4>
+          <p id="exploreWhy" class="text-slate-700 leading-relaxed"></p>
+        </div>
+
+        <!-- Available Experiences -->
+        <div>
+          <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Available Experiences & Highlights</h4>
+          <ul id="exploreExperiences" class="space-y-1.5 text-xs text-slate-600"></ul>
+        </div>
+
+        <!-- Best Season & Weather -->
+        <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs">
+          <span class="font-bold text-slate-800 block mb-0.5">Best Season & Weather</span>
+          <p id="exploreSeason" class="text-slate-600"></p>
+        </div>
+
+        <!-- Practical Considerations -->
+        <div id="explorePracticalWrapper" class="space-y-1.5">
+          <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Practical Considerations & Travel Tips</h4>
+          <ul id="explorePractical" class="space-y-1 text-xs text-slate-600"></ul>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+          <button id="exploreShortlistBtn" onclick="" class="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition flex items-center gap-1.5">
+            <i class="fa-regular fa-bookmark"></i>
+            <span>Shortlist This Destination</span>
+          </button>
+          <button onclick="closeModal('exploreModal')" class="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ACADEMIC MODEL INSPECTOR (VIVA & EVALUATION) -->
+  <div id="academicModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 flex flex-col p-6">
+      <div class="flex justify-between items-start pb-4 border-b border-slate-200">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700">Evaluation Mode</span>
+            <h2 class="text-base font-bold text-slate-900">Academic Model Inspector</h2>
+          </div>
+          <p class="text-xs text-slate-500 mt-0.5">Underlying Reinforcement Learning Formulation, State Vector & Constraint Masks</p>
+        </div>
+        <button onclick="closeModal('academicModal')" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex border-b border-slate-200 mt-4 text-xs font-semibold gap-2 pb-2">
+        <button type="button" onclick="switchAcademicTab('vector')" id="acadTab-vector" class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700">
+          State Vector ($s_t$)
+        </button>
+        <button type="button" onclick="switchAcademicTab('mdp')" id="acadTab-mdp" class="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-50">
+          MDP Formulation
+        </button>
+        <button type="button" onclick="switchAcademicTab('weights')" id="acadTab-weights" class="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-50">
+          Scoring Policy Weights
+        </button>
+        <button type="button" onclick="switchAcademicTab('linucb')" id="acadTab-linucb" class="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-50">
+          Learned LinUCB Policy ($\hat{\theta}_u$)
+        </button>
+      </div>
+
+      <!-- Tab 1: State Vector -->
+      <div id="acadPane-vector" class="space-y-4 pt-4 flex-1">
+        <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div>
+            <span class="text-xs font-bold text-slate-800 block">Active State Space Dimension</span>
+            <span class="text-[11px] text-slate-500" id="acadVectorLevel">Basic (22 features)</span>
+          </div>
+          <span class="px-2.5 py-1 bg-indigo-600 text-white text-xs font-mono font-bold rounded-lg" id="acadVectorDimBadge">d = 22</span>
+        </div>
+
+        <div>
+          <span class="text-xs font-semibold text-slate-700 block mb-1">Normalized State Vector ($s_t \in [0, 1]^d$):</span>
+          <pre id="acadRawVectorDisplay" class="bg-slate-900 text-emerald-400 p-3 rounded-xl text-[11px] font-mono overflow-x-auto max-h-36"></pre>
+        </div>
+
+        <div>
+          <span class="text-xs font-semibold text-slate-700 block mb-1">Feature Breakdown & Constraint Mask Analysis:</span>
+          <div class="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th class="p-2">#</th>
+                  <th class="p-2">Feature Name</th>
+                  <th class="p-2">Value</th>
+                  <th class="p-2">Role in Policy / Constraint</th>
+                </tr>
+              </thead>
+              <tbody id="acadVectorTableBody" class="divide-y divide-slate-100 font-mono text-[11px]"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: MDP Formulation -->
+      <div id="acadPane-mdp" class="hidden space-y-3.5 pt-4 text-xs text-slate-700 flex-1 leading-relaxed">
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+          <h4 class="font-bold text-slate-900 text-xs">Markov Decision Process (MDP) Definition: $(\mathcal{S}, \mathcal{A}, \mathcal{P}, \mathcal{R}, \gamma)$</h4>
+          <ul class="space-y-1.5 list-disc list-inside text-slate-600">
+            <li><b>State Space ($\mathcal{S}$):</b> Normalized continuous vectors $s_t \in [0, 1]^d$ representing traveller interests, energy levels, physical stamina, climate tolerance, and budget bandwidth.</li>
+            <li><b>Action Space ($\mathcal{A}$):</b> Discrete set of candidate destinations and itinerary structures $\mathcal{A} = \{a_1, a_2, \dots, a_K\}$.</li>
+            <li><b>Transition Function ($\mathcal{P}$):</b> State transition probability $\mathcal{P}(s_{t+1} \mid s_t, a_t)$ updated through post-trip feedback, activity ratings, and preference shifts over time.</li>
+            <li><b>Reward Function ($\mathcal{R}$):</b> Multi-criteria objective function:
+              <br><code class="bg-white px-2 py-0.5 rounded border border-slate-200 font-mono text-[11px] mt-1 inline-block">R(s, a) = w_int * S_interest + w_clim * S_climate + w_bud * S_budget + w_pace * S_pace - Penalty_masks</code>
+            </li>
+            <li><b>Hard Safety & Constraint Masks:</b> Extreme negative reward ($-\infty$) applied to destinations or activities violating user medical constraints, severe mobility limits, or explicit negative avoidances.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Tab 3: Scoring Weights & Policy -->
+      <div id="acadPane-weights" class="hidden space-y-3 pt-4 text-xs text-slate-700 flex-1">
+        <h4 class="font-bold text-slate-900 text-xs">Configurable Recommendation Policy Weights (Recommender Engine)</h4>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+            <span class="font-bold block text-slate-800">Interest Alignment ($w_{int}$)</span>
+            <span class="text-indigo-600 font-mono font-bold text-sm">0.35 (35%)</span>
+            <span class="text-[10px] text-slate-500 block">Matches selected goals, activities & place types</span>
+          </div>
+          <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+            <span class="font-bold block text-slate-800">Climate Fit ($w_{clim}$)</span>
+            <span class="text-indigo-600 font-mono font-bold text-sm">0.20 (20%)</span>
+            <span class="text-[10px] text-slate-500 block">Weather comfort alignment; neutral if unspecified</span>
+          </div>
+          <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+            <span class="font-bold block text-slate-800">Budget Congruence ($w_{bud}$)</span>
+            <span class="text-indigo-600 font-mono font-bold text-sm">0.20 (20%)</span>
+            <span class="text-[10px] text-slate-500 block">Matches spending comfort tier</span>
+          </div>
+          <div class="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+            <span class="font-bold block text-slate-800">Pace & Style ($w_{pace}$)</span>
+            <span class="text-indigo-600 font-mono font-bold text-sm">0.15 (15%)</span>
+            <span class="text-[10px] text-slate-500 block">Walking tolerance and daily schedule density</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Learned LinUCB Policy & Live Adaptation -->
+      <div id="acadPane-linucb" class="hidden space-y-4 pt-4 text-xs text-slate-700 flex-1">
+        <div class="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+          <div>
+            <span class="text-xs font-bold text-slate-800 block">Active Reinforcement Learning Policy</span>
+            <span class="text-[11px] text-slate-500">Disjoint Contextual LinUCB with Sherman-Morrison Rank-1 updates</span>
+          </div>
+          <span class="px-2.5 py-1 bg-emerald-600 text-white text-xs font-mono font-bold rounded-lg" id="acadLinucbPullBadge">Interactions: 0</span>
+        </div>
+
+        <div>
+          <span class="text-xs font-semibold text-slate-700 block mb-1">Learned Arm Parameters ($\hat{\theta}_a = A_a^{-1} b_a$):</span>
+          <div class="border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200 sticky top-0">
+                <tr>
+                  <th class="p-2">Arm / Category</th>
+                  <th class="p-2">Feedback Count</th>
+                  <th class="p-2">Avg Reward</th>
+                  <th class="p-2">Top Learned Feature Weights</th>
+                </tr>
+              </thead>
+              <tbody id="acadLinucbArmsTable" class="divide-y divide-slate-100 font-mono text-[11px]"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Live Comparative Benchmark -->
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-800">Empirical Benchmark vs. Static Recommender Baseline:</span>
+            <button onclick="runLiveAcademicBenchmark()" id="runBenchmarkBtn" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg transition shadow-sm">
+              Run Simulation Benchmark
+            </button>
+          </div>
+          <div id="benchmarkResultsArea" class="hidden text-[11px] font-mono bg-white p-2.5 rounded-lg border border-slate-200 space-y-1">
+            <div class="flex justify-between">
+              <span>Adaptive LinUCB Acceptance:</span>
+              <span class="font-bold text-emerald-600" id="benchLinucbAcc">--</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Static Baseline Acceptance:</span>
+              <span class="font-bold text-slate-600" id="benchBaselineAcc">--</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Cumulative Reward Comparison:</span>
+              <span class="font-bold text-indigo-600" id="benchRewardDiff">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <span class="text-xs font-semibold text-slate-700 block mb-1">Recent Interaction & Feedback Log:</span>
+          <div id="acadFeedbackLogList" class="space-y-1 max-h-36 overflow-y-auto text-[11px]"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-200 flex justify-end">
+        <button onclick="closeModal('academicModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl">
+          Close Inspector
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PROJECT INFO -->
+  <div id="infoModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-xl p-5 sm:p-6">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+        <h2 class="text-base font-bold text-slate-900">About RL Travel Guide</h2>
+        <button onclick="closeModal('infoModal')" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="mt-3 space-y-3 text-xs text-slate-600 leading-relaxed">
+        <p>
+          <b>RL Travel Guide</b> is a project that learns traveller preferences first, and then uses Reinforcement Learning to recommend and adapt itineraries.
+        </p>
+        <p>
+          <b>Current Milestone:</b> Authentication, Unified Progressive Profile, Transparent Multi-Factor Recommendation Engine, and Model Inspector.
+        </p>
+        <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+          <b>Tech Stack:</b> Python (FastAPI, SQLite3, Pydantic), Tailwind CSS, Vanilla JavaScript.
+        </div>
+      </div>
+
+      <div class="mt-4 flex justify-end">
+        <button onclick="closeModal('infoModal')" class="px-4 py-1.5 bg-slate-800 text-white font-semibold text-xs rounded-xl hover:bg-slate-900">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PLAN NEW TRIP FORM -->
+  <div id="tripFormModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 p-6">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Plan a New Trip</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Preferences auto-filled from your travel profile.</p>
+        </div>
+        <button onclick="closeModal('tripFormModal')" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="tripCreateForm" onsubmit="handleTripCreateSubmit(event)" class="mt-4 space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Destination</label>
+          <select id="tripDestSelect" required class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
+            <option value="kyoto_japan">Kyoto, Japan</option>
+            <option value="manali_spiti_india">Manali & Spiti Valley, India</option>
+            <option value="santorini_greece">Santorini, Greece</option>
+            <option value="swiss_alps">Swiss Alps, Switzerland</option>
+            <option value="tokyo_japan">Tokyo, Japan</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Departure Date</label>
+            <input type="date" id="tripStartDateInput" required class="w-full px-3 py-2 border border-slate-300 rounded-xl">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Return Date</label>
+            <input type="date" id="tripEndDateInput" required class="w-full px-3 py-2 border border-slate-300 rounded-xl">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Travellers Count</label>
+            <input type="number" id="tripTravellersInput" min="1" max="10" value="2" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Total Trip Budget ($)</label>
+            <input type="number" id="tripBudgetInput" min="100" max="25000" step="50" value="1200" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Travel Pace</label>
+            <select id="tripPaceSelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+              <option value="relaxed">Relaxed (1-2 major activities/day)</option>
+              <option value="balanced" selected>Balanced (2-3 activities/day)</option>
+              <option value="packed">Packed (See as much as possible)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Accommodation Tier</label>
+            <select id="tripAccomSelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+              <option value="boutique" selected>Boutique & Heritage</option>
+              <option value="budget_hostel">Hostels & Guesthouses</option>
+              <option value="resort">Luxury Resorts</option>
+              <option value="apartment">Apartments / Airbnb</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Transit Preference</label>
+          <select id="tripTransitSelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+            <option value="public_transit" selected>Metro & Public Transit</option>
+            <option value="walking">Walking</option>
+            <option value="rental_car">Rental Car / Scooter</option>
+            <option value="taxi">Taxis / Ride-Share</option>
+          </select>
+        </div>
+
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button type="button" onclick="closeModal('tripFormModal')" class="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="submit" id="generateItinerarySubmitBtn" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-sm">
+            Generate LinUCB Itinerary &rarr;
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ACTIVITY REJECTION REASON & TRIP ISOLATION -->
+  <div id="activityRejectModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 text-xs">
+      <div class="flex justify-between items-center pb-2.5 border-b border-slate-100">
+        <h4 class="font-bold text-slate-900">Tell us why you're skipping this</h4>
+        <button onclick="closeModal('activityRejectModal')" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="mt-3 space-y-3">
+        <p class="text-slate-500">
+          This helps the Reinforcement Learning agent adapt subsequent suggestions.
+        </p>
+        <div class="space-y-1.5" id="rejectReasonsList">
+          <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200">
+            <input type="radio" name="rejectReasonRadio" value="too_crowded" checked class="text-emerald-600">
+            <span>Too crowded / want quieter spot</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200">
+            <input type="radio" name="rejectReasonRadio" value="too_expensive" class="text-emerald-600">
+            <span>Too expensive for my budget</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200">
+            <input type="radio" name="rejectReasonRadio" value="too_physically_demanding" class="text-emerald-600">
+            <span>Too physically demanding / too much walking</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200">
+            <input type="radio" name="rejectReasonRadio" value="not_interested" class="text-emerald-600">
+            <span>Not interested in this activity</span>
+          </label>
+          <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200">
+            <input type="radio" name="rejectReasonRadio" value="schedule_conflict_today" class="text-emerald-600">
+            <span>Timing doesn't suit my day schedule</span>
+          </label>
+        </div>
+
+        <div class="bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+          <label class="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" id="rejectIsTripSpecificCheck" checked class="mt-0.5 rounded text-amber-600">
+            <span class="text-[11px] text-amber-900 leading-tight">
+              <b>Trip-specific only:</b> Don't permanently alter my long-term traveller profile (only exclude from this trip).
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-100 flex justify-end gap-2">
+        <button onclick="closeModal('activityRejectModal')" class="px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600">Cancel</button>
+        <button onclick="confirmActivityRejection()" class="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-sm">
+          Confirm Skip
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: MODIFY / ALTERNATIVE ACTIVITY SELECTION -->
+  <div id="activityAlternativeModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 p-6 text-xs">
+      <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Choose an Alternative Activity</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Top candidate replacements ranked by your learned preferences.</p>
+        </div>
+        <button onclick="closeModal('activityAlternativeModal')" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div id="alternativesListContainer" class="mt-4 space-y-3">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+  <script src="/static/modules/loader.js"></script>
+</body>
+</html>

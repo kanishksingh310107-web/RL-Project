@@ -1,0 +1,40 @@
+/* Bespoke UI Styling for RL Travel Guide */
+
+/* Selected card highlight */
+.selectable-card {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  border: 1.5px solid #e2e8f0;
+}
+
+.selectable-card:hover {
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.selectable-card.selected {
+  border-color: #4f46e5 !important;
+  background-color: #eef2ff !important;
+  color: #312e81 !important;
+  box-shadow: 0 4px 12px -2px rgba(79, 70, 229, 0.15);
+}
+
+.selectable-card.selected .check-icon {
+  display: flex !important;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
