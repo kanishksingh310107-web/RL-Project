@@ -974,6 +974,8 @@ def generate_trip_itinerary(trip_id: str, user_id: str):
         if not trip_row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
+        import app.database as database
+        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
         dest_id = trip_row["destination_id"]
         status_info = prec.profile_status(user_id)
         if not status_info["complete"] and not is_test_env:
@@ -982,8 +984,6 @@ def generate_trip_itinerary(trip_id: str, user_id: str):
                 detail=f"Itinerary generation is locked until your travel profile is complete. Please answer the remaining {len(status_info['missing'])} questions."
             )
         from app.data.india_destinations import DESTINATIONS_BY_ID
-        import app.database as database
-        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
         is_indian = (
             dest_id in DESTINATIONS_BY_ID or
             dest_id.endswith("_india") or

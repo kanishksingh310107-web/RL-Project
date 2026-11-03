@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RL Travel Guide</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Righteous&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="/static/style.css">
   <!-- Official Google Identity Services SDK -->
@@ -15,13 +18,13 @@
   <!-- Navbar -->
   <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
     <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center space-x-2.5 cursor-pointer" onclick="showView('auth')">
-        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
-          <i class="fa-solid fa-compass text-lg"></i>
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="showView('auth')">
+        <div class="w-10 h-10 rounded-xl bg-[#2b2278] text-white flex items-center justify-center shadow-md">
+          <i class="fa-solid fa-earth-americas text-xl text-[#e27141]"></i>
         </div>
         <div>
-          <span class="font-bold text-base text-slate-900 tracking-tight">RL Travel Guide</span>
-          <span class="block text-[11px] text-indigo-600 font-medium">Personalised Travel Intelligence</span>
+          <span class="font-righteous text-lg text-[#2b2278] tracking-wider block leading-tight">A WORLD</span>
+          <span class="block text-[10px] text-[#e27141] font-semibold tracking-tight uppercase">RL Travel Guide · Intelligence</span>
         </div>
       </div>
 
@@ -297,6 +300,29 @@
     <!-- VIEW 3: DASHBOARD -->
     <section id="dashboardView" class="hidden space-y-6">
       
+      <!-- A World Hero Banner -->
+      <div class="a-world-banner text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-indigo-950/40 relative overflow-hidden">
+        <div class="relative z-10 max-w-2xl">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 backdrop-blur-md text-[#e27141] border border-white/20 mb-3">
+            <i class="fa-solid fa-sparkles"></i> Personalised Travel Intelligence
+          </div>
+          <h2 class="font-righteous text-2xl sm:text-3xl text-white tracking-wide leading-tight">
+            SEE THE WORLD IN YOUR OWN WAY
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-200 mt-2 leading-relaxed font-light">
+            Custom-tailored Indian itineraries powered by Contextual Reinforcement Learning (LinUCB), real-time Open-Meteo weather intelligence, and OpenStreetMap Overpass places.
+          </p>
+          <div class="flex flex-wrap items-center gap-3 mt-4 pt-1">
+            <a href="#recommendationsSection" class="px-5 py-2.5 rounded-xl bg-[#e27141] hover:bg-[#2b2278] text-white font-bold text-xs shadow-md transition inline-flex items-center gap-2">
+              <i class="fa-solid fa-compass"></i> Explore Recommendations
+            </a>
+            <button onclick="openPersonalProfileModal()" class="px-5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs border border-white/30 backdrop-blur-sm transition inline-flex items-center gap-2">
+              <i class="fa-solid fa-user-gear"></i> Deep Personal Profile
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Starting Profile Card -->
       <div class="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
@@ -501,6 +527,22 @@
               <span>Plan New Trip</span>
             </button>
           </div>
+        </div>
+
+        <!-- Trip Planner Locked State (when Deep Personalization is incomplete) -->
+        <div id="itineraryLockedState" class="hidden text-center py-12 px-6 bg-gradient-to-b from-slate-50 to-white rounded-2xl border border-dashed border-amber-300 shadow-xs">
+          <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-3 shadow-inner text-2xl">
+            <i class="fa-solid fa-lock"></i>
+          </div>
+          <h3 class="text-base font-bold text-slate-800">Personalised Itinerary & Trip Planner Locked</h3>
+          <p class="text-xs text-slate-600 max-w-md mx-auto mt-1 mb-4 leading-relaxed">
+            AI-powered daily schedules and pacing adaptation require a completed <strong>Level 2 Personal Travel Profile</strong>.
+            Please complete your remaining questions to unlock day-by-day itineraries and activity choices.
+          </p>
+          <button onclick="openPersonalProfileModal()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition inline-flex items-center gap-2">
+            <i class="fa-solid fa-sparkles text-amber-300"></i>
+            <span>Complete Personal Travel Profile &rarr;</span>
+          </button>
         </div>
 
         <!-- Trip Status / Empty State -->

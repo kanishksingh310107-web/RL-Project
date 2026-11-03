@@ -393,8 +393,12 @@ function goToStep(step) {
     }
   }
   if (step === 3 && state.currentStep === 2) {
-    if (state.basicAnswers.travel_goals.size === 0 && state.basicAnswers.place_interests.size === 0) {
-      alert("Please choose at least one travel goal or type of place you enjoy.");
+    if (state.basicAnswers.travel_goals.size < 2) {
+      alert("Please select at least 2 travel goals before continuing.");
+      return;
+    }
+    if (state.basicAnswers.place_interests.size < 2) {
+      alert("Please select at least 2 types of places you enjoy before continuing.");
       return;
     }
   }
@@ -439,11 +443,11 @@ function renderBasicForm() {
     state.basicAnswers.planning_approach = val;
   });
 
-  // Travel Goals (Multi, max 4)
-  renderMultiChips("basicGoalsGrid", q.q5.options, state.basicAnswers.travel_goals, 4, "goalsCounter");
+  // Travel Goals (Multi, min 2 required, no max limit)
+  renderMultiChips("basicGoalsGrid", q.q5.options, state.basicAnswers.travel_goals, "goalsCounter");
 
-  // Place Types (Multi, max 5)
-  renderMultiChips("basicPlacesGrid", q.q14.options, state.basicAnswers.place_interests, 5, "placesCounter");
+  // Place Types (Multi, min 2 required, no max limit)
+  renderMultiChips("basicPlacesGrid", q.q14.options, state.basicAnswers.place_interests, "placesCounter");
 
   // Experience Style
   renderCardOptions("basicExpStyleGrid", q.q17.options, state.basicAnswers.experience_preference, (val) => {
@@ -539,11 +543,11 @@ function renderIconCards(containerId, options, currentVal, onSelect) {
   });
 }
 
-function renderMultiChips(containerId, options, activeSet, maxAllowed, counterId) {
+function renderMultiChips(containerId, options, activeSet, counterId) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
-  updateCounter(counterId, activeSet.size, maxAllowed);
+  updateCounter(counterId, activeSet.size);
 
   options.forEach(opt => {
     const isSel = activeSet.has(opt.id);
@@ -554,14 +558,10 @@ function renderMultiChips(containerId, options, activeSet, maxAllowed, counterId
         activeSet.delete(opt.id);
         card.classList.remove("selected");
       } else {
-        if (activeSet.size >= maxAllowed) {
-          alert(`You can choose up to ${maxAllowed} options.`);
-          return;
-        }
         activeSet.add(opt.id);
         card.classList.add("selected");
       }
-      updateCounter(counterId, activeSet.size, maxAllowed);
+      updateCounter(counterId, activeSet.size);
     };
 
     const iconClass = opt.icon || ICON_MAP[opt.id] || "fa-tag";
@@ -576,9 +576,9 @@ function renderMultiChips(containerId, options, activeSet, maxAllowed, counterId
   });
 }
 
-function updateCounter(counterId, current, max) {
+function updateCounter(counterId, current) {
   const el = document.getElementById(counterId);
-  if (el) el.textContent = `${current} / ${max}`;
+  if (el) el.textContent = `${current} selected (min 2 required)`;
 }
 
 function renderMultiPills(containerId, options, activeSet) {
@@ -595,6 +595,12 @@ function renderMultiPills(containerId, options, activeSet) {
     btn.textContent = opt.label;
     btn.onclick = () => {
       if (opt.id === "none") {
+        if (activeSet.has("none")) {
+          // Deselect "none"
+          activeSet.delete("none");
+          btn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:border-slate-300 transition";
+          return;
+        }
         activeSet.clear();
         activeSet.add("none");
         Array.from(container.children).forEach(b => {
@@ -603,7 +609,17 @@ function renderMultiPills(containerId, options, activeSet) {
         btn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-indigo-600 text-white border-indigo-600 shadow-xs transition";
         return;
       }
-      activeSet.delete("none");
+      
+      // If user clicks a specific restriction, remove "none"
+      if (activeSet.has("none")) {
+        activeSet.delete("none");
+        Array.from(container.children).forEach(b => {
+          if (b.textContent.toLowerCase().includes("no restriction") || b.textContent.toLowerCase().includes("none")) {
+            b.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:border-slate-300 transition";
+          }
+        });
+      }
+
       if (activeSet.has(opt.id)) {
         activeSet.delete(opt.id);
         btn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:border-slate-300 transition";
@@ -668,7 +684,26 @@ async function handleProfileSubmit(e) {
 }
 
 function editProfile() {
+  if (state.currentProfile) {
+    const p = state.currentProfile;
+    const raw = p.raw_answers || {};
+    state.basicAnswers = {
+      age_group: p.age_group || raw.age_group || null,
+      travel_experience: p.travel_experience || raw.travel_experience || null,
+      companions: p.companions || raw.companions || null,
+      planning_approach: p.planning_approach || raw.planning_approach || null,
+      travel_goals: new Set(p.travel_goals || raw.travel_goals || []),
+      place_interests: new Set(p.place_interests || raw.place_interests || []),
+      experience_preference: p.experience_preference || raw.experience_preference || null,
+      dietary: new Set(p.dietary || raw.dietary || []),
+      preferred_climate: p.preferred_climate || raw.preferred_climate || null,
+      budget_tier: p.budget_tier || raw.budget_tier || null,
+      assistance_autonomy: p.assistance_autonomy || raw.assistance_autonomy || null,
+    };
+  }
+  renderBasicForm();
   showView("onboarding");
+  goToStep(1);
 }
 
 // ==========================================
@@ -1552,6 +1587,14 @@ async function submitPersonalProfile() {
     if (window.TravelModules && window.TravelModules.refreshLockStatus) {
       window.TravelModules.refreshLockStatus();
     }
+    // Refresh completeness status and unlock trip planner
+    if (state.currentUser) {
+      const statusRes = await fetch(/api/profile//status);
+      if (statusRes.ok) {
+        state.profileStatus = await statusRes.json();
+      }
+      loadUserTrips();
+    }
   } catch (err) {
     alert("Error: " + err.message);
   } finally {
@@ -1870,6 +1913,19 @@ async function loadUserTrips() {
         select.appendChild(opt);
       });
 
+      const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+      const lockedState = document.getElementById("itineraryLockedState");
+      const emptyState = document.getElementById("itineraryEmptyState");
+      const displayContainer = document.getElementById("itineraryDisplayContainer");
+
+      if (!isDeepComplete) {
+        if (displayContainer) displayContainer.classList.add("hidden");
+        if (emptyState) emptyState.classList.add("hidden");
+        if (lockedState) lockedState.classList.remove("hidden");
+        return;
+      }
+      if (lockedState) lockedState.classList.add("hidden");
+
       if (activeUserTrips.length > 0) {
         // Prioritize first valid Indian trip over legacy international ones
         const firstIndian = activeUserTrips.find(isIndianTrip);
@@ -1877,8 +1933,8 @@ async function loadUserTrips() {
         select.value = currentPlannedTripId;
         await loadTripItinerary(currentPlannedTripId);
       } else {
-        document.getElementById("itineraryEmptyState").classList.remove("hidden");
-        document.getElementById("itineraryDisplayContainer").classList.add("hidden");
+        if (emptyState) emptyState.classList.remove("hidden");
+        if (displayContainer) displayContainer.classList.add("hidden");
       }
     }
   } catch (err) {
@@ -1887,9 +1943,22 @@ async function loadUserTrips() {
 }
 
 function onTripSelectChanged(tripId) {
+  const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+  const lockedState = document.getElementById("itineraryLockedState");
+  const emptyState = document.getElementById("itineraryEmptyState");
+  const displayContainer = document.getElementById("itineraryDisplayContainer");
+
+  if (!isDeepComplete) {
+    if (displayContainer) displayContainer.classList.add("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (lockedState) lockedState.classList.remove("hidden");
+    return;
+  }
+  if (lockedState) lockedState.classList.add("hidden");
+
   if (!tripId) {
-    document.getElementById("itineraryEmptyState").classList.remove("hidden");
-    document.getElementById("itineraryDisplayContainer").classList.add("hidden");
+    if (emptyState) emptyState.classList.remove("hidden");
+    if (displayContainer) displayContainer.classList.add("hidden");
     return;
   }
   currentPlannedTripId = tripId;
@@ -2038,6 +2107,18 @@ async function handleTripCreateSubmit(e) {
 async function loadTripItinerary(tripId) {
   if (!state.currentUser || !tripId) return;
 
+  const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+  const lockedState = document.getElementById("itineraryLockedState");
+  const emptyState = document.getElementById("itineraryEmptyState");
+  const displayContainer = document.getElementById("itineraryDisplayContainer");
+
+  if (!isDeepComplete) {
+    if (displayContainer) displayContainer.classList.add("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (lockedState) lockedState.classList.remove("hidden");
+    return;
+  }
+
   const tripObj = activeUserTrips.find(t => t.id === tripId);
   if (tripObj && !isIndianTrip(tripObj)) {
     showInternationalTripNotice(tripObj);
@@ -2068,6 +2149,18 @@ function renderItinerary(itin) {
   const emptyState = document.getElementById("itineraryEmptyState");
   const displayContainer = document.getElementById("itineraryDisplayContainer");
   const daysContainer = document.getElementById("itineraryDaysContainer");
+  const lockedState = document.getElementById("itineraryLockedState");
+
+  // Trip planner should not show info if deep personalization is not completed
+  const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+  if (!isDeepComplete) {
+    if (displayContainer) displayContainer.classList.add("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (lockedState) lockedState.classList.remove("hidden");
+    return;
+  }
+
+  if (lockedState) lockedState.classList.add("hidden");
 
   if (!itin || !itin.days || itin.days.length === 0) {
     emptyState.classList.remove("hidden");
