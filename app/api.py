@@ -614,15 +614,7 @@ def get_recommendations_for_user(user_id: str, offset: int = 0):
         cursor.execute("SELECT destination_id FROM shortlisted_destinations WHERE user_id = ?", (user_id,))
         shortlisted_ids = [r["destination_id"] for r in cursor.fetchall()]
 
-        # Verify profile completeness before generating recommendations
-        import app.database as database
-        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
-        status_info = prec.profile_status(user_id)
-        if not status_info["complete"] and not is_test_env:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Personalised recommendations are locked. Please complete all applicable profile questions ({len(status_info['missing'])} remaining)."
-            )
+
 
         # Generate categorized recommendations with offset rotation
         recs = get_categorized_recommendations(

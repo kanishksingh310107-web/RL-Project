@@ -763,7 +763,7 @@ async function syncUnifiedProfileCard(userId) {
         const bannerTitle = banner.querySelector("h3");
         if (bannerTitle) bannerTitle.textContent = `Mandatory Profile Incomplete (${state.profileStatus.percent}%)`;
         const bannerP = banner.querySelector("p");
-        if (bannerP) bannerP.textContent = `You have ${remaining} applicable questions remaining. To unlock personalized recommendations, trip planning, and your travel companion, all applicable questions must be answered.`;
+        if (bannerP) bannerP.textContent = `You have ${remaining} applicable questions remaining. To unlock the Travel Companion and enhanced itinerary personalization, complete your detailed travel profile.`;
         const bannerBtn = banner.querySelector("button");
         if (bannerBtn) bannerBtn.innerHTML = `Complete My Profile Now (${remaining} left) &rarr;`;
       }
