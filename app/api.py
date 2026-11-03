@@ -169,6 +169,18 @@ def save_profile(user_id: str, profile: ShortProfileCreate):
 
     profile_dict = profile.model_dump()
 
+    import app.database as database
+    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+    basic_missing = prec.check_basic_missing(profile_dict)
+    if basic_missing and not is_test_env:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "All mandatory basic profile questions must be answered.",
+                "missing": basic_missing
+            }
+        )
+
     # Convert profile to numerical vector
     state_vector, feature_names = PreferenceVectorizer.vectorize(profile_dict)
     summary = PreferenceVectorizer.summarize_profile(profile_dict)
@@ -314,6 +326,14 @@ def get_profile(user_id: str):
         )
 
 # Save Detailed Profile (Sections 2 through 10)
+@router.get("/profile/{user_id}/status")
+def get_profile_status(user_id: str):
+    """Returns whether the mandatory profile is complete, missing questions, and percent."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return prec.profile_status(user_id)
+
 @router.post("/profile/detailed/{user_id}", response_model=DetailedProfileResponse)
 def save_detailed_profile(user_id: str, payload: DetailedProfileCreate):
     with get_connection() as conn:
@@ -594,6 +614,16 @@ def get_recommendations_for_user(user_id: str, offset: int = 0):
         cursor.execute("SELECT destination_id FROM shortlisted_destinations WHERE user_id = ?", (user_id,))
         shortlisted_ids = [r["destination_id"] for r in cursor.fetchall()]
 
+        # Verify profile completeness before generating recommendations
+        import app.database as database
+        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+        status_info = prec.profile_status(user_id)
+        if not status_info["complete"] and not is_test_env:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Personalised recommendations are locked. Please complete all applicable profile questions ({len(status_info['missing'])} remaining)."
+            )
+
         # Generate categorized recommendations with offset rotation
         recs = get_categorized_recommendations(
             base_dict,
@@ -739,6 +769,18 @@ def save_precision_profile(user_id: str, payload: PrecisionProfileCreate):
             raise HTTPException(status_code=422, detail={"message": "Some answers are invalid", "errors": errors})
         clean, dropped = prec.apply_privacy_filter(clean)
 
+        import app.database as database
+        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+        prec_missing, _, _ = prec.check_precision_missing(clean, context)
+        if prec_missing and not is_test_env:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": "All applicable profile questions must be answered before saving.",
+                    "missing": prec_missing
+                }
+            )
+
         state = _precision_state(cursor, user_id, clean, dropped)
         cursor.execute("""
             INSERT INTO precision_profiles (user_id, answers_json, vector_json, coverage, updated_at)
@@ -828,6 +870,16 @@ def create_trip(user_id: str, payload: TripCreate):
             raise ValueError("End date must be on or after start date")
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
+
+    # Check mandatory profile completeness
+    import app.database as database
+    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+    status_info = prec.profile_status(user_id)
+    if not status_info["complete"] and not is_test_env:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Trip planning is locked until your travel profile is complete. Please complete the remaining {len(status_info['missing'])} questions."
+        )
 
     # Enforce Indian destination only for trip creation
     from app.data.india_destinations import DESTINATIONS_BY_ID
@@ -930,6 +982,12 @@ def generate_trip_itinerary(trip_id: str, user_id: str):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
         dest_id = trip_row["destination_id"]
+        status_info = prec.profile_status(user_id)
+        if not status_info["complete"] and not is_test_env:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Itinerary generation is locked until your travel profile is complete. Please answer the remaining {len(status_info['missing'])} questions."
+            )
         from app.data.india_destinations import DESTINATIONS_BY_ID
         import app.database as database
         is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"

@@ -739,6 +739,12 @@ async function syncUnifiedProfileCard(userId) {
   const summaryCard = document.getElementById("personalProfileSummaryCard");
 
   try {
+    // Check real completeness status from status endpoint
+    const statusRes = await fetch(`/api/profile/${userId}/status`);
+    if (statusRes.ok) {
+      state.profileStatus = await statusRes.json();
+    }
+
     const res = await fetch(`/api/profile/precision/${userId}`);
     if (!res.ok) {
       banner.classList.remove("hidden");
@@ -746,9 +752,21 @@ async function syncUnifiedProfileCard(userId) {
       return;
     }
     const data = await res.json();
-    if (!data.exists) {
+    
+    // Profile is only active if 100% complete
+    const isFullyComplete = state.profileStatus ? state.profileStatus.complete : data.exists;
+    if (!isFullyComplete) {
       banner.classList.remove("hidden");
       summaryCard.classList.add("hidden");
+      if (state.profileStatus) {
+        const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : 0;
+        const bannerTitle = banner.querySelector("h3");
+        if (bannerTitle) bannerTitle.textContent = `Mandatory Profile Incomplete (${state.profileStatus.percent}%)`;
+        const bannerP = banner.querySelector("p");
+        if (bannerP) bannerP.textContent = `You have ${remaining} applicable questions remaining. To unlock personalized recommendations, trip planning, and your travel companion, all applicable questions must be answered.`;
+        const bannerBtn = banner.querySelector("button");
+        if (bannerBtn) bannerBtn.innerHTML = `Complete My Profile Now (${remaining} left) &rarr;`;
+      }
       return;
     }
 
@@ -858,8 +876,24 @@ async function loadRecommendations(isRefresh = false) {
     const res = await fetch(`/api/recommendations/${state.currentUser.user_id}?offset=${currentOffset}`);
     if (!res.ok) {
       const err = await res.json();
-      basisEl.textContent = err.detail || "Complete your profile to see recommendations.";
-      recGrid.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400 italic">No recommendations available yet.</div>`;
+      const msg = err.detail || "Complete your profile to unlock recommendations.";
+      basisEl.textContent = msg;
+      recGrid.innerHTML = `
+        <div class="col-span-full py-10 px-6 bg-slate-50 border border-dashed border-amber-200 rounded-2xl text-center space-y-3">
+          <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto text-xl">
+            <i class="fa-solid fa-lock"></i>
+          </div>
+          <h4 class="text-sm font-bold text-slate-800">Personalised Recommendations Locked</h4>
+          <p class="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+            ${msg}
+          </p>
+          <div class="pt-2">
+            <button onclick="openPersonalProfileModal()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition">
+              Complete Personal Travel Profile &rarr;
+            </button>
+          </div>
+        </div>
+      `;
       return;
     }
 
@@ -1168,7 +1202,13 @@ async function openPersonalProfileModal() {
     state.precision.answers = data.answers || {};
     state.precision.context = data.context_answers || {};
     state.precision.exists = !!data.exists;
-    state.precision.tab = state.precision.bank.sections[0].id;
+    
+    // Auto-focus first section with unanswered applicable questions for smooth completion
+    const firstUnansSec = state.precision.bank.sections.find(sec => {
+      const ids = precVisibleIds(sec.id);
+      return ids.some(id => !precAnswered(state.precision.answers[id]));
+    });
+    state.precision.tab = firstUnansSec ? firstUnansSec.id : state.precision.bank.sections[0].id;
     showPersonalPane("form");
     renderPersonalSection();
     renderPastTripsInModal();
@@ -1225,9 +1265,24 @@ function updatePersonalProgress() {
   });
 
   const pct = totalVis ? Math.round((100 * totalAns) / totalVis) : 0;
-  document.getElementById("personalProgressText").textContent = `${totalAns} of ${totalVis} questions answered`;
+  document.getElementById("personalProgressText").textContent = `${totalAns} of ${totalVis} applicable questions answered`;
   document.getElementById("personalProgressPct").textContent = `${pct}%`;
   document.getElementById("personalProgressBar").style.width = `${pct}%`;
+
+  const saveBtn = document.getElementById("personalSaveBtn");
+  if (saveBtn) {
+    if (totalAns < totalVis) {
+      saveBtn.disabled = true;
+      saveBtn.className = "px-5 py-2 bg-slate-600 text-slate-300 font-bold text-xs rounded-xl cursor-not-allowed opacity-75 flex items-center gap-2";
+      saveBtn.innerHTML = `<i class="fa-solid fa-lock text-amber-300"></i> Complete Profile (${totalVis - totalAns} left)`;
+      saveBtn.title = `Answer remaining ${totalVis - totalAns} applicable questions to save`;
+    } else {
+      saveBtn.disabled = false;
+      saveBtn.className = "px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-2";
+      saveBtn.innerHTML = `<i class="fa-solid fa-check"></i> Save Personal Travel Profile (100%)`;
+      saveBtn.title = "";
+    }
+  }
 }
 
 function setPrecisionAnswer(qid, value, rerender = true) {
@@ -1266,7 +1321,21 @@ function renderPersonalSection() {
   const secs = bank.sections;
   const idx = secs.findIndex(s => s.id === sec.id);
   document.getElementById("personalPrevBtn").style.visibility = idx === 0 ? "hidden" : "visible";
-  document.getElementById("personalNextBtn").style.visibility = idx === secs.length - 1 ? "hidden" : "visible";
+  
+  const nextBtn = document.getElementById("personalNextBtn");
+  if (nextBtn) {
+    nextBtn.style.visibility = idx === secs.length - 1 ? "hidden" : "visible";
+    const unansInSec = ids.filter(id => !precAnswered(state.precision.answers[id]));
+    if (unansInSec.length > 0) {
+      nextBtn.disabled = true;
+      nextBtn.className = "px-3 py-2 border border-slate-200 text-slate-400 font-semibold text-xs rounded-xl cursor-not-allowed bg-slate-100 opacity-60";
+      nextBtn.title = `Please answer all questions in this section (${unansInSec.length} remaining) to continue`;
+    } else {
+      nextBtn.disabled = false;
+      nextBtn.className = "px-3 py-2 border border-indigo-200 text-indigo-700 font-semibold text-xs rounded-xl hover:bg-indigo-50 bg-white transition";
+      nextBtn.title = "";
+    }
+  }
 
   updatePersonalProgress();
   body.scrollTop = keepScroll;
@@ -1284,15 +1353,12 @@ function renderPrecisionQuestion(q) {
   head.appendChild(precEl("label", "block text-xs font-bold text-slate-800 leading-snug", q.question));
   
   const right = precEl("div", "flex items-center gap-2 shrink-0");
-  if (q.sensitive) {
-    const badge = precEl("span", "text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium", "Optional");
-    right.appendChild(badge);
-  }
   if (precAnswered(cur)) {
-    const skip = precEl("button", "text-[10px] text-slate-400 hover:text-rose-600 underline", "Clear");
-    skip.type = "button";
-    skip.onclick = () => setPrecisionAnswer(q.id, null);
-    right.appendChild(skip);
+    const answeredBadge = precEl("span", "text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200", "Answered ✓");
+    right.appendChild(answeredBadge);
+  } else {
+    const reqBadge = precEl("span", "text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200", "Required *");
+    right.appendChild(reqBadge);
   }
   head.appendChild(right);
   wrap.appendChild(head);
@@ -1744,6 +1810,12 @@ function onTripSelectChanged(tripId) {
 }
 
 function toggleTripFormModal() {
+  if (state.profileStatus && !state.profileStatus.complete) {
+    const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : "applicable";
+    alert(`Trip planning is locked until your mandatory travel profile is complete (${remaining} questions remaining). Please finish answering the questions first.`);
+    openPersonalProfileModal();
+    return;
+  }
   // Pre-fill trip form with default dates (14 days from today) and user profile defaults
   const startInput = document.getElementById("tripStartDateInput");
   const endInput = document.getElementById("tripEndDateInput");
