@@ -3,7 +3,7 @@ import json
 import uuid
 import numpy as np
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Query
 
 from app.models import (
     AuthRequest, AuthResponse, ShortProfileCreate, ProfileResponse,
@@ -885,15 +885,16 @@ def create_trip(user_id: str, payload: TripCreate):
     from app.data.india_destinations import DESTINATIONS_BY_ID
     import app.database as database
     is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
-    is_indian = (
+    is_valid_dest = (
         payload.destination_id in DESTINATIONS_BY_ID or
         payload.destination_id.endswith("_india") or
-        any(d["id"] == payload.destination_id and d.get("country") == "India" for d in DESTINATIONS)
+        payload.destination_id.startswith("geo_") or
+        any(d["id"] == payload.destination_id for d in DESTINATIONS)
     )
-    if not is_indian and not is_test_env:
+    if not is_valid_dest and not is_test_env:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only Indian destinations are supported for trip planning. International destinations are not supported."
+            detail="Only valid destinations or live searched cities are supported for trip planning."
         )
 
     # Validate travellers count and budget
@@ -1199,3 +1200,44 @@ def get_companion_status_endpoint(user_id: str):
             "message": "Companion unlocked." if has_deep else "Deep personalization profile required to unlock Travel Companion."
         }
 
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Real Key-Less APIs (Open-Meteo, Overpass, REST Countries)
+# ---------------------------------------------------------------------------
+from app.services.live_api_service import (
+    search_geocoding,
+    get_live_weather,
+    get_live_places_around,
+    get_country_info
+)
+
+@router.get("/geo/search")
+def api_geo_search(q: str = Query(..., min_length=1, description="City name to search")):
+    """Look up any worldwide city using Open-Meteo Geocoding API with SQLite cache and offline fallback."""
+    return search_geocoding(q)
+
+@router.get("/weather/live")
+def api_weather_live(
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD start date"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD end date")
+):
+    """Fetches real weather forecast or historical climate normals via Open-Meteo APIs."""
+    return get_live_weather(lat, lon, start_date, end_date)
+
+@router.get("/places/live-search")
+def api_places_live_search(
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    city: str = Query("", description="City name"),
+    radius: int = Query(8000, description="Search radius in meters")
+):
+    """Queries points of interest, cultural sites and dining from OpenStreetMap Overpass API."""
+    return get_live_places_around(lat, lon, city_name=city, radius_meters=radius)
+
+@router.get("/country/info")
+def api_country_info(country: str = Query(..., description="Country name")):
+    """Fetches real country currency, languages, and calling code from REST Countries API."""
+    return get_country_info(country)

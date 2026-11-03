@@ -1731,7 +1731,87 @@ function isIndianDestinationId(destId) {
 
 function isIndianTrip(trip) {
   if (!trip) return false;
+  if (trip.destination_id && trip.destination_id.startsWith("geo_")) return true;
   return isIndianDestinationId(trip.destination_id);
+}
+
+let _citySearchTimer = null;
+async function handleCitySearchInput(val) {
+  clearTimeout(_citySearchTimer);
+  const resultsEl = document.getElementById("citySearchResults");
+  if (!resultsEl) return;
+
+  const query = (val || "").trim();
+  if (query.length < 2) {
+    resultsEl.classList.add("hidden");
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  _citySearchTimer = setTimeout(async () => {
+    try {
+      resultsEl.classList.remove("hidden");
+      resultsEl.innerHTML = '<div class="p-2.5 text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Searching Open-Meteo...</div>';
+      
+      const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      const results = data.results || [];
+      const src = data.source || "api";
+
+      if (results.length === 0) {
+        resultsEl.innerHTML = '<div class="p-2.5 text-slate-400 text-xs">No matching cities found. Try another spelling.</div>';
+        return;
+      }
+
+      resultsEl.innerHTML = results.map(r => {
+        const itemStr = JSON.stringify(r).replace(/"/g, '&quot;');
+        return `
+          <div onclick="selectGeocodedCity(${itemStr}, '${src}')" 
+               class="p-2.5 hover:bg-emerald-50 cursor-pointer border-b border-slate-100 last:border-0 flex items-center justify-between text-xs">
+            <div>
+              <span class="font-bold text-slate-800">${r.name}</span>
+              <span class="text-slate-500 text-[11px] ml-1">${r.admin1 ? r.admin1 + ', ' : ''}${r.country}</span>
+            </div>
+            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${src}</span>
+          </div>
+        `;
+      }).join("");
+    } catch (e) {
+      console.warn("City search error:", e);
+      resultsEl.innerHTML = '<div class="p-2.5 text-rose-500 text-xs">Failed to search cities.</div>';
+    }
+  }, 300);
+}
+
+function selectGeocodedCity(item, src) {
+  const destSelect = document.getElementById("tripDestSelect");
+  const searchInput = document.getElementById("tripCitySearchInput");
+  const resultsEl = document.getElementById("citySearchResults");
+  const sourceInfo = document.getElementById("destinationSourceInfo");
+  const sourceText = document.getElementById("destinationSourceText");
+
+  if (resultsEl) resultsEl.classList.add("hidden");
+  if (searchInput) searchInput.value = `${item.name}, ${item.admin1 || item.country}`;
+
+  const destId = `geo_${item.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${item.country.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  const label = `${item.name}${item.admin1 ? ', ' + item.admin1 : ''} (${item.country})`;
+
+  // Add option to select if not present
+  let opt = Array.from(destSelect.options).find(o => o.value === destId);
+  if (!opt) {
+    opt = document.createElement("option");
+    opt.value = destId;
+    opt.textContent = label;
+    destSelect.insertBefore(opt, destSelect.firstChild);
+  }
+  destSelect.value = destId;
+
+  if (sourceInfo && sourceText) {
+    sourceInfo.classList.remove("hidden");
+    const lat = item.latitude !== undefined ? item.latitude.toFixed(2) : '0';
+    const lon = item.longitude !== undefined ? item.longitude.toFixed(2) : '0';
+    sourceText.textContent = `Resolved via Open-Meteo Geocoding · [source: ${src}] (${lat}°, ${lon}°)`;
+  }
 }
 
 function showInternationalTripNotice(trip) {
@@ -1856,7 +1936,11 @@ async function handleTripCreateSubmit(e) {
   e.preventDefault();
   if (!state.currentUser) return;
 
-  const destId = document.getElementById("tripDestSelect").value;
+  const destSelect = document.getElementById("tripDestSelect");
+  const destId = destSelect.value;
+  const selectedOption = destSelect.options[destSelect.selectedIndex];
+  const destName = selectedOption ? selectedOption.text : destId;
+
   const startDate = document.getElementById("tripStartDateInput").value;
   const endDate = document.getElementById("tripEndDateInput").value;
   const travellers = parseInt(document.getElementById("tripTravellersInput").value) || 1;
@@ -1865,9 +1949,10 @@ async function handleTripCreateSubmit(e) {
   const accom = document.getElementById("tripAccomSelect").value;
   const transit = document.getElementById("tripTransitSelect") ? document.getElementById("tripTransitSelect").value : "public_transit";
 
-  // Validate Indian destination
-  if (!isIndianDestinationId(destId)) {
-    alert("Only Indian destinations are supported. Please select an Indian destination.");
+  // Validate destination
+  const isGeo = destId.startsWith("geo_");
+  if (!isGeo && !isIndianDestinationId(destId)) {
+    alert("Please select a valid Indian destination or search any city via Open-Meteo Geocoding.");
     return;
   }
 
@@ -1905,6 +1990,7 @@ async function handleTripCreateSubmit(e) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         destination_id: destId,
+        destination_name: destName,
         start_date: startDate,
         end_date: endDate,
         travellers_count: travellers,
@@ -1996,6 +2082,9 @@ function renderItinerary(itin) {
   document.getElementById("itinDatesBadge").textContent = `${itin.total_days} Days Planned`;
   document.getElementById("itinSummaryNotes").textContent = itin.summary_notes || "Tailored by Contextual LinUCB bandit.";
   document.getElementById("itinTotalCostDisplay").textContent = formatINR(itin.total_estimated_cost);
+
+  // Load and display live weather forecast with transparent source badge
+  loadItineraryLiveWeather(itin.destination_name);
 
   daysContainer.innerHTML = "";
 
@@ -2234,5 +2323,53 @@ async function regenerateEntireItinerary() {
     }
   } catch (err) {
     console.error("Error regenerating itinerary:", err);
+  }
+}
+
+async function loadItineraryLiveWeather(destName) {
+  const card = document.getElementById("itinWeatherCard");
+  const summaryEl = document.getElementById("itinWeatherSummary");
+  const detailsEl = document.getElementById("itinWeatherDetails");
+  const badgeEl = document.getElementById("itinWeatherSourceBadge");
+  if (!card || !destName) return;
+
+  try {
+    card.classList.remove("hidden");
+    summaryEl.textContent = `Fetching live forecast for ${destName}...`;
+    detailsEl.textContent = "Open-Meteo Weather API";
+    badgeEl.textContent = "source: loading...";
+
+    // 1. Resolve geocoding
+    const geoRes = await fetch(`/api/geo/search?q=${encodeURIComponent(destName)}`);
+    const geoData = await geoRes.json();
+    if (!geoData.results || geoData.results.length === 0) {
+      summaryEl.textContent = `Weather conditions favorable for travel`;
+      badgeEl.textContent = "source: offline-estimate";
+      return;
+    }
+    const top = geoData.results[0];
+    const lat = top.latitude;
+    const lon = top.longitude;
+
+    // 2. Query live weather
+    const wRes = await fetch(`/api/weather/live?lat=${lat}&lon=${lon}`);
+    const wData = await wRes.json();
+    const cur = wData.current || {};
+    const temp = cur.temperature !== undefined ? `${cur.temperature}°C` : "Mild";
+    const desc = cur.weather_description || "Pleasant";
+    const wind = cur.wind_speed ? ` · Wind ${cur.wind_speed} km/h` : "";
+    const humidity = cur.humidity ? ` · Humidity ${cur.humidity}%` : "";
+    
+    summaryEl.textContent = `${desc}, ${temp}`;
+    detailsEl.textContent = `${top.name}, ${top.admin1 || top.country}${wind}${humidity}`;
+    const src = wData.source || "api";
+    badgeEl.textContent = `Open-Meteo [source: ${src}]`;
+    badgeEl.className = src === "api" 
+      ? "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"
+      : "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200";
+  } catch (err) {
+    console.warn("Failed to load live weather:", err);
+    if (summaryEl) summaryEl.textContent = "Weather conditions favorable for travel";
+    if (badgeEl) badgeEl.textContent = "source: offline-estimate";
   }
 }

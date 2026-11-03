@@ -92,7 +92,74 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     candidate_rows = cursor.fetchall()
     all_candidates = [dict(r) for r in candidate_rows]
 
-    # Integrate Places API dynamically if database has few or no activities for this destination
+    # Integrate Live Places (Overpass API) and Places API dynamically if DB has few or no activities
+    if len(all_candidates) < 8:
+        try:
+            from app.services.live_api_service import get_live_places_around, search_geocoding
+            dest_name = trip.get("destination_name", "")
+            geo_res = search_geocoding(dest_name)
+            places_list = []
+            source_tag = "OpenStreetMap Overpass (source: api)"
+            if geo_res.get("results"):
+                top_geo = geo_res["results"][0]
+                lat = top_geo.get("latitude", 0.0)
+                lon = top_geo.get("longitude", 0.0)
+                live_p = get_live_places_around(lat, lon, city=dest_name, radius=6000)
+                if live_p and live_p.get("places"):
+                    places_list = live_p["places"]
+                    src = live_p.get("source", "api")
+                    source_tag = f"OpenStreetMap Overpass (source: {src})"
+
+            if places_list:
+                for p in places_list:
+                    p_id = p.get("place_id") or f"{trip['destination_id']}_{p['name'].lower().replace(' ', '_')[:25]}"
+                    cat_raw = p.get("category", "culture")
+                    cat_map = {
+                        "culture": "culture_history",
+                        "nature": "nature_outdoors",
+                        "food": "food_dining",
+                        "adventure": "nature_outdoors",
+                        "rest": "relaxation_wellness"
+                    }
+                    can_cat = cat_map.get(cat_raw, "culture_history")
+                    dur_mins = int((p.get("typical_duration_hours") or 1.5) * 60)
+                    cost = 250.0 if can_cat == "culture_history" else (450.0 if can_cat == "food_dining" else 150.0)
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO destination_activities (
+                            id, destination_id, name, category, neighborhood,
+                            latitude, longitude, duration_minutes, cost_tier,
+                            cost_amount, physical_intensity, crowd_level,
+                            opening_time, closing_time, tags, avoidance_triggers,
+                            description, photo_url, data_source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        p_id,
+                        trip["destination_id"],
+                        p["name"],
+                        can_cat,
+                        p.get("neighborhood") or f"Central {dest_name}",
+                        p.get("lat") or 0.0,
+                        p.get("lon") or 0.0,
+                        dur_mins,
+                        "budget",
+                        cost,
+                        "moderate",
+                        "moderate",
+                        "09:00",
+                        "18:00",
+                        json.dumps([can_cat, "live_overpass"]),
+                        json.dumps([]),
+                        f"Visit {p['name']}, a verified spot in {dest_name}.",
+                        None,
+                        source_tag
+                    ))
+                conn.commit()
+                cursor.execute("SELECT * FROM destination_activities WHERE destination_id = ?", (trip["destination_id"],))
+                all_candidates = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+    # Fallback to local places_service if still < 8
     if len(all_candidates) < 8:
         try:
             from app.services.places_service import get_places_for_destination

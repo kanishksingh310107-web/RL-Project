@@ -541,6 +541,22 @@
             </div>
           </div>
 
+          <!-- Live Weather & Context Card -->
+          <div id="itinWeatherCard" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between text-xs gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-sm">
+                <i class="fa-solid fa-cloud-sun"></i>
+              </div>
+              <div>
+                <div class="font-bold text-slate-800" id="itinWeatherSummary">Checking forecast...</div>
+                <div class="text-[10px] text-slate-500" id="itinWeatherDetails">Open-Meteo Weather API</div>
+              </div>
+            </div>
+            <div id="itinWeatherSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+              source: api
+            </div>
+          </div>
+
           <!-- Day-by-Day Timeline Accordion / Tabs -->
           <div id="itineraryDaysContainer" class="space-y-6">
             <!-- Populated via JavaScript -->
@@ -1028,7 +1044,19 @@
 
       <form id="tripCreateForm" onsubmit="handleTripCreateSubmit(event)" class="mt-4 space-y-4 text-xs">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Destination</label>
+          <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <span>Destination</span>
+            <span class="text-[10px] text-emerald-600 font-normal">Open-Meteo Geocoding Live Search</span>
+          </label>
+          <div class="relative mb-2">
+            <input type="text" id="tripCitySearchInput" placeholder="Search any city worldwide (e.g. Pune, Srinagar, Shillong)..." 
+              class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50 text-xs"
+              autocomplete="off" oninput="handleCitySearchInput(this.value)">
+            <div id="citySearchResults" class="hidden absolute left-0 right-0 top-10 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto text-xs"></div>
+          </div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-[10px] text-slate-400 uppercase font-semibold">Or pick featured destination:</span>
+          </div>
           <select id="tripDestSelect" required class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
             <option value="manali_spiti_india">Manali & Spiti Valley (Himachal Pradesh)</option>
             <option value="rishikesh_haridwar_india">Rishikesh & Haridwar (Uttarakhand)</option>
@@ -1043,6 +1071,10 @@
             <option value="darjeeling_gangtok_india">Darjeeling & Gangtok (Sikkim / West Bengal)</option>
             <option value="meghalaya_shillong_india">Meghalaya (Shillong & Cherrapunji)</option>
           </select>
+          <div id="destinationSourceInfo" class="hidden text-[10px] text-slate-500 mt-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-check text-emerald-500"></i>
+            <span id="destinationSourceText">Resolved via Open-Meteo Geocoding</span>
+          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
