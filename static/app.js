@@ -1589,7 +1589,7 @@ async function submitPersonalProfile() {
     }
     // Refresh completeness status and unlock trip planner
     if (state.currentUser) {
-      const statusRes = await fetch(/api/profile//status);
+      const statusRes = await fetch('/api/profile/' + state.currentUser.user_id + '/status');
       if (statusRes.ok) {
         state.profileStatus = await statusRes.json();
       }
