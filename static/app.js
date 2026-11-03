@@ -1008,10 +1008,17 @@ function renderRecommendationCard(item, category) {
           ${tagsHtml}
         </div>
 
-        <!-- Tagline & Why it fits -->
-        <p class="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-          <strong class="text-slate-800 font-semibold">Why this fits you:</strong> ${item.why_it_suits}
-        </p>
+        <!-- Tagline & Because you said attribution -->
+        ${item.because_you_said ? `
+          <div class="p-2 rounded-lg bg-indigo-50/90 border border-indigo-100 text-[11px] text-indigo-900 leading-snug">
+            <span class="font-bold text-indigo-700 block text-[10px] uppercase tracking-wider mb-0.5"><i class="fa-solid fa-sparkles text-amber-500 mr-1"></i>Because you said:</span>
+            ${item.because_you_said}
+          </div>
+        ` : `
+          <p class="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+            <strong class="text-slate-800 font-semibold">Why this fits you:</strong> ${item.why_it_suits}
+          </p>
+        `}
       </div>
     </div>
 
@@ -2052,9 +2059,9 @@ function renderItinerary(itin) {
             </div>
             <h5 class="text-sm font-bold text-slate-900">${act.title}</h5>
             <p class="text-xs text-slate-600 leading-snug">${act.description || ''}</p>
-            <div class="text-[11px] text-indigo-700 font-medium flex items-center gap-1">
-              <i class="fa-solid fa-sparkles text-[10px]"></i>
-              <span>${act.why_it_suits || 'Matches your travel pacing and style.'}</span>
+            <div class="text-[11px] text-indigo-700 bg-indigo-50/80 border border-indigo-100 rounded-md px-2 py-1 font-medium flex items-start gap-1.5 mt-1">
+              <i class="fa-solid fa-sparkles text-[10px] text-indigo-500 mt-0.5 shrink-0"></i>
+              <span>${act.because_you_said || act.why_it_suits || 'Matches your travel pacing and style.'}</span>
             </div>
             ${act.transit_suggestion ? `<div class="text-[10px] text-slate-400"><i class="fa-solid fa-person-walking"></i> ${act.transit_suggestion}</div>` : ''}
           </div>

@@ -218,6 +218,7 @@ class DestinationRecommendation(BaseModel):
     match_score: float
     why_it_suits: str
     tags: List[str] = []
+    because_you_said: Optional[str] = None
     available_experiences: List[str] = []
     travel_style_and_atmosphere: str
     practical_considerations: Optional[str] = None
@@ -305,6 +306,7 @@ class ItineraryActivityModel(BaseModel):
     transit_suggestion: Optional[str] = None
     transit_duration_minutes: int = 15
     why_it_suits: Optional[str] = None
+    because_you_said: Optional[str] = None
     status: str = "proposed" # 'proposed', 'accepted', 'rejected', 'modified'
     rejection_reason: Optional[str] = None
     order_index: int = 0

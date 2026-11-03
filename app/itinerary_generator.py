@@ -269,10 +269,32 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                 transit_text = f"Depart from lodging to {chosen_act['neighborhood']}"
                 transit_mins = 15
 
-            # Tailored explanation
-            why_text = f"Chosen for your interest in {chosen_act['category'].replace('_', ' ')} with convenient pacing."
+            # Tailored explanation with explicit "Because you said..." attribution
+            because_reasons = []
+            if chosen_act["category"] == "food_dining":
+                diet_list = user_profile.get("dietary") or []
+                clean_diet = [d for d in diet_list if d != "none"]
+                if clean_diet:
+                    because_reasons.append(f"prefer {', '.join(clean_diet)} dining (Q20)")
+                else:
+                    because_reasons.append("enjoy authentic local food (Q21)")
+            elif any(t in chosen_act["category"] for t in ["culture", "history"]):
+                because_reasons.append("enjoy cultural and historical sites (Q14)")
+            elif any(t in chosen_act["category"] for t in ["nature", "outdoor", "adventure"]):
+                because_reasons.append("enjoy nature and outdoor exploration (Q5, Q14)")
+            elif any(t in chosen_act["category"] for t in ["relaxation", "wellness"]):
+                because_reasons.append("prefer peaceful, relaxing experiences (Q5)")
+            else:
+                because_reasons.append(f"enjoy {chosen_act['category'].replace('_', ' ')} (Q14)")
+
+            walking_val = user_profile.get("walking_tolerance")
+            if walking_val:
+                because_reasons.append(f"have a {str(walking_val).replace('_', ' ')} walking limit (Q74)")
+
+            because_you_said = f"Because you said you {' and '.join(because_reasons[:2])}."
+            why_text = f"{because_you_said} Paced comfortably for your schedule."
             if bonus_val > 0.35:
-                why_text += " (Exploration candidate to discover new local preferences)"
+                why_text += " (LinUCB exploration candidate)"
 
             act_record_id = str(uuid.uuid4())
             cost_val = float(chosen_act.get("cost_amount", 0.0))
@@ -325,6 +347,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                 "transit_suggestion": transit_text,
                 "transit_duration_minutes": transit_mins,
                 "why_it_suits": why_text,
+                "because_you_said": because_you_said,
                 "status": "proposed",
                 "photo_url": chosen_act.get("photo_url"),
                 "data_source": chosen_act.get("data_source", "curated")
