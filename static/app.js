@@ -875,7 +875,7 @@ async function loadRecommendations(isRefresh = false) {
   try {
     const res = await fetch(`/api/recommendations/${state.currentUser.user_id}?offset=${currentOffset}`);
     if (!res.ok) {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({ detail: "Personalised recommendations require a complete travel profile." }));
       const msg = err.detail || "Complete your profile to unlock recommendations.";
       basisEl.textContent = msg;
       recGrid.innerHTML = `

@@ -8,6 +8,7 @@
 #   4. build_precision_vector() - turns answers into extra RL state features, driven by the "vec" spec on each question.
 #   5. derive_insights() - human-readable planner rules the RL agent / planner can act on.
 import copy
+import json
 from typing import Any, Dict, List, Tuple
 
 from app.questionnaire import QUESTIONS as BASE_QUESTIONS
