@@ -40,7 +40,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,500 - \u20b94,500 ($30 - $55) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,500 - \u20b94,500 / day \u00b7 Budget",
         "preferred_climate": [
             "cool",
             "cold"
@@ -96,7 +96,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "low",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,500 - \u20b96,000 ($45 - $75) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,500 - \u20b96,000 / day \u00b7 Balanced",
         "preferred_climate": [
             "warm",
             "tropical"
@@ -149,7 +149,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "comfort",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,000 - \u20b95,500 ($38 - $70) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "mild",
             "warm"
@@ -201,7 +201,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,500 - \u20b96,500 ($42 - $80) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,500 - \u20b96,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "mild",
             "tropical"
@@ -254,7 +254,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,800 - \u20b96,800 ($45 - $82) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,800 - \u20b96,800 / day \u00b7 Balanced",
         "preferred_climate": [
             "cold",
             "cool"
@@ -307,7 +307,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "high",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,000 - \u20b94,000 ($25 - $50) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,000 - \u20b94,000 / day \u00b7 Budget",
         "preferred_climate": [
             "mild",
             "cool"
@@ -360,7 +360,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "balanced",
         "crowd_level": "high",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,000 - \u20b95,500 ($36 - $68) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "mild",
             "cool"
@@ -411,7 +411,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "moderate",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,200 - \u20b94,200 ($28 - $52) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,200 - \u20b94,200 / day \u00b7 Budget",
         "preferred_climate": [
             "cool",
             "mild"
@@ -462,7 +462,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,200 - \u20b94,000 ($26 - $48) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,200 - \u20b94,000 / day \u00b7 Budget",
         "preferred_climate": [
             "mild",
             "warm"
@@ -511,7 +511,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,000 - \u20b95,500 ($36 - $66) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "cool",
             "mild"
@@ -563,7 +563,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "balanced",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,200 - \u20b95,800 ($38 - $70) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,200 - \u20b95,800 / day \u00b7 Balanced",
         "preferred_climate": [
             "cool",
             "cold"
@@ -615,7 +615,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "low",
         "budget_tier": "luxury",
-        "estimated_cost": "\u20b95,000 - \u20b99,500 ($60 - $115) / day \u00b7 Luxury",
+        "estimated_cost": "\u20b95,000 - \u20b99,500 / day \u00b7 Luxury",
         "preferred_climate": [
             "warm",
             "tropical"
@@ -666,7 +666,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "comfort",
         "crowd_level": "high",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,000 - \u20b94,000 ($25 - $48) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,000 - \u20b94,000 / day \u00b7 Budget",
         "preferred_climate": [
             "cool",
             "mild"
@@ -716,7 +716,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,200 - \u20b95,800 ($38 - $70) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,200 - \u20b95,800 / day \u00b7 Balanced",
         "preferred_climate": [
             "cool",
             "mild"
@@ -765,7 +765,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "comfort",
         "crowd_level": "moderate",
         "budget_tier": "luxury",
-        "estimated_cost": "\u20b94,500 - \u20b98,500 ($55 - $105) / day \u00b7 Luxury",
+        "estimated_cost": "\u20b94,500 - \u20b98,500 / day \u00b7 Luxury",
         "preferred_climate": [
             "cool",
             "mild"
@@ -814,7 +814,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "balanced",
         "crowd_level": "high",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,500 - \u20b94,800 ($30 - $58) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,500 - \u20b94,800 / day \u00b7 Budget",
         "preferred_climate": [
             "mild",
             "cool"

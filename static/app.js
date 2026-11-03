@@ -1,3 +1,9 @@
+function formatINR(val) {
+  if (val == null || isNaN(val)) return "₹0";
+  const num = Math.round(Number(val));
+  return "₹" + num.toLocaleString("en-IN");
+}
+
 // Frontend script for RL Travel Guide
 // Master Questionnaire, Unified Personalisation, and Recommender Engine
 
@@ -650,6 +656,9 @@ async function handleProfileSubmit(e) {
     state.currentUser.has_profile = true;
     localStorage.setItem("rl_travel_user", JSON.stringify(state.currentUser));
     state.currentProfile = data;
+      if (window.TravelModules && window.TravelModules.refreshLockStatus) {
+        window.TravelModules.refreshLockStatus();
+      }
 
     renderDashboard(data);
     showView("dashboard");
@@ -1467,6 +1476,9 @@ async function submitPersonalProfile() {
     }
 
     renderPersonalResult(data);
+    if (window.TravelModules && window.TravelModules.refreshLockStatus) {
+      window.TravelModules.refreshLockStatus();
+    }
   } catch (err) {
     alert("Error: " + err.message);
   } finally {
@@ -1631,6 +1643,58 @@ let currentPlannedTripId = null;
 let currentItinerary = null;
 let pendingFeedbackContext = null;
 
+
+function isIndianDestinationId(destId) {
+  if (!destId) return false;
+  const id = destId.toLowerCase();
+  if (id.endsWith("_india") || id.includes("india")) return true;
+  const indianIds = [
+    "manali_spiti", "rishikesh_haridwar", "leh_ladakh", "varanasi",
+    "udaipur_mewar", "jaipur_jodhpur", "south_goa", "kerala_alleppey",
+    "hampi", "ooty_coorg", "darjeeling_gangtok", "meghalaya_shillong"
+  ];
+  return indianIds.some(i => id.includes(i));
+}
+
+function isIndianTrip(trip) {
+  if (!trip) return false;
+  return isIndianDestinationId(trip.destination_id);
+}
+
+function showInternationalTripNotice(trip) {
+  const emptyState = document.getElementById("itineraryEmptyState");
+  const displayContainer = document.getElementById("itineraryDisplayContainer");
+  const daysContainer = document.getElementById("itineraryDaysContainer");
+
+  emptyState.classList.add("hidden");
+  displayContainer.classList.remove("hidden");
+
+  document.getElementById("itinDestinationTitle").textContent = `${trip.destination_name} (Unsupported Destination)`;
+  document.getElementById("itinDatesBadge").textContent = `${trip.duration_days} Days · ${trip.start_date}`;
+  document.getElementById("itinSummaryNotes").textContent = "International destinations are not currently supported.";
+  document.getElementById("itinTotalCostDisplay").textContent = "₹0";
+
+  daysContainer.innerHTML = `
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 sm:p-8 text-center space-y-4 shadow-sm my-4">
+      <div class="w-14 h-14 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto text-2xl shadow-inner">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div>
+        <h4 class="text-base font-bold text-slate-800">International Destination Not Supported</h4>
+        <p class="text-xs text-slate-600 max-w-md mx-auto leading-relaxed mt-1">
+          <strong>${trip.destination_name}</strong> is an international destination. This application exclusively supports travel planning within India. Additional itinerary activities cannot be generated for international destinations.
+        </p>
+      </div>
+      <div class="pt-2 flex justify-center">
+        <button onclick="toggleTripFormModal()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2">
+          <i class="fa-solid fa-plus"></i>
+          <span>Plan an Indian Destination Trip Now &rarr;</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 async function loadUserTrips() {
   if (!state.currentUser) return;
   const select = document.getElementById("userTripsSelect");
@@ -1644,13 +1708,19 @@ async function loadUserTrips() {
       activeUserTrips.forEach(t => {
         const opt = document.createElement("option");
         opt.value = t.id;
-        opt.textContent = `${t.destination_name} (${t.duration_days} days · ${t.start_date})`;
+        if (!isIndianTrip(t)) {
+          opt.textContent = `${t.destination_name} (Unsupported - International) · ${t.duration_days}d`;
+          opt.style.color = "#b45309";
+        } else {
+          opt.textContent = `${t.destination_name} (${t.duration_days} days · ${t.start_date})`;
+        }
         select.appendChild(opt);
       });
 
       if (activeUserTrips.length > 0) {
-        // Automatically select the most recently created trip
-        currentPlannedTripId = activeUserTrips[0].id;
+        // Prioritize first valid Indian trip over legacy international ones
+        const firstIndian = activeUserTrips.find(isIndianTrip);
+        currentPlannedTripId = firstIndian ? firstIndian.id : activeUserTrips[0].id;
         select.value = currentPlannedTripId;
         await loadTripItinerary(currentPlannedTripId);
       } else {
@@ -1711,10 +1781,39 @@ async function handleTripCreateSubmit(e) {
   const startDate = document.getElementById("tripStartDateInput").value;
   const endDate = document.getElementById("tripEndDateInput").value;
   const travellers = parseInt(document.getElementById("tripTravellersInput").value) || 1;
-  const budget = parseFloat(document.getElementById("tripBudgetInput").value) || 1200;
+  const budget = parseFloat(document.getElementById("tripBudgetInput").value) || 25000;
   const pace = document.getElementById("tripPaceSelect").value;
   const accom = document.getElementById("tripAccomSelect").value;
-  const transit = document.getElementById("tripTransitSelect").value;
+  const transit = document.getElementById("tripTransitSelect") ? document.getElementById("tripTransitSelect").value : "public_transit";
+
+  // Validate Indian destination
+  if (!isIndianDestinationId(destId)) {
+    alert("Only Indian destinations are supported. Please select an Indian destination.");
+    return;
+  }
+
+  // Validate dates
+  if (!startDate || !endDate) {
+    alert("Please select both departure and return dates.");
+    return;
+  }
+
+  const dStart = new Date(startDate);
+  const dEnd = new Date(endDate);
+  if (dEnd < dStart) {
+    alert("Return date must be on or after departure date.");
+    return;
+  }
+
+  if (travellers < 1) {
+    alert("Travellers count must be at least 1.");
+    return;
+  }
+
+  if (budget <= 0) {
+    alert("Total trip budget in INR (₹) must be greater than zero.");
+    return;
+  }
 
   const btn = document.getElementById("generateItinerarySubmitBtn");
   if (btn) btn.disabled = true;
@@ -1731,6 +1830,7 @@ async function handleTripCreateSubmit(e) {
         end_date: endDate,
         travellers_count: travellers,
         total_budget: budget,
+        currency: "INR",
         accommodation_tier: accom,
         transit_pref: transit,
         travel_pace: pace,
@@ -1740,7 +1840,7 @@ async function handleTripCreateSubmit(e) {
 
     if (!tripRes.ok) {
       const errData = await tripRes.json();
-      alert("Error creating trip: " + (errData.detail || "Invalid trip dates"));
+      alert("Error creating trip: " + (errData.detail || "Invalid trip details"));
       return;
     }
 
@@ -1757,6 +1857,9 @@ async function handleTripCreateSubmit(e) {
       currentPlannedTripId = newTrip.id;
       await loadUserTrips();
       renderItinerary(currentItinerary);
+    } else {
+      const errData = await itinRes.json();
+      alert("Could not generate itinerary: " + (errData.detail || "Server error"));
     }
   } catch (err) {
     console.error("Trip creation error:", err);
@@ -1770,13 +1873,19 @@ async function handleTripCreateSubmit(e) {
 async function loadTripItinerary(tripId) {
   if (!state.currentUser || !tripId) return;
 
+  const tripObj = activeUserTrips.find(t => t.id === tripId);
+  if (tripObj && !isIndianTrip(tripObj)) {
+    showInternationalTripNotice(tripObj);
+    return;
+  }
+
   try {
     const res = await fetch(`/api/itinerary/${tripId}?user_id=${state.currentUser.user_id}`);
     if (res.ok) {
       currentItinerary = await res.json();
       renderItinerary(currentItinerary);
     } else {
-      // Auto-generate if not yet generated
+      // Auto-generate if not yet generated for Indian destinations
       const genRes = await fetch(`/api/itinerary/generate/${tripId}?user_id=${state.currentUser.user_id}`, {
         method: "POST"
       });
@@ -1807,7 +1916,7 @@ function renderItinerary(itin) {
   document.getElementById("itinDestinationTitle").textContent = itin.destination_name;
   document.getElementById("itinDatesBadge").textContent = `${itin.total_days} Days Planned`;
   document.getElementById("itinSummaryNotes").textContent = itin.summary_notes || "Tailored by Contextual LinUCB bandit.";
-  document.getElementById("itinTotalCostDisplay").textContent = `$${itin.total_estimated_cost.toFixed(2)}`;
+  document.getElementById("itinTotalCostDisplay").textContent = formatINR(itin.total_estimated_cost);
 
   daysContainer.innerHTML = "";
 
@@ -1826,7 +1935,7 @@ function renderItinerary(itin) {
         <h4 class="text-sm font-bold text-slate-900 mt-0.5">${day.theme}</h4>
       </div>
       <div class="flex items-center gap-2 text-xs">
-        <span class="text-slate-500">${day.activities.length} activities · Est. $${day.total_cost.toFixed(2)}</span>
+        <span class="text-slate-500">${day.activities.length} activities · Est. ${formatINR(day.total_cost)}</span>
       </div>
     `;
     dayCard.appendChild(header);
@@ -1867,7 +1976,7 @@ function renderItinerary(itin) {
               <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">${act.time_slot}</span>
               ${statusBadge}
               <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">${act.neighborhood || 'Local Area'}</span>
-              <span class="text-[10px] font-bold text-slate-700">${act.duration_minutes} mins · $${act.cost_estimate.toFixed(2)}</span>
+              <span class="text-[10px] font-bold text-slate-700">${act.duration_minutes} mins · ${formatINR(act.cost_estimate)}</span>
             </div>
             <h5 class="text-sm font-bold text-slate-900">${act.title}</h5>
             <p class="text-xs text-slate-600 leading-snug">${act.description || ''}</p>
@@ -1987,7 +2096,7 @@ async function openModifyModal(itineraryId, activityId) {
           <div>
             <div class="flex items-center gap-1.5 mb-0.5">
               <span class="text-[10px] font-bold uppercase bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">${alt.category.replace('_', ' ')}</span>
-              <span class="text-[10px] text-slate-500">${alt.duration_minutes} mins · $${alt.cost_amount}</span>
+              <span class="text-[10px] text-slate-500">${alt.duration_minutes} mins · ${formatINR(alt.cost_amount)}</span>
             </div>
             <h5 class="text-xs font-bold text-slate-900">${alt.name}</h5>
             <p class="text-[11px] text-slate-500 leading-tight">${alt.description}</p>
@@ -2029,6 +2138,11 @@ async function selectAlternative(replacementId) {
 
 async function regenerateEntireItinerary() {
   if (!state.currentUser || !currentPlannedTripId) return;
+  const tripObj = activeUserTrips.find(t => t.id === currentPlannedTripId);
+  if (tripObj && !isIndianTrip(tripObj)) {
+    alert("Itinerary regeneration is only supported for Indian destinations. This trip is an unsupported international destination.");
+    return;
+  }
   if (!confirm("Regenerate itinerary? This will preserve your accepted activities while replacing skipped slots with fresh recommendations.")) return;
 
   try {

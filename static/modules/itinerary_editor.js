@@ -32,7 +32,9 @@ TravelModules.register("itinerary_editor", {
         open: false,
         activityId: null,
         loading: false,
-        alternatives: []
+        freshAlternatives: [],
+        switchOptions: [],
+        notice: null
       }
     };
 
@@ -180,26 +182,68 @@ TravelModules.register("itinerary_editor", {
                 <button id="closeAltsBtn" class="text-slate-400 hover:text-slate-600 text-sm">✕</button>
               </div>
 
-              <div id="altsModalBody">
-                ${state.altsModal.loading ? `<div class="p-6 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Finding alternative activities...</div>` : ''}
-                ${!state.altsModal.loading && state.altsModal.alternatives.length === 0 ? `<div class="p-4 text-center text-slate-400 text-xs">No suitable alternatives found.</div>` : ''}
-                ${!state.altsModal.loading && state.altsModal.alternatives.map(alt => `
-                  <div class="p-3 border border-slate-200 rounded-xl hover:border-indigo-400 hover:bg-indigo-50/40 transition space-y-2 mb-2">
-                    <div class="flex justify-between items-start">
-                      <div>
-                        <h5 class="font-bold text-xs text-slate-900">${alt.title || alt.name}</h5>
-                        <p class="text-[10px] text-slate-500">${alt.category} • ${alt.neighborhood || 'Nearby'}</p>
-                      </div>
-                      <span class="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
-                        Score: ${(alt.predicted_reward || 0.8).toFixed(2)}
-                      </span>
-                    </div>
-                    <p class="text-[11px] text-slate-600 line-clamp-2">${alt.description || ''}</p>
-                    <button data-swap-id="${alt.id}" class="btn-swap-item w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-1.5 rounded-lg transition">
-                      Swap with this activity
-                    </button>
+              <div id="altsModalBody" class="space-y-3">
+                ${state.altsModal.loading ? `<div class="p-6 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Finding personalized alternatives via LinUCB...</div>` : ''}
+
+                ${state.altsModal.notice ? `
+                  <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-start gap-2">
+                    <i class="fa-solid fa-circle-info text-amber-600 mt-0.5"></i>
+                    <span>${state.altsModal.notice}</span>
                   </div>
-                `).join("")}
+                ` : ''}
+
+                ${!state.altsModal.loading && state.altsModal.freshAlternatives.length > 0 ? `
+                  <div>
+                    <h5 class="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <i class="fa-solid fa-sparkles text-emerald-600"></i> Fresh Alternative Places
+                    </h5>
+                    ${state.altsModal.freshAlternatives.map(alt => `
+                      <div class="p-3 border border-slate-200 rounded-xl hover:border-emerald-400 hover:bg-emerald-50/30 transition space-y-2 mb-2">
+                        <div class="flex justify-between items-start">
+                          <div>
+                            <h5 class="font-bold text-xs text-slate-900">${alt.title || alt.name}</h5>
+                            <p class="text-[10px] text-slate-500">${alt.category} • ${alt.neighborhood || 'Local Area'} • ${window.formatINR ? window.formatINR(alt.cost_amount || alt.cost_estimate || 250) : '₹250'}</p>
+                          </div>
+                          <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">
+                            Score: ${(alt.predicted_reward || 0.85).toFixed(2)}
+                          </span>
+                        </div>
+                        <p class="text-[11px] text-slate-600 line-clamp-2">${alt.description || ''}</p>
+                        <button data-swap-id="${alt.id}" class="btn-swap-item w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs py-1.5 rounded-lg transition flex items-center justify-center gap-1">
+                          <i class="fa-solid fa-arrows-rotate"></i> Replace with this place
+                        </button>
+                      </div>
+                    `).join("")}
+                  </div>
+                ` : ''}
+
+                ${!state.altsModal.loading && state.altsModal.switchOptions.length > 0 ? `
+                  <div class="pt-2 border-t border-slate-100">
+                    <h5 class="text-xs font-bold text-indigo-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <i class="fa-solid fa-arrow-right-arrow-left text-indigo-600"></i> Already In Itinerary (Switch Days)
+                    </h5>
+                    ${state.altsModal.switchOptions.map(alt => `
+                      <div class="p-3 border border-indigo-100 bg-indigo-50/40 rounded-xl space-y-2 mb-2">
+                        <div class="flex justify-between items-start">
+                          <div>
+                            <h5 class="font-bold text-xs text-slate-900">${alt.title || alt.name}</h5>
+                            <span class="text-[10px] font-semibold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">
+                              Scheduled on Day ${alt.scheduled_day} (${alt.scheduled_time})
+                            </span>
+                          </div>
+                        </div>
+                        <p class="text-[11px] text-slate-600 line-clamp-2">${alt.description || ''}</p>
+                        <button data-switch-id="${alt.id}" class="btn-switch-item w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-1.5 rounded-lg transition flex items-center justify-center gap-1">
+                          <i class="fa-solid fa-arrow-right-arrow-left"></i> Switch Day ${state.selectedDay} with Day ${alt.scheduled_day}
+                        </button>
+                      </div>
+                    `).join("")}
+                  </div>
+                ` : ''}
+
+                ${!state.altsModal.loading && state.altsModal.freshAlternatives.length === 0 && state.altsModal.switchOptions.length === 0 ? `
+                  <div class="p-4 text-center text-slate-400 text-xs">No suitable replacement places available for this slot.</div>
+                ` : ''}
               </div>
             </div>
           </div>
@@ -271,7 +315,46 @@ TravelModules.register("itinerary_editor", {
             state.altsModal.open = false;
             await loadData();
           } catch (e) {
-            alert("Error swapping activity: " + e.message);
+            alert("Error replacing activity: " + e.message);
+          }
+        };
+      });
+
+      // Switch days button listener
+      container.querySelectorAll(".btn-switch-item").forEach(b => {
+        b.onclick = async () => {
+          const switchTargetId = b.dataset.switchId;
+          const sourceActivityId = state.altsModal.activityId;
+          try {
+            const res = await ctx.api(`/api/trip-actions/${tripId}/switch-days`, {
+              method: "POST",
+              body: { user_id: userId, activity_id_a: sourceActivityId, activity_id_b: switchTargetId }
+            });
+            alert(res.message);
+            state.altsModal.open = false;
+            await loadData();
+          } catch (e) {
+            alert("Error switching activities: " + e.message);
+          }
+        };
+      });
+
+      // Reschedule (prepone / postpone) button listener
+      container.querySelectorAll(".btn-reschedule").forEach(b => {
+        b.onclick = async () => {
+          const actId = b.dataset.actId;
+          const dir = b.dataset.dir;
+          try {
+            const res = await ctx.api(`/api/trip-actions/${tripId}/activity/${actId}/reschedule`, {
+              method: "POST",
+              body: { user_id: userId, direction: dir }
+            });
+            if (res.status === "unchanged") {
+              alert(res.message);
+            }
+            await loadData();
+          } catch (e) {
+            alert("Error rescheduling: " + e.message);
           }
         };
       });
@@ -346,21 +429,32 @@ TravelModules.register("itinerary_editor", {
               <span class="text-[11px] font-mono text-indigo-700 bg-indigo-50 font-semibold px-2 py-0.5 rounded-md">
                 ${block.time_range}
               </span>
-              <p class="text-[10px] text-slate-400 mt-0.5">Approx. $${block.cost_estimate || 0}</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">Approx. ${window.formatINR ? window.formatINR(block.cost_estimate) : '₹' + (block.cost_estimate || 0)}</p>
             </div>
           </div>
 
           <p class="text-xs text-slate-600">${block.description}</p>
 
-          <!-- Edit & Suggestion Buttons -->
+          <!-- Edit, Reschedule & Suggestion Controls -->
           ${block.can_edit ? `
-            <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-              <button data-act-id="${block.activity_id}" class="btn-suggest-alt text-indigo-600 hover:text-indigo-800 font-semibold text-[11px] flex items-center gap-1">
-                <i class="fa-solid fa-lightbulb text-amber-500"></i> Suggest Alternatives
-              </button>
-              <button data-act-id="${block.activity_id}" class="btn-remove-act text-rose-500 hover:text-rose-700 text-[11px] flex items-center gap-1">
-                <i class="fa-solid fa-trash-can"></i> Remove
-              </button>
+            <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div class="flex items-center gap-1.5">
+                <button data-act-id="${block.activity_id}" data-dir="earlier" class="btn-reschedule px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-semibold flex items-center gap-1" title="Move Earlier (Prepone)">
+                  <i class="fa-solid fa-arrow-up text-slate-500"></i> Prepone
+                </button>
+                <button data-act-id="${block.activity_id}" data-dir="later" class="btn-reschedule px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-semibold flex items-center gap-1" title="Move Later (Postpone)">
+                  <i class="fa-solid fa-arrow-down text-slate-500"></i> Postpone
+                </button>
+              </div>
+
+              <div class="flex items-center gap-3">
+                <button data-act-id="${block.activity_id}" class="btn-suggest-alt text-indigo-600 hover:text-indigo-800 font-semibold text-[11px] flex items-center gap-1">
+                  <i class="fa-solid fa-lightbulb text-amber-500"></i> Replace / Switch
+                </button>
+                <button data-act-id="${block.activity_id}" class="btn-remove-act text-rose-500 hover:text-rose-700 text-[11px] flex items-center gap-1">
+                  <i class="fa-solid fa-trash-can"></i> Remove
+                </button>
+              </div>
             </div>
           ` : ''}
         </div>`;
@@ -370,14 +464,25 @@ TravelModules.register("itinerary_editor", {
       state.altsModal.open = true;
       state.altsModal.activityId = activityId;
       state.altsModal.loading = true;
-      state.altsModal.alternatives = [];
+      state.altsModal.freshAlternatives = [];
+      state.altsModal.switchOptions = [];
+      state.altsModal.notice = null;
       renderUI();
 
       try {
-        const res = await ctx.api(`/api/itinerary/alternatives/${itineraryId}/${activityId}?user_id=${userId}`);
-        state.altsModal.alternatives = res.alternatives || [];
+        const res = await ctx.api(`/api/trip-actions/${tripId}/activity/${activityId}/alternatives?user_id=${userId}`);
+        state.altsModal.freshAlternatives = res.fresh_alternatives || [];
+        state.altsModal.switchOptions = res.switch_day_options || [];
+        state.altsModal.notice = res.notice || null;
       } catch (err) {
-        alert("Failed to load alternatives: " + err.message);
+        try {
+          const res2 = await ctx.api(`/api/itinerary/alternatives/${itineraryId}/${activityId}?user_id=${userId}`);
+          const alts = res2.alternatives || [];
+          state.altsModal.freshAlternatives = alts.filter(a => !a.is_already_scheduled);
+          state.altsModal.switchOptions = alts.filter(a => a.is_already_scheduled);
+        } catch (e2) {
+          state.altsModal.notice = "Could not fetch live alternatives at this time.";
+        }
       } finally {
         state.altsModal.loading = false;
         renderUI();

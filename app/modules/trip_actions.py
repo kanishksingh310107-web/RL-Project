@@ -5,7 +5,7 @@
 
 import datetime
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.database import get_connection
@@ -393,3 +393,215 @@ def remove_itinerary_activity(
             "status": "removed",
             "message": "Activity removed from your itinerary."
         }
+
+# ---------------------------------------------------------------------------
+# Rescheduling and Day-Switching Models & Endpoints
+# ---------------------------------------------------------------------------
+
+class RescheduleRequest(BaseModel):
+    user_id: str
+    direction: Optional[str] = Field("later", description="earlier or later")
+    target_day: Optional[int] = Field(None, description="Move to a specific day number")
+
+
+class SwitchDaysRequest(BaseModel):
+    user_id: str
+    activity_id_a: str
+    activity_id_b: str
+
+
+@router.post("/{trip_id}/activity/{activity_id}/reschedule")
+def reschedule_itinerary_activity(
+    trip_id: str,
+    activity_id: str,
+    payload: RescheduleRequest
+):
+    """
+    Reschedules an existing activity:
+    - Moves it earlier or later within the day by swapping order/time with the adjacent activity.
+    - Or moves it to another specified day.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        itin = cursor.execute("SELECT id FROM itineraries WHERE trip_id = ?", (trip_id,)).fetchone()
+        if not itin:
+            raise HTTPException(status_code=404, detail="Itinerary not found")
+        itinerary_id = itin[0]
+
+        cursor.execute("""
+            SELECT id, day_number, time_slot, order_index, title
+            FROM itinerary_activities
+            WHERE itinerary_id = ? AND activity_id = ?
+        """, (itinerary_id, activity_id))
+        target = cursor.fetchone()
+        if not target:
+            raise HTTPException(status_code=404, detail="Activity not found in itinerary")
+
+        t_id, t_day, t_slot, t_order, t_title = target
+
+        if payload.target_day and payload.target_day != t_day:
+            # Move to another day: append as highest order on target day
+            cursor.execute("""
+                SELECT COALESCE(MAX(order_index), 0) + 1 FROM itinerary_activities
+                WHERE itinerary_id = ? AND day_number = ?
+            """, (itinerary_id, payload.target_day))
+            new_order = cursor.fetchone()[0]
+            cursor.execute("""
+                UPDATE itinerary_activities
+                SET day_number = ?, order_index = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """, (payload.target_day, new_order, t_id))
+            conn.commit()
+            return {
+                "status": "rescheduled",
+                "message": f"Moved '{t_title}' to Day {payload.target_day}.",
+                "activity_id": activity_id,
+                "new_day": payload.target_day
+            }
+
+        # Swap order with adjacent activity within the same day
+        if payload.direction == "earlier":
+            cursor.execute("""
+                SELECT id, time_slot, order_index, title FROM itinerary_activities
+                WHERE itinerary_id = ? AND day_number = ? AND order_index < ?
+                ORDER BY order_index DESC LIMIT 1
+            """, (itinerary_id, t_day, t_order))
+        else: # later
+            cursor.execute("""
+                SELECT id, time_slot, order_index, title FROM itinerary_activities
+                WHERE itinerary_id = ? AND day_number = ? AND order_index > ?
+                ORDER BY order_index ASC LIMIT 1
+            """, (itinerary_id, t_day, t_order))
+
+        adjacent = cursor.fetchone()
+        if not adjacent:
+            direction_label = "earlier" if payload.direction == "earlier" else "later"
+            return {
+                "status": "unchanged",
+                "message": f"'{t_title}' is already the {direction_label} activity on Day {t_day}. You can move it to another day or replace it.",
+                "activity_id": activity_id
+            }
+
+        adj_id, adj_slot, adj_order, adj_title = adjacent
+
+        # Swap time slots and order indices
+        cursor.execute("""
+            UPDATE itinerary_activities
+            SET time_slot = ?, order_index = ?
+            WHERE id = ?
+        """, (adj_slot, adj_order, t_id))
+
+        cursor.execute("""
+            UPDATE itinerary_activities
+            SET time_slot = ?, order_index = ?
+            WHERE id = ?
+        """, (t_slot, t_order, adj_id))
+
+        conn.commit()
+        return {
+            "status": "rescheduled",
+            "message": f"Rescheduled '{t_title}' with '{adj_title}' on Day {t_day}.",
+            "activity_id": activity_id,
+            "direction": payload.direction
+        }
+
+
+@router.post("/{trip_id}/switch-days")
+def switch_activities_between_days(
+    trip_id: str,
+    payload: SwitchDaysRequest
+):
+    """
+    Swaps two activities between different days without duplicate entries or scheduling conflicts.
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        itin = cursor.execute("SELECT id FROM itineraries WHERE trip_id = ?", (trip_id,)).fetchone()
+        if not itin:
+            raise HTTPException(status_code=404, detail="Itinerary not found")
+        itinerary_id = itin[0]
+
+        cursor.execute("""
+            SELECT id, day_number, time_slot, order_index, title
+            FROM itinerary_activities
+            WHERE itinerary_id = ? AND activity_id = ?
+        """, (itinerary_id, payload.activity_id_a))
+        act_a = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT id, day_number, time_slot, order_index, title
+            FROM itinerary_activities
+            WHERE itinerary_id = ? AND activity_id = ?
+        """, (itinerary_id, payload.activity_id_b))
+        act_b = cursor.fetchone()
+
+        if not act_a or not act_b:
+            raise HTTPException(status_code=404, detail="One or both activities not found in itinerary")
+
+        id_a, day_a, slot_a, order_a, title_a = act_a
+        id_b, day_b, slot_b, order_b, title_b = act_b
+
+        # Atomically swap day, slot, and order
+        cursor.execute("""
+            UPDATE itinerary_activities
+            SET day_number = ?, time_slot = ?, order_index = ?
+            WHERE id = ?
+        """, (day_b, slot_b, order_b, id_a))
+
+        cursor.execute("""
+            UPDATE itinerary_activities
+            SET day_number = ?, time_slot = ?, order_index = ?
+            WHERE id = ?
+        """, (day_a, slot_a, order_a, id_b))
+
+        conn.commit()
+
+        return {
+            "status": "switched",
+            "message": f"Successfully switched '{title_a}' (Day {day_a}) with '{title_b}' (Day {day_b}).",
+            "activity_a": {"id": payload.activity_id_a, "new_day": day_b},
+            "activity_b": {"id": payload.activity_id_b, "new_day": day_a}
+        }
+
+
+@router.get("/{trip_id}/activity/{activity_id}/alternatives")
+def get_activity_alternatives_detailed(
+    trip_id: str,
+    activity_id: str,
+    user_id: Optional[str] = Query(None)
+):
+    """
+    Retrieves alternative recommendations, distinguishing between:
+    - Truly fresh alternatives (not anywhere in this trip).
+    - Already scheduled activities in other days (available to switch between days).
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        itin = cursor.execute("SELECT id FROM itineraries WHERE trip_id = ?", (trip_id,)).fetchone()
+        if not itin:
+            raise HTTPException(status_code=404, detail="Itinerary not found")
+        itinerary_id = itin[0]
+
+        target_user = user_id
+        if not target_user:
+            t_row = cursor.execute("SELECT user_id FROM trips WHERE id = ?", (trip_id,)).fetchone()
+            target_user = t_row[0] if t_row else ""
+
+        alts = get_slot_alternatives(conn, target_user, itinerary_id, activity_id)
+
+        fresh = [a for a in alts if not a.get("is_already_scheduled")]
+        scheduled_elsewhere = [a for a in alts if a.get("is_already_scheduled")]
+
+        no_fresh_msg = None
+        if not fresh:
+            no_fresh_msg = "All curated highlights for this destination are currently in your itinerary. You can switch activities with another day or reschedule."
+
+        return {
+            "trip_id": trip_id,
+            "activity_id": activity_id,
+            "fresh_alternatives": fresh,
+            "switch_day_options": scheduled_elsewhere,
+            "all_options": alts,
+            "notice": no_fresh_msg
+        }
+

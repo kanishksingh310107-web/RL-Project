@@ -263,8 +263,8 @@ class TripCreate(BaseModel):
     start_date: str # YYYY-MM-DD
     end_date: str # YYYY-MM-DD
     travellers_count: int = 1
-    total_budget: float = 1200.0
-    currency: str = "USD"
+    total_budget: float = 25000.0
+    currency: str = "INR"
     accommodation_tier: str = "balanced" # 'budget_hostel', 'boutique', 'resort', 'apartment'
     transit_pref: str = "public_transit" # 'public_transit', 'walking', 'rental_car', 'taxi'
     travel_pace: str = "balanced" # 'relaxed', 'balanced', 'packed'

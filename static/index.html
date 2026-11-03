@@ -307,7 +307,7 @@
             <h1 class="text-xl font-bold text-slate-900" id="dashWelcomeName">Welcome</h1>
             <p class="text-xs text-slate-500 mt-1 max-w-xl" id="dashSummaryText">Loading profile...</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
             <button onclick="editProfile()" class="px-3.5 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs rounded-xl transition flex items-center gap-1.5">
               <i class="fa-solid fa-pen-to-square"></i>
               <span>Edit Setup</span>
@@ -492,11 +492,11 @@
               Powered by Contextual LinUCB Reinforcement Learning. Recommendations adapt as you accept, reject, or modify activities.
             </p>
           </div>
-          <div class="flex items-center gap-2">
-            <select id="userTripsSelect" onchange="onTripSelectChanged(this.value)" class="text-xs border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
+            <select id="userTripsSelect" onchange="onTripSelectChanged(this.value)" class="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[240px] sm:max-w-[280px] truncate">
               <option value="">-- Select Planned Trip --</option>
             </select>
-            <button onclick="toggleTripFormModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition shadow-sm">
+            <button onclick="toggleTripFormModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition shadow-sm whitespace-nowrap shrink-0">
               <i class="fa-solid fa-plus"></i>
               <span>Plan New Trip</span>
             </button>
@@ -526,13 +526,13 @@
                 <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">Active Itinerary</span>
                 <span class="text-xs text-slate-400" id="itinDatesBadge">Nov 10 – Nov 14, 2026 (5 Days)</span>
               </div>
-              <h3 class="text-lg font-bold" id="itinDestinationTitle">Kyoto, Japan</h3>
+              <h3 class="text-lg font-bold" id="itinDestinationTitle">Select an Indian Destination</h3>
               <p class="text-xs text-slate-300 mt-0.5" id="itinSummaryNotes">Generated via LinUCB Contextual Bandit policy.</p>
             </div>
             <div class="flex items-center gap-3">
               <div class="text-right">
                 <span class="text-[10px] text-slate-400 block uppercase font-bold">Estimated Cost</span>
-                <span class="text-base font-mono font-bold text-emerald-400" id="itinTotalCostDisplay">$0.00</span>
+                <span class="text-base font-mono font-bold text-emerald-400" id="itinTotalCostDisplay">₹0</span>
               </div>
               <button onclick="regenerateEntireItinerary()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 transition">
                 <i class="fa-solid fa-arrows-rotate"></i>
@@ -1030,11 +1030,18 @@
         <div>
           <label class="block font-semibold text-slate-700 mb-1">Destination</label>
           <select id="tripDestSelect" required class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
-            <option value="kyoto_japan">Kyoto, Japan</option>
-            <option value="manali_spiti_india">Manali & Spiti Valley, India</option>
-            <option value="santorini_greece">Santorini, Greece</option>
-            <option value="swiss_alps">Swiss Alps, Switzerland</option>
-            <option value="tokyo_japan">Tokyo, Japan</option>
+            <option value="manali_spiti_india">Manali & Spiti Valley (Himachal Pradesh)</option>
+            <option value="rishikesh_haridwar_india">Rishikesh & Haridwar (Uttarakhand)</option>
+            <option value="leh_ladakh_india">Leh Ladakh (Ladakh)</option>
+            <option value="varanasi_india">Varanasi (Uttar Pradesh)</option>
+            <option value="udaipur_mewar_india">Udaipur & Mewar (Rajasthan)</option>
+            <option value="jaipur_jodhpur_india">Jaipur & Jodhpur (Rajasthan)</option>
+            <option value="south_goa_india">South Goa</option>
+            <option value="kerala_alleppey_india">Munnar & Alleppey (Kerala)</option>
+            <option value="hampi_india">Hampi (Karnataka)</option>
+            <option value="ooty_coorg_india">Ooty & Coorg (Tamil Nadu / Karnataka)</option>
+            <option value="darjeeling_gangtok_india">Darjeeling & Gangtok (Sikkim / West Bengal)</option>
+            <option value="meghalaya_shillong_india">Meghalaya (Shillong & Cherrapunji)</option>
           </select>
         </div>
 
@@ -1055,8 +1062,8 @@
             <input type="number" id="tripTravellersInput" min="1" max="10" value="2" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
           </div>
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Total Trip Budget ($)</label>
-            <input type="number" id="tripBudgetInput" min="100" max="25000" step="50" value="1200" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
+            <label class="block font-semibold text-slate-700 mb-1">Total Trip Budget (₹)</label>
+            <input type="number" id="tripBudgetInput" min="1000" max="500000" step="500" value="15000" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
           </div>
         </div>
 

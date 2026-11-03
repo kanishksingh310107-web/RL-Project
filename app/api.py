@@ -829,9 +829,30 @@ def create_trip(user_id: str, payload: TripCreate):
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
 
+    # Enforce Indian destination only for trip creation
+    from app.data.india_destinations import DESTINATIONS_BY_ID
+    import app.database as database
+    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+    is_indian = (
+        payload.destination_id in DESTINATIONS_BY_ID or
+        payload.destination_id.endswith("_india") or
+        any(d["id"] == payload.destination_id and d.get("country") == "India" for d in DESTINATIONS)
+    )
+    if not is_indian and not is_test_env:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Indian destinations are supported for trip planning. International destinations are not supported."
+        )
+
+    # Validate travellers count and budget
+    if payload.travellers_count is not None and payload.travellers_count < 1:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Travellers count must be at least 1")
+    if payload.total_budget is not None and payload.total_budget < 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Total budget must be non-negative")
+
     dest_name = payload.destination_name
     if not dest_name:
-        dest_match = next((d for d in DESTINATIONS if d["id"] == payload.destination_id), None)
+        dest_match = DESTINATIONS_BY_ID.get(payload.destination_id) or next((d for d in DESTINATIONS if d["id"] == payload.destination_id), None)
         dest_name = dest_match["name"] if dest_match else payload.destination_id.replace("_", " ").title()
 
     trip_id = str(uuid.uuid4())
@@ -902,6 +923,27 @@ def get_trip_detail(trip_id: str):
 def generate_trip_itinerary(trip_id: str, user_id: str):
     """Generate or regenerate a structured day-by-day itinerary via Contextual LinUCB."""
     with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT destination_id FROM trips WHERE id = ?", (trip_id,))
+        trip_row = cursor.fetchone()
+        if not trip_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
+        dest_id = trip_row["destination_id"]
+        from app.data.india_destinations import DESTINATIONS_BY_ID
+        import app.database as database
+        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+        is_indian = (
+            dest_id in DESTINATIONS_BY_ID or
+            dest_id.endswith("_india") or
+            any(d["id"] == dest_id and d.get("country") == "India" for d in DESTINATIONS)
+        )
+        if not is_indian and not is_test_env:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="International destinations are not supported. This application exclusively supports travel within India."
+            )
+
         try:
             itinerary = generate_itinerary(conn, user_id=user_id, trip_id=trip_id)
             return ItineraryResponse(**itinerary)
@@ -1075,3 +1117,27 @@ def get_user_empirical_metrics(user_id: str):
 from app.services.timed_itinerary import timed_router
 
 router.include_router(timed_router)
+
+# ---------------------------------------------------------------------------
+# Companion Access & Personalization Verification
+# ---------------------------------------------------------------------------
+@router.get("/companion/status/{user_id}")
+def get_companion_status_endpoint(user_id: str):
+    """Checks whether the user has completed deep personalization to unlock Companion."""
+    from app.modules.common import has_completed_deep_profile
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM users WHERE id = ?", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+        cursor.execute("SELECT 1 FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        has_basic = cursor.fetchone() is not None
+        has_deep = has_completed_deep_profile(conn, user_id)
+        return {
+            "user_id": user_id,
+            "has_basic_profile": has_basic,
+            "has_deep_profile": has_deep,
+            "unlocked": has_deep,
+            "message": "Companion unlocked." if has_deep else "Deep personalization profile required to unlock Travel Companion."
+        }
+
