@@ -15,49 +15,117 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
 
-  <!-- Navbar -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center space-x-3 cursor-pointer" onclick="showView('auth')">
-        <div class="w-10 h-10 rounded-xl bg-[#2b2278] text-white flex items-center justify-center shadow-md">
-          <i class="fa-solid fa-earth-americas text-xl text-[#e27141]"></i>
+    <!-- A-World Authentic Header & Hero Section -->
+  <header class="header_section" id="home">
+    <div class="header_main">
+      <!-- Top Action & Academic Bar -->
+      <div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/30 backdrop-blur-md text-[#ffd166] border border-white/20 text-xs font-semibold">
+            <i class="fa-solid fa-sparkles"></i> RL Travel Intelligence &bull; India
+          </span>
         </div>
-        <div>
-          <span class="font-righteous text-lg text-[#2b2278] tracking-wider block leading-tight">A WORLD</span>
-          <span class="block text-[10px] text-[#e27141] font-semibold tracking-tight uppercase">RL Travel Guide · Intelligence</span>
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Academic Model Inspector Button -->
+          <button onclick="openModal('academicModal')" class="text-xs bg-white/10 hover:bg-white/25 text-white font-medium px-3.5 py-1.5 rounded-xl border border-white/25 backdrop-blur-md transition flex items-center gap-1.5" title="For evaluation and viva: inspect the mathematical RL state vector and MDP formulation">
+            <i class="fa-solid fa-graduation-cap text-[#ffd166]"></i>
+            <span class="hidden sm:inline">Model Inspector</span>
+          </button>
+
+          <!-- Project Info Button -->
+          <button onclick="openModal('infoModal')" class="text-xs bg-white/10 hover:bg-white/25 text-white font-medium px-3.5 py-1.5 rounded-xl border border-white/25 backdrop-blur-md transition flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-info"></i>
+            <span class="hidden sm:inline">Project Info</span>
+          </button>
+
+          <!-- User profile badge -->
+          <div id="navUserBadge" class="hidden flex items-center space-x-2 pl-3 border-l border-white/25">
+            <div class="w-7 h-7 rounded-full bg-[#ffd166] text-slate-900 font-bold flex items-center justify-center text-xs" id="navAvatar">
+              U
+            </div>
+            <span class="text-xs font-semibold text-white hidden md:inline" id="navUserName">User</span>
+            <button onclick="logout()" class="text-xs text-rose-200 hover:text-white font-medium px-2.5 py-1 rounded-lg bg-rose-900/60 hover:bg-rose-900/90 border border-rose-500/30 transition ml-1 flex items-center gap-1">
+              <i class="fa-solid fa-right-from-bracket"></i>
+              <span>Log out</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="flex items-center space-x-3">
-        <!-- Academic Model Inspector Button -->
-        <button onclick="openModal('academicModal')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5" title="For evaluation and viva: inspect the mathematical RL state vector and MDP formulation">
-          <i class="fa-solid fa-graduation-cap text-indigo-600"></i>
-          <span>Model Inspector</span>
-        </button>
+      <!-- Centered A-World Logo -->
+      <div class="logo">
+        <a href="#home">
+          <img src="/static/template/images/logo.png" alt="A-World">
+        </a>
+      </div>
 
-        <!-- Project Info Button -->
-        <button onclick="openModal('infoModal')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
-          <i class="fa-solid fa-circle-info"></i>
-          <span>Project Info</span>
-        </button>
+      <!-- Centered Navigation Menu -->
+      <div class="menu_main">
+        <ul>
+          <li class="active"><a href="#home">HOME</a></li>
+          <li><a href="#servicesSection">SERVICES</a></li>
+          <li><a href="#recommendationsSection">RECOMMENDATIONS</a></li>
+          <li><a href="#itinerarySection">TRIP PLANNER</a></li>
+          <li><a href="javascript:void(0)" onclick="openCompanionOrPrompt()">COMPANION</a></li>
+        </ul>
+      </div>
+    </div>
 
-        <!-- User profile badge -->
-        <div id="navUserBadge" class="hidden flex items-center space-x-2 pl-3 border-l border-slate-200">
-          <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs" id="navAvatar">
-            U
-          </div>
-          <span class="text-xs font-semibold text-slate-700 hidden sm:inline" id="navUserName">User</span>
-          <button onclick="logout()" class="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 transition ml-1 flex items-center gap-1">
-            <i class="fa-solid fa-right-from-bracket"></i>
-            <span>Log out</span>
-          </button>
+    <!-- Hero Banner Content -->
+    <div class="banner_section">
+      <div class="container mx-auto px-4 text-center">
+        <h1 class="banner_taital">ADVENTURE</h1>
+        <p class="banner_text">
+          AI-Powered Proactive Travel Guide tailored by Contextual LinUCB Reinforcement Learning, live Open-Meteo forecasts, and OpenStreetMap discovery across premier Indian destinations.
+        </p>
+        <div class="read_bt">
+          <a href="#servicesSection" id="bannerCtaBtn" onclick="handleBannerCta(event)">Get Started</a>
         </div>
       </div>
     </div>
   </header>
 
+  <!-- A-World Services Section -->
+  <section id="servicesSection" class="services_section">
+    <div class="max-w-6xl mx-auto px-6">
+      <h1 class="services_taital">Services</h1>
+      <p class="services_text">AI-driven travel personalization tailored to your unique rhythm, interests, and budget across premier Indian destinations.</p>
+      <div class="services_section_2">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <!-- Card 1: Rafting -->
+          <div class="flex flex-col items-center">
+            <div class="w-full max-w-[340px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg bg-slate-100">
+              <img src="/static/template/images/img-1.png" class="services_img w-full h-full object-cover" alt="Rafting & Adventure">
+            </div>
+            <div class="btn_main">
+              <a href="#recommendationsSection" onclick="filterByService('rafting')">RAFTING</a>
+            </div>
+          </div>
+          <!-- Card 2: Hiking (Active) -->
+          <div class="flex flex-col items-center">
+            <div class="w-full max-w-[340px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg bg-slate-100">
+              <img src="/static/template/images/img-2.png" class="services_img w-full h-full object-cover" alt="Hiking & Mountains">
+            </div>
+            <div class="btn_main active">
+              <a href="#recommendationsSection" onclick="filterByService('hiking')" class="active">HIKING</a>
+            </div>
+          </div>
+          <!-- Card 3: Camping -->
+          <div class="flex flex-col items-center">
+            <div class="w-full max-w-[340px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg bg-slate-100">
+              <img src="/static/template/images/img-3.png" class="services_img w-full h-full object-cover" alt="Camping & Nature">
+            </div>
+            <div class="btn_main">
+              <a href="#recommendationsSection" onclick="filterByService('camping')">CAMPING</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Main Container -->
-  <main class="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 my-auto">
+  <main id="appContent" class="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 mb-16">
 
     <!-- VIEW 1: AUTH / LOGIN -->
     <section id="authView" class="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
@@ -219,20 +287,20 @@
             <p class="text-xs text-slate-500 mt-0.5">Section 2: Interests, Goals & Activities</p>
           </div>
 
-          <!-- Travel Goals (Up to 4) -->
+          <!-- Travel Goals (Select at least 2) -->
           <div>
             <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs font-bold text-slate-800">What do you most want to get out of travelling? (Up to 4)</label>
-              <span class="text-[11px] text-indigo-600 font-semibold" id="goalsCounter">0 / 4</span>
+              <label class="text-xs font-bold text-slate-800">What do you most want to get out of travelling? (Select at least 2)</label>
+              <span class="text-[11px] text-indigo-600 font-semibold" id="goalsCounter">0 selected (min 2 required)</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicGoalsGrid"></div>
           </div>
 
-          <!-- Place Types (Up to 5) -->
+          <!-- Place Types (Select at least 2) -->
           <div>
             <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs font-bold text-slate-800">Which types of places interest you most? (Up to 5)</label>
-              <span class="text-[11px] text-indigo-600 font-semibold" id="placesCounter">0 / 5</span>
+              <label class="text-xs font-bold text-slate-800">Which types of places interest you most? (Select at least 2)</label>
+              <span class="text-[11px] text-indigo-600 font-semibold" id="placesCounter">0 selected (min 2 required)</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicPlacesGrid"></div>
           </div>

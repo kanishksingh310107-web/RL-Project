@@ -2466,3 +2466,48 @@ async function loadItineraryLiveWeather(destName) {
     if (badgeEl) badgeEl.textContent = "source: offline-estimate";
   }
 }
+
+
+// --- A-World Navigation & Hero CTA Handlers ---
+function handleBannerCta(e) {
+  if (e) e.preventDefault();
+  if (state.currentUser) {
+    const recEl = document.getElementById('recommendationsSection');
+    if (recEl) {
+      recEl.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      const appMain = document.getElementById('appContent');
+      if (appMain) appMain.scrollIntoView({ behavior: 'smooth' });
+    }
+  } else {
+    showView('auth');
+    const authEl = document.getElementById('authView');
+    if (authEl) authEl.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+function openCompanionOrPrompt() {
+  if (!state.currentUser) {
+    showView('auth');
+    const authEl = document.getElementById('authView');
+    if (authEl) authEl.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  if (state.profileStatus && state.profileStatus.complete) {
+    openModal('companionModal');
+  } else {
+    alert('Travel Companion is locked behind your Personal Travel Profile. Please complete the profile questions to unlock real-time assistance.');
+    openPersonalProfileModal();
+  }
+}
+
+function filterByService(serviceType) {
+  if (!state.currentUser) {
+    showView('auth');
+    const authEl = document.getElementById('authView');
+    if (authEl) authEl.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  const recEl = document.getElementById('recommendationsSection');
+  if (recEl) recEl.scrollIntoView({ behavior: 'smooth' });
+}

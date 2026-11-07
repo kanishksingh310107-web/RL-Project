@@ -32,8 +32,8 @@ class ShortProfileCreate(BaseModel):
     travel_experience: str = "occasional"
     companions: str = "alone"
     planning_approach: str = "plan_essentials"
-    travel_goals: List[str] = [] # Q5 (up to 4)
-    place_interests: List[str] = [] # Q14 (up to 5)
+    travel_goals: List[str] = [] # Q5 (Select at least 2)
+    place_interests: List[str] = [] # Q14 (Select at least 2)
     experience_preference: str = "balanced_mix" # Q17
     dietary: List[str] = ["none"] # Q20
     preferred_climate: str = "mild" # Q26

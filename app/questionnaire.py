@@ -120,9 +120,8 @@ QUESTIONS = {
         "id": "q5",
         "section": "sec_1",
         "tier": "basic",
-        "question": "What do you most want to get out of travelling? (Select up to 4)",
+        "question": "What do you most want to get out of travelling? (Select at least 2)",
         "type": "multi",
-        "max": 4,
         "options": [
             {"id": "relaxation", "label": "Relaxation and stress relief", "icon": "fa-umbrella-beach"},
             {"id": "adventure", "label": "Adventure and excitement", "icon": "fa-person-hiking"},
@@ -279,9 +278,8 @@ QUESTIONS = {
         "id": "q14",
         "section": "sec_3",
         "tier": "basic",
-        "question": "Which types of places interest you most? (Select up to 5)",
+        "question": "Which types of places interest you most? (Select at least 2)",
         "type": "multi",
-        "max": 5,
         "options": [
             {"id": "mountains_nature", "label": "Mountains and natural landscapes", "icon": "fa-mountain"},
             {"id": "beaches_coastal", "label": "Beaches and coastal areas", "icon": "fa-water"},
