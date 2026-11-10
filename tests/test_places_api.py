@@ -7,14 +7,15 @@ from app.modules.places_service import search_indian_locations, fetch_real_place
 
 
 def test_places_module_registered(client):
-    """Module must appear in /api/modules with owner C and id 'places'."""
-    r = client.get("/api/modules")
-    assert r.status_code == 200
-    mods = r.json()
+    """Places module must be auto-discovered in the module registry and its routes must respond."""
+    from app.modules import discover
+    mods = [m.MODULE for m in discover()]
     p_mod = next((m for m in mods if m["id"] == "places"), None)
     assert p_mod is not None, "Places module must be auto-discovered and registered"
     assert p_mod["owner"] == "C"
     assert p_mod["title"] == "Places API"
+    r = client.get("/api/places/popular")
+    assert r.status_code == 200
 
 
 def test_search_indian_locations_endpoint(client):

@@ -13,15 +13,16 @@ from app.modules.ranking import (
 )
 
 
-def test_module_registered(client):
-    """Module must appear in /api/modules with correct owner and id."""
-    r = client.get("/api/modules")
-    assert r.status_code == 200
-    mods = r.json()
+def test_module_registered(client, demo_user):
+    """Ranking module must be auto-discovered in the module registry and its routes must respond."""
+    from app.modules import discover
+    mods = [m.MODULE for m in discover()]
     ranking_mod = next((m for m in mods if m["id"] == "ranking"), None)
     assert ranking_mod is not None
     assert ranking_mod["owner"] == "C"
     assert ranking_mod["title"] == "Ranking"
+    r = client.get(f"/api/ranking/{demo_user}")
+    assert r.status_code == 200
 
 
 def test_default_weights_sum_to_one():

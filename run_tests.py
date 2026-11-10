@@ -174,7 +174,7 @@ def run_precision_tests(client, user_id):
             assert set(cond["includes_any"]) <= src_ids, f"{qid}: show_if uses unknown option ids of {src}"
         if q.get("show_if"):
             check(q["show_if"])
-    assert len(prec.NEW_QUESTIONS) == 65 and len(prec.CARRYOVER) == 18 and len(bank) == 83
+    assert len(prec.NEW_QUESTIONS) == 70 and len(prec.CARRYOVER) == 18 and len(bank) == 88
     print(f"[OK] Precision bank verified ({len(bank)} questions: {len(prec.NEW_QUESTIONS)} new + {len(prec.CARRYOVER)} previously-unshown, {len(feature_names)} features)")
 
     # --- 2. Conditional follow-ups -----------------------------------------
@@ -210,7 +210,7 @@ def run_precision_tests(client, user_id):
     answers = {"q10": ["food_allergies"], "q95": ["peanuts", "sesame"], "q96": "severe", "q78": 1, "q73": 5, "q64": "toddler"}
     vec, names = prec.build_precision_vector(answers, ctx)
     d = dict(zip(names, vec))
-    assert len(vec) == len(names) == 85 and all(0.0 <= v <= 1.0 for v in vec)
+    assert len(vec) == len(names) == 90 and all(0.0 <= v <= 1.0 for v in vec)
     assert d["allergen_peanuts"] == 1.0 and d["allergen_sesame"] == 1.0 and d["allergen_fish"] == 0.0
     assert d["allergy_severity"] == 1.0 and d["cold_tolerance"] == 0.0 and d["walk_km"] == 0.2 and d["youngest_child_age"] == 0.5
     assert d["spice_tolerance"] == 0.5          # visible but unanswered -> neutral
@@ -219,7 +219,7 @@ def run_precision_tests(client, user_id):
     assert abs(d["precision_coverage"] - n / tot) < 1e-3
     empty_vec, _ = prec.build_precision_vector({}, {})
     assert empty_vec[-1] == 0.0
-    print(f"[OK] Precision vector: 85 dims, all in [0,1], hidden=0.0, unanswered=0.5, coverage={d['precision_coverage']:.2f}")
+    print(f"[OK] Precision vector: 90 dims, all in [0,1], hidden=0.0, unanswered=0.5, coverage={d['precision_coverage']:.2f}")
 
     # --- 6. Insights --------------------------------------------------------
     ins = prec.derive_insights({"q10": ["food_allergies"], "q95": ["peanuts"], "q96": "severe", "q80": 1, "q61": "carry_on"}, {})
@@ -235,7 +235,7 @@ def run_precision_tests(client, user_id):
 
     # --- 8. API round trip --------------------------------------------------
     q_res = client.get("/api/config/precision-questionnaire")
-    assert q_res.status_code == 200 and q_res.json()["total"] == 83
+    assert q_res.status_code == 200 and q_res.json()["total"] == 88
     assert "vec" not in next(iter(q_res.json()["questions"].values()))
     assert client.post("/api/profile/precision/does-not-exist", json={"answers": {}}).status_code == 404
 
@@ -250,7 +250,7 @@ def run_precision_tests(client, user_id):
         "q61": "carry_on", "q100": "mushrooms", "q47": ["travel_prefs", "dietary_needs"]}})
     assert ok.status_code == 200, ok.text
     data = ok.json()
-    assert data["feature_dimension"] == 126 and len(data["rl_state_vector"]) == 126
+    assert data["feature_dimension"] == 131 and len(data["rl_state_vector"]) == 131
     assert set(data["dropped_for_privacy"]) == {"q10", "q95", "q96", "q78", "q80"} or "q95" in data["dropped_for_privacy"]
     print(f"[OK] Precision profile saved via API ({data['feature_dimension']} dims, coverage {data['coverage']:.0%}, privacy-dropped: {sorted(data['dropped_for_privacy'])})")
 
@@ -261,13 +261,13 @@ def run_precision_tests(client, user_id):
     assert any(i["kind"] == "constraint" for i in ok2.json()["insights"])
 
     st = client.get(f"/api/rl/state/{user_id}").json()
-    assert st["dimension_count"] == 126 and st["level"].startswith("precision")
+    assert st["dimension_count"] == 131 and st["level"].startswith("precision")
     masks = {f["feature_name"] for f in st["feature_breakdown"] if f["is_constraint_mask"] and f["value"] > 0}
     assert "allergen_peanuts" in masks
     prof = client.get(f"/api/profile/{user_id}").json()
     assert prof["has_precision_profile"] is True
     assert client.get(f"/api/profile/precision/{user_id}").json()["exists"] is True
-    print("[OK] /api/rl/state serves the 126-dim precision vector; allergen masks flagged as constraints")
+    print("[OK] /api/rl/state serves the 131-dim precision vector; allergen masks flagged as constraints")
 
     # Recommendations API Test (Feature Two)
     rec_res = client.get(f"/api/recommendations/{user_id}")
