@@ -12,25 +12,31 @@
 
 This document summarizes what has been implemented, how each subsystem functions, how user inputs connect to Reinforcement Learning (RL), and the roadmap for upcoming phases.
 
-### Implementation Scorecard
+### Capability Verification Matrix
 
-| Subsystem | Scope | Status | Notes |
-| :--- | :--- | :---: | :--- |
-| **Authentication & Isolation** | Google Identity Services, Email/Password, Phone OTP, 1-Click Chooser | **100% Complete** | Salted SHA-256 hashing, Google `sub` isolation, session persistence in `localStorage`, pre-seeded device accounts. |
-| **Clean UI & No Question Numbering** | Removed all technical prefixes (`Q1.`, `Q14.`, `q95`) from user interfaces | **100% Complete** | Clear student-level English headings throughout onboarding and deep profiling. |
-| **Tier 1: Basic Profile** | Fast 30–45 sec onboarding (11 core questions: background, goals, places, climate, budget) | **100% Complete** | **Starts with zero pre-selections (no assumptions)**. Generates initial 22-dimensional RL state vector. |
-| **Unified Personalisation System** | Consolidated into **exactly ONE** "Create My Personal Travel Profile" flow | **100% Complete** | Removed confusing duplicate "Level 3 Precision" card. Reusable adaptive question bank with conditional logic, comfort sliders, and past trips memory log. |
-| **Macro Recommender Engine** | Transparent scoring weights, 16 curated destinations, photos, duration & tips | **100% Complete** | Implemented in `app/recommender.py`. Detailed cards with why-it-fits, duration, budget, tags, offline photo fallbacks, and practical considerations. |
-| **Refresh Options Rotation** | Instant candidate cycling via `offset` pagination without page reloads | **100% Complete** | Cycles through top-ranked candidate pool smoothly with loading states. |
-| **Shortlist Subsystem** | Save/Bookmark destinations with persistent storage and active UI states | **100% Complete** | Supported by SQLite `shortlisted_destinations` table, `POST /api/shortlist/{user_id}` and `GET /api/shortlist/{user_id}`. |
-| **Adaptive Pre-Trip Itinerary Planner** | Day-by-day scheduling with neighborhood clustering and pacing controls | **100% Complete** | Implemented in `app/itinerary_generator.py`. Respects budget, daily duration, opening hours, and geographic proximity. |
-| **Contextual LinUCB Learning Engine** | Disjoint contextual linear multi-armed bandit policy per user and arm | **100% Complete** | Implemented in `app/rl_planner.py`. Online Sherman-Morrison rank-1 updates ($O(d^2)$) on feedback; persistent in SQLite `rl_user_policies`. |
-| **Interactive Feedback & Adaptation** | Explicit ACCEPT (+1.0), REJECT (-1.0), and MODIFY (-0.4 / +1.0 replacement) | **100% Complete** | Clear reward attribution with separation of trip-specific rejections from permanent preference changes. |
-| **Curated Activity Catalog** | Realistic attractions with coordinates, hours, costs, duration, and tags | **100% Complete** | Implemented in `app/activity_data.py`. Seeded into `destination_activities` across major destinations. |
-| **Academic Model Inspector** | Dedicated navbar modal for viva evaluation & teacher grading | **100% Complete** | Visualizes state vector ($s_t \in [0, 1]^d$), MDP formulation, scoring policy weights, and live learned LinUCB arm weights ($\hat{\theta}_u$) with interaction logs. |
-| **Evaluation & Comparative Benchmark** | Empirical simulation of LinUCB vs. Static Recommender Baseline | **100% Complete** | Implemented in `app/evaluation.py`. Measures acceptance rates, rejection rates, cumulative rewards, and weight divergence without assuming convergence. |
-| **Database Storage** | SQLite local storage (`travel_guide.db`) | **100% Complete** | 12 tables with automatic schema migrations, foreign keys, cascades, and indexes. |
-| **Test Suite** | Automated end-to-end testing (`run_tests.py`) | **100% Complete** | Covers auth isolation, vectors, questionnaires, privacy filter, offset rotation, shortlists, itinerary generation, LinUCB updates, and benchmarks. |
+In accordance with post-audit remediation guidelines (F-009), all subjective "100% complete" designations have been replaced with a three-category verification matrix:
+1. **Verified by Automated Test:** Validated by pytest unit/integration test suites or `run_tests.py` with passing assertions.
+2. **Verified by Clicking Through:** Validated by manual interactive execution and end-to-end browser workflows.
+3. **Exists But Not Verified / Simulated:** Implemented in codebase or simulated as a placeholder, but lacking live telemetry or field verification.
+
+| Subsystem / Capability | Verification Status | Implementation & Verification Details |
+| :--- | :--- | :--- |
+| **Authentication & Isolation** | Verified by Automated Test & Click-Through | Salted SHA-256 hashing, session persistence in `localStorage`, pre-seeded device accounts. Verified in `run_tests.py` (auth tests). |
+| **Basic Profiling (Level 1)** | Verified by Automated Test & Click-Through | 11 core onboarding questions mapping to initial 22-dimensional feature vector. Zero pre-selections. Verified in `run_tests.py`. |
+| **Deep Personalisation (Level 2 & 3)** | Verified by Automated Test & Click-Through | Reusable adaptive question bank, privacy filter dropping non-consented answers, expanding to 41 and 126 dims. Verified in `run_tests.py`. |
+| **Destination Recommender** | Verified by Automated Test & Click-Through | Curated destination pool with scoring weights, why-it-fits explanations, candidate rotation via offset pagination. Verified in `run_tests.py`. |
+| **Seasonal Ranking Engine (`ranking`)** | Verified by Automated Test & Click-Through | 6-component scoring breakdown, strict month regex parsing, circular season distance, budget filtering. 16 tests passing in `tests/test_ranking.py`. |
+| **Adaptive Pre-Trip Itinerary Planner** | Verified by Automated Test & Click-Through | Day-by-day scheduling with neighborhood clustering and pacing controls. Verified in `run_tests.py` and `tests/test_trip_actions.py`. |
+| **Contextual LinUCB Engine (`rl_planner`)** | Verified by Automated Test & Click-Through | Disjoint contextual multi-armed bandit (7 canonical arms, 24-dim context). Online Sherman-Morrison rank-1 updates mathematically verified in `tests/test_rl_policy.py`. |
+| **Reward & Feedback Loop** | Verified by Automated Test & Click-Through | Explicit Accept (+1.0), Reject (-1.0), Modify (-0.4 / +1.0 replacement), and Implicit Keep (+0.2). Preference isolation verified in `run_tests.py`. |
+| **Empirical Evaluation Benchmark** | Verified by Automated Test & Click-Through | 100-seed Monte Carlo simulation reporting empirical mean ± 95% CI. Verified in `tests/test_rl_policy.py` and `docs/evaluation_results.md`. |
+| **Trip Preparation Module (`prep`)** | Verified by Automated Test & Click-Through | Weather summary, dynamic packing checklist, document requirements, and Beta-Bernoulli reminder bandit. 16 tests passing in `tests/test_prep.py`. |
+| **Live Trip Companion (`live`)** | Verified by Automated Test & Click-Through | During-trip timeline, activity status transitions, simulated weather/crowd alerts, targeted replanning, and post-trip feedback questionnaire. 13 tests passing in `tests/test_live.py`. |
+| **Real-Time Places & Geocoding (`places`)** | Verified by Automated Test & Click-Through | Indian destination search, live OpenStreetMap Overpass attraction fetching, dynamic trip planning. 12 tests passing in `tests/test_places.py` and `tests/test_places_api.py`. |
+| **Timed Day-by-Day Itinerary Engine** | Verified by Automated Test & Click-Through | Structured 09:00–21:00 timeline (Activities, Transit, Meals, Rest), pace controls (relaxed/balanced/active). 7 tests passing in `tests/test_timed_itinerary.py`. |
+| **Academic Model Inspector** | Verified by Automated Test & Click-Through | State vector display, MDP formulation, policy weight inspection, and real-time comparative simulation panel. Verified in `run_tests.py`. |
+| **Live Telemetry in Ranking** | Exists But Not Verified (Simulated) | `ranking.py` uses neutral 0.5 score placeholder for live conditions (live weather is integrated separately in `prep.py`). |
+| **User Churn Prediction & Field Study** | Out of Scope / Roadmap | Future academic work post-submission. |
 
 ---
 

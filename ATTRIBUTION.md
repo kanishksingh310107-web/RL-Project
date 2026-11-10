@@ -58,7 +58,10 @@ In accordance with academic integrity guidelines, the table below documents the 
 | `docs/ranking.md` | Person C | Yes (Claude / Gemini) | Technical specification, verified test results table, and limitation documentation. |
 | `docs/evaluation.md` | Person C | Yes (Claude / Gemini) | Detailed diagnostic report, empirical data table, and honest interpretation of bandit dynamics. |
 | `docs/report/*` | Person C | Yes (Claude / Gemini) | Academic report, 10-slide presentation deck outline, and comprehensive viva preparation sheet. |
-| `ATTRIBUTION.md` & `README.md` | Person C | Yes (Claude / Gemini) | Comprehensive attribution cleanup, Q-learning correction, and execution instructions. |
+| `ATTRIBUTION.md` & `README.md` | Atharva / Person C | Yes (Claude / Gemini) | Comprehensive attribution cleanup, Q-learning correction, verified capability matrix, and execution instructions. |
+| `tests/test_rl_policy.py` | Atharva | Yes (Claude / Gemini) | Unit tests verifying Sherman-Morrison rank-1 inverse updates match direct matrix inversion within machine precision. |
+| `docs/evaluation_results.md` | Atharva | Yes (Claude / Gemini) | Pre-registered 100-seed empirical LinUCB vs. static baseline benchmark reporting means, standard deviations, and 95% confidence intervals. |
+| `docs/bugs/atharva.md` | Atharva | Yes | Click-through verification bug log capturing external UI and lifecycle issues for teammates. |
 
 ---
 
