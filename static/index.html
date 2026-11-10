@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RL Travel Guide</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Righteous&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="/static/style.css">
   <!-- Official Google Identity Services SDK -->
@@ -12,49 +15,117 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
 
-  <!-- Navbar -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center space-x-2.5 cursor-pointer" onclick="showView('auth')">
-        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
-          <i class="fa-solid fa-compass text-lg"></i>
+    <!-- A-World Authentic Header & Hero Section -->
+  <header class="header_section" id="home">
+    <div class="header_main">
+      <!-- Top Action & Academic Bar -->
+      <div class="max-w-6xl mx-auto px-4 py-2 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/30 backdrop-blur-md text-[#ffd166] border border-white/20 text-xs font-semibold">
+            <i class="fa-solid fa-sparkles"></i> RL Travel Intelligence &bull; India
+          </span>
         </div>
-        <div>
-          <span class="font-bold text-base text-slate-900 tracking-tight">RL Travel Guide</span>
-          <span class="block text-[11px] text-indigo-600 font-medium">Personalised Travel Intelligence</span>
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Academic Model Inspector Button -->
+          <button onclick="openModal('academicModal')" class="text-xs bg-white/10 hover:bg-white/25 text-white font-medium px-3.5 py-1.5 rounded-xl border border-white/25 backdrop-blur-md transition flex items-center gap-1.5" title="For evaluation and viva: inspect the mathematical RL state vector and MDP formulation">
+            <i class="fa-solid fa-graduation-cap text-[#ffd166]"></i>
+            <span class="hidden sm:inline">Model Inspector</span>
+          </button>
+
+          <!-- Project Info Button -->
+          <button onclick="openModal('infoModal')" class="text-xs bg-white/10 hover:bg-white/25 text-white font-medium px-3.5 py-1.5 rounded-xl border border-white/25 backdrop-blur-md transition flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-info"></i>
+            <span class="hidden sm:inline">Project Info</span>
+          </button>
+
+          <!-- User profile badge -->
+          <div id="navUserBadge" class="hidden flex items-center space-x-2 pl-3 border-l border-white/25">
+            <div class="w-7 h-7 rounded-full bg-[#ffd166] text-slate-900 font-bold flex items-center justify-center text-xs" id="navAvatar">
+              U
+            </div>
+            <span class="text-xs font-semibold text-white hidden md:inline" id="navUserName">User</span>
+            <button onclick="logout()" class="text-xs text-rose-200 hover:text-white font-medium px-2.5 py-1 rounded-lg bg-rose-900/60 hover:bg-rose-900/90 border border-rose-500/30 transition ml-1 flex items-center gap-1">
+              <i class="fa-solid fa-right-from-bracket"></i>
+              <span>Log out</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="flex items-center space-x-3">
-        <!-- Academic Model Inspector Button -->
-        <button onclick="openModal('academicModal')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5" title="For evaluation and viva: inspect the mathematical RL state vector and MDP formulation">
-          <i class="fa-solid fa-graduation-cap text-indigo-600"></i>
-          <span>Model Inspector</span>
-        </button>
+      <!-- Centered A-World Logo -->
+      <div class="logo">
+        <a href="#home">
+          <img src="/static/template/images/logo.png" alt="A-World">
+        </a>
+      </div>
 
-        <!-- Project Info Button -->
-        <button onclick="openModal('infoModal')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
-          <i class="fa-solid fa-circle-info"></i>
-          <span>Project Info</span>
-        </button>
+      <!-- Centered Navigation Menu -->
+      <div class="menu_main">
+        <ul>
+          <li class="active"><a href="#home">HOME</a></li>
+          <li><a href="#servicesSection">SERVICES</a></li>
+          <li><a href="#recommendationsSection">RECOMMENDATIONS</a></li>
+          <li><a href="#itinerarySection">TRIP PLANNER</a></li>
+          <li><a href="javascript:void(0)" onclick="openCompanionOrPrompt()">COMPANION</a></li>
+        </ul>
+      </div>
+    </div>
 
-        <!-- User profile badge -->
-        <div id="navUserBadge" class="hidden flex items-center space-x-2 pl-3 border-l border-slate-200">
-          <div class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs" id="navAvatar">
-            U
-          </div>
-          <span class="text-xs font-semibold text-slate-700 hidden sm:inline" id="navUserName">User</span>
-          <button onclick="logout()" class="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 transition ml-1 flex items-center gap-1">
-            <i class="fa-solid fa-right-from-bracket"></i>
-            <span>Log out</span>
-          </button>
+    <!-- Hero Banner Content -->
+    <div class="banner_section">
+      <div class="container mx-auto px-4 text-center">
+        <h1 class="banner_taital">ADVENTURE</h1>
+        <p class="banner_text">
+          AI-Powered Proactive Travel Guide tailored by Contextual LinUCB Reinforcement Learning, live Open-Meteo forecasts, and OpenStreetMap discovery across premier Indian destinations.
+        </p>
+        <div class="read_bt">
+          <a href="#servicesSection" id="bannerCtaBtn" onclick="handleBannerCta(event)">Get Started</a>
         </div>
       </div>
     </div>
   </header>
 
+  <!-- A-World Services Section -->
+  <section id="servicesSection" class="services_section">
+    <div class="max-w-6xl mx-auto px-6">
+      <h1 class="services_taital">Services</h1>
+      <p class="services_text">AI-driven travel personalization tailored to your unique rhythm, interests, and budget across premier Indian destinations.</p>
+      <div class="services_section_2">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <!-- Card 1: Rafting -->
+          <div class="flex flex-col items-center">
+            <div class="w-full max-w-[340px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg bg-slate-100">
+              <img src="/static/template/images/img-1.png" class="services_img w-full h-full object-cover" alt="Rafting & Adventure">
+            </div>
+            <div class="btn_main">
+              <a href="#recommendationsSection" onclick="filterByService('rafting')">RAFTING</a>
+            </div>
+          </div>
+          <!-- Card 2: Hiking (Active) -->
+          <div class="flex flex-col items-center">
+            <div class="w-full max-w-[340px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg bg-slate-100">
+              <img src="/static/template/images/img-2.png" class="services_img w-full h-full object-cover" alt="Hiking & Mountains">
+            </div>
+            <div class="btn_main active">
+              <a href="#recommendationsSection" onclick="filterByService('hiking')" class="active">HIKING</a>
+            </div>
+          </div>
+          <!-- Card 3: Camping -->
+          <div class="flex flex-col items-center">
+            <div class="w-full max-w-[340px] aspect-[4/5] rounded-3xl overflow-hidden shadow-lg bg-slate-100">
+              <img src="/static/template/images/img-3.png" class="services_img w-full h-full object-cover" alt="Camping & Nature">
+            </div>
+            <div class="btn_main">
+              <a href="#recommendationsSection" onclick="filterByService('camping')">CAMPING</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Main Container -->
-  <main class="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 my-auto">
+  <main id="appContent" class="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 mb-16">
 
     <!-- VIEW 1: AUTH / LOGIN -->
     <section id="authView" class="w-full max-w-md mx-auto bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
@@ -216,20 +287,20 @@
             <p class="text-xs text-slate-500 mt-0.5">Section 2: Interests, Goals & Activities</p>
           </div>
 
-          <!-- Travel Goals (Up to 4) -->
+          <!-- Travel Goals (Select at least 2) -->
           <div>
             <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs font-bold text-slate-800">What do you most want to get out of travelling? (Up to 4)</label>
-              <span class="text-[11px] text-indigo-600 font-semibold" id="goalsCounter">0 / 4</span>
+              <label class="text-xs font-bold text-slate-800">What do you most want to get out of travelling? (Select at least 2)</label>
+              <span class="text-[11px] text-indigo-600 font-semibold" id="goalsCounter">0 selected (min 2 required)</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicGoalsGrid"></div>
           </div>
 
-          <!-- Place Types (Up to 5) -->
+          <!-- Place Types (Select at least 2) -->
           <div>
             <div class="flex justify-between items-center mb-1.5">
-              <label class="text-xs font-bold text-slate-800">Which types of places interest you most? (Up to 5)</label>
-              <span class="text-[11px] text-indigo-600 font-semibold" id="placesCounter">0 / 5</span>
+              <label class="text-xs font-bold text-slate-800">Which types of places interest you most? (Select at least 2)</label>
+              <span class="text-[11px] text-indigo-600 font-semibold" id="placesCounter">0 selected (min 2 required)</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicPlacesGrid"></div>
           </div>
@@ -297,6 +368,29 @@
     <!-- VIEW 3: DASHBOARD -->
     <section id="dashboardView" class="hidden space-y-6">
       
+      <!-- A World Hero Banner -->
+      <div class="a-world-banner text-white p-6 sm:p-8 rounded-3xl shadow-xl border border-indigo-950/40 relative overflow-hidden">
+        <div class="relative z-10 max-w-2xl">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-white/10 backdrop-blur-md text-[#e27141] border border-white/20 mb-3">
+            <i class="fa-solid fa-sparkles"></i> Personalised Travel Intelligence
+          </div>
+          <h2 class="font-righteous text-2xl sm:text-3xl text-white tracking-wide leading-tight">
+            SEE THE WORLD IN YOUR OWN WAY
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-200 mt-2 leading-relaxed font-light">
+            Custom-tailored Indian itineraries powered by Contextual Reinforcement Learning (LinUCB), real-time Open-Meteo weather intelligence, and OpenStreetMap Overpass places.
+          </p>
+          <div class="flex flex-wrap items-center gap-3 mt-4 pt-1">
+            <a href="#recommendationsSection" class="px-5 py-2.5 rounded-xl bg-[#e27141] hover:bg-[#2b2278] text-white font-bold text-xs shadow-md transition inline-flex items-center gap-2">
+              <i class="fa-solid fa-compass"></i> Explore Recommendations
+            </a>
+            <button onclick="openPersonalProfileModal()" class="px-5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs border border-white/30 backdrop-blur-sm transition inline-flex items-center gap-2">
+              <i class="fa-solid fa-user-gear"></i> Deep Personal Profile
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Starting Profile Card -->
       <div class="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
@@ -307,7 +401,7 @@
             <h1 class="text-xl font-bold text-slate-900" id="dashWelcomeName">Welcome</h1>
             <p class="text-xs text-slate-500 mt-1 max-w-xl" id="dashSummaryText">Loading profile...</p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
             <button onclick="editProfile()" class="px-3.5 py-2 border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs rounded-xl transition flex items-center gap-1.5">
               <i class="fa-solid fa-pen-to-square"></i>
               <span>Edit Setup</span>
@@ -353,7 +447,7 @@
       <div id="personalProfileBanner" class="bg-gradient-to-r from-blue-900 via-indigo-900 to-indigo-800 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between gap-5 shadow-lg border border-indigo-700/50">
         <div>
           <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-900 mb-2">
-            <i class="fa-solid fa-sparkles"></i> Optional Deep Personalisation
+            <i class="fa-solid fa-sparkles"></i> Mandatory Personal Travel Profile
           </div>
           <h3 class="text-lg font-bold">Create My Personal Travel Profile</h3>
           <p class="text-xs text-blue-100 mt-1 max-w-xl leading-relaxed">
@@ -492,15 +586,31 @@
               Powered by Contextual LinUCB Reinforcement Learning. Recommendations adapt as you accept, reject, or modify activities.
             </p>
           </div>
-          <div class="flex items-center gap-2">
-            <select id="userTripsSelect" onchange="onTripSelectChanged(this.value)" class="text-xs border border-slate-200 rounded-xl px-3 py-1.5 bg-slate-50 text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
+            <select id="userTripsSelect" onchange="onTripSelectChanged(this.value)" class="text-xs border border-slate-200 rounded-xl px-3 py-2 bg-slate-50 text-slate-700 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 max-w-[240px] sm:max-w-[280px] truncate">
               <option value="">-- Select Planned Trip --</option>
             </select>
-            <button onclick="toggleTripFormModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition shadow-sm">
+            <button onclick="toggleTripFormModal()" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition shadow-sm whitespace-nowrap shrink-0">
               <i class="fa-solid fa-plus"></i>
               <span>Plan New Trip</span>
             </button>
           </div>
+        </div>
+
+        <!-- Trip Planner Locked State (when Deep Personalization is incomplete) -->
+        <div id="itineraryLockedState" class="hidden text-center py-12 px-6 bg-gradient-to-b from-slate-50 to-white rounded-2xl border border-dashed border-amber-300 shadow-xs">
+          <div class="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-3 shadow-inner text-2xl">
+            <i class="fa-solid fa-lock"></i>
+          </div>
+          <h3 class="text-base font-bold text-slate-800">Personalised Itinerary & Trip Planner Locked</h3>
+          <p class="text-xs text-slate-600 max-w-md mx-auto mt-1 mb-4 leading-relaxed">
+            AI-powered daily schedules and pacing adaptation require a completed <strong>Level 2 Personal Travel Profile</strong>.
+            Please complete your remaining questions to unlock day-by-day itineraries and activity choices.
+          </p>
+          <button onclick="openPersonalProfileModal()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition inline-flex items-center gap-2">
+            <i class="fa-solid fa-sparkles text-amber-300"></i>
+            <span>Complete Personal Travel Profile &rarr;</span>
+          </button>
         </div>
 
         <!-- Trip Status / Empty State -->
@@ -526,18 +636,34 @@
                 <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">Active Itinerary</span>
                 <span class="text-xs text-slate-400" id="itinDatesBadge">Nov 10 – Nov 14, 2026 (5 Days)</span>
               </div>
-              <h3 class="text-lg font-bold" id="itinDestinationTitle">Kyoto, Japan</h3>
+              <h3 class="text-lg font-bold" id="itinDestinationTitle">Select an Indian Destination</h3>
               <p class="text-xs text-slate-300 mt-0.5" id="itinSummaryNotes">Generated via LinUCB Contextual Bandit policy.</p>
             </div>
             <div class="flex items-center gap-3">
               <div class="text-right">
                 <span class="text-[10px] text-slate-400 block uppercase font-bold">Estimated Cost</span>
-                <span class="text-base font-mono font-bold text-emerald-400" id="itinTotalCostDisplay">$0.00</span>
+                <span class="text-base font-mono font-bold text-emerald-400" id="itinTotalCostDisplay">₹0</span>
               </div>
               <button onclick="regenerateEntireItinerary()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 transition">
                 <i class="fa-solid fa-arrows-rotate"></i>
                 <span>Regenerate Itinerary</span>
               </button>
+            </div>
+          </div>
+
+          <!-- Live Weather & Context Card -->
+          <div id="itinWeatherCard" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between text-xs gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-sm">
+                <i class="fa-solid fa-cloud-sun"></i>
+              </div>
+              <div>
+                <div class="font-bold text-slate-800" id="itinWeatherSummary">Checking forecast...</div>
+                <div class="text-[10px] text-slate-500" id="itinWeatherDetails">Open-Meteo Weather API</div>
+              </div>
+            </div>
+            <div id="itinWeatherSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+              source: api
             </div>
           </div>
 
@@ -643,7 +769,7 @@
               <span class="px-2 py-0.5 text-[10px] font-bold bg-indigo-100 text-indigo-700 rounded">Deep Personalisation</span>
               <h2 class="text-lg font-bold text-slate-900">Create My Personal Travel Profile</h2>
             </div>
-            <p class="text-xs text-slate-500 mt-0.5">Everything is optional. Answer what matters to you and skip the rest. Follow-ups appear only when relevant.</p>
+            <p class="text-xs text-slate-500 mt-0.5">Every applicable question must be answered for genuine AI personalization. Follow-up questions appear conditionally when relevant.</p>
           </div>
           <button onclick="closePersonalProfileModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
         </div>
@@ -1028,14 +1154,37 @@
 
       <form id="tripCreateForm" onsubmit="handleTripCreateSubmit(event)" class="mt-4 space-y-4 text-xs">
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Destination</label>
+          <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+            <span>Destination</span>
+            <span class="text-[10px] text-emerald-600 font-normal">Open-Meteo Geocoding Live Search</span>
+          </label>
+          <div class="relative mb-2">
+            <input type="text" id="tripCitySearchInput" placeholder="Search any city worldwide (e.g. Pune, Srinagar, Shillong)..." 
+              class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50 text-xs"
+              autocomplete="off" oninput="handleCitySearchInput(this.value)">
+            <div id="citySearchResults" class="hidden absolute left-0 right-0 top-10 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto text-xs"></div>
+          </div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-[10px] text-slate-400 uppercase font-semibold">Or pick featured destination:</span>
+          </div>
           <select id="tripDestSelect" required class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
-            <option value="kyoto_japan">Kyoto, Japan</option>
-            <option value="manali_spiti_india">Manali & Spiti Valley, India</option>
-            <option value="santorini_greece">Santorini, Greece</option>
-            <option value="swiss_alps">Swiss Alps, Switzerland</option>
-            <option value="tokyo_japan">Tokyo, Japan</option>
+            <option value="manali_spiti_india">Manali & Spiti Valley (Himachal Pradesh)</option>
+            <option value="rishikesh_haridwar_india">Rishikesh & Haridwar (Uttarakhand)</option>
+            <option value="leh_ladakh_india">Leh Ladakh (Ladakh)</option>
+            <option value="varanasi_india">Varanasi (Uttar Pradesh)</option>
+            <option value="udaipur_mewar_india">Udaipur & Mewar (Rajasthan)</option>
+            <option value="jaipur_jodhpur_india">Jaipur & Jodhpur (Rajasthan)</option>
+            <option value="south_goa_india">South Goa</option>
+            <option value="kerala_alleppey_india">Munnar & Alleppey (Kerala)</option>
+            <option value="hampi_india">Hampi (Karnataka)</option>
+            <option value="ooty_coorg_india">Ooty & Coorg (Tamil Nadu / Karnataka)</option>
+            <option value="darjeeling_gangtok_india">Darjeeling & Gangtok (Sikkim / West Bengal)</option>
+            <option value="meghalaya_shillong_india">Meghalaya (Shillong & Cherrapunji)</option>
           </select>
+          <div id="destinationSourceInfo" class="hidden text-[10px] text-slate-500 mt-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-check text-emerald-500"></i>
+            <span id="destinationSourceText">Resolved via Open-Meteo Geocoding</span>
+          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
@@ -1055,8 +1204,8 @@
             <input type="number" id="tripTravellersInput" min="1" max="10" value="2" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
           </div>
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Total Trip Budget ($)</label>
-            <input type="number" id="tripBudgetInput" min="100" max="25000" step="50" value="1200" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
+            <label class="block font-semibold text-slate-700 mb-1">Total Trip Budget (₹)</label>
+            <input type="number" id="tripBudgetInput" min="1000" max="500000" step="500" value="15000" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
           </div>
         </div>
 

@@ -13,7 +13,8 @@ import importlib
 import pkgutil
 import traceback
 from pathlib import Path
-from fastapi import APIRouter
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Query
 
 _SKIP = {"common"}
 _loaded = None
@@ -49,6 +50,24 @@ def init_module_tables():
 registry_router = APIRouter(prefix="/api")
 
 @registry_router.get("/modules")
-def list_modules():
-    """Used by static/modules/loader.js to build the 'Companion' tabs."""
-    return [m.MODULE for m in discover()]
+def list_modules(user_id: Optional[str] = Query(None)):
+    """Used by static/modules/loader.js to build the 'Companion' tabs.
+    Enforces deep personalization requirement when user_id is provided.
+    Removes the exposed 'ranking' tab from the Companion interface (kept internally).
+    """
+    if user_id:
+        from app.database import get_connection
+        from app.modules.common import has_completed_deep_profile
+        with get_connection() as conn:
+            if not has_completed_deep_profile(conn, user_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Deep personalization profile required to unlock Travel Companion."
+                )
+
+    # Exclude 'ranking' from visible Companion tabs per product requirements
+    # Exclude standalone 'places' demo tab so places powers the core itinerary instead
+    return [
+        m.MODULE for m in discover()
+        if getattr(m, "MODULE", {}).get("id") not in ("ranking", "places")
+    ]

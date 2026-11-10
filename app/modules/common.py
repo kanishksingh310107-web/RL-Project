@@ -20,13 +20,73 @@ def get_trip(trip_id: str) -> Optional[Dict[str, Any]]:
         return _decode(r) if r else None
 
 def get_user_context(user_id: str) -> Dict[str, Any]:
-    """Whatever the user has told us so far (any of these can be None)."""
+    """Whatever the user has told us so far, unified into structured dict and answer lookup."""
     out: Dict[str, Any] = {}
     with get_connection() as conn:
         for key, table in (("basic", "traveller_profiles"), ("detailed", "detailed_profiles"),
                            ("precision", "precision_profiles")):
             r = conn.execute(f"SELECT * FROM {table} WHERE user_id = ?", (user_id,)).fetchone()
             out[key] = _decode(r) if r else None
+
+    # Build unified answers map across all three tiers
+    answers: Dict[str, Any] = {}
+    if out.get("basic"):
+        raw_b = out["basic"].get("raw_answers_json") or {}
+        if isinstance(raw_b, str):
+            try: raw_b = json.loads(raw_b)
+            except Exception: raw_b = {}
+        answers.update(raw_b)
+        for f in ["age_group", "travel_experience", "companions", "planning_approach", "travel_goals",
+                  "place_interests", "experience_preference", "dietary", "preferred_climate", "budget_tier", "assistance_autonomy"]:
+            if f in out["basic"] and out["basic"][f] is not None:
+                answers[f] = out["basic"][f]
+
+    if out.get("detailed"):
+        raw_d = out["detailed"].get("raw_answers_json") or {}
+        if isinstance(raw_d, str):
+            try: raw_d = json.loads(raw_d)
+            except Exception: raw_d = {}
+        answers.update(raw_d)
+        for f in ["avoidances", "walking_tolerance", "schedule_density", "accessibility", "dietary", "stay_style", "transit_pref"]:
+            if f in out["detailed"] and out["detailed"][f] is not None:
+                answers[f] = out["detailed"][f]
+
+    if out.get("precision"):
+        raw_p = out["precision"].get("answers_json") or {}
+        if isinstance(raw_p, str):
+            try: raw_p = json.loads(raw_p)
+            except Exception: raw_p = {}
+        answers.update(raw_p)
+
+    out["answers"] = answers
+    
+    # Extract hard constraints
+    from app.precision import derive_insights
+    out["insights"] = derive_insights(answers, answers)
+    
+    # Avoidances set
+    av = answers.get("q12") or answers.get("avoidances") or []
+    if isinstance(av, str): av = [av]
+    out["avoidances"] = set([str(x).lower() for x in av])
+    
+    # Allergies set
+    allergies = set()
+    for q_all in ["q10", "q95", "q96"]:
+        val = answers.get(q_all) or []
+        if isinstance(val, str): val = [val]
+        allergies.update([str(x).lower() for x in val])
+    out["allergies"] = allergies
+    
+    out["walking_tolerance"] = answers.get("q74") or answers.get("walking_tolerance") or "medium"
+    
+    # Dietary restrictions
+    diet = set()
+    for q_diet in ["q20", "dietary", "q93"]:
+        val = answers.get(q_diet) or []
+        if isinstance(val, str): val = [val]
+        diet.update([str(x).lower() for x in val if x != "none"])
+    out["dietary_restrictions"] = diet
+
     return out
 
 def get_itinerary(trip_id: str) -> Optional[Dict[str, Any]]:
@@ -41,3 +101,43 @@ def get_itinerary(trip_id: str) -> Optional[Dict[str, Any]]:
             (d["id"],)).fetchall()
         d["activities"] = [_decode(a) for a in acts]
         return d
+
+def has_completed_deep_profile(conn, user_id: str) -> bool:
+    """Verifies whether the user has successfully completed and saved a deep personalization profile."""
+    if not user_id:
+        return False
+    cursor = conn.cursor()
+    # 1. Check Level 3 adaptive precision profile
+    cursor.execute("SELECT answers_json, coverage FROM precision_profiles WHERE user_id = ?", (user_id,))
+    p_row = cursor.fetchone()
+    if p_row and p_row[0]:
+        try:
+            answers = json.loads(p_row[0]) if isinstance(p_row[0], str) else p_row[0]
+            if isinstance(answers, dict) and len(answers) >= 2:
+                return True
+        except Exception:
+            pass
+
+    # 2. Check Level 2 comprehensive detailed profile
+    cursor.execute("SELECT raw_answers_json, avoidances, dietary, accessibility, schedule_density FROM detailed_profiles WHERE user_id = ?", (user_id,))
+    d_row = cursor.fetchone()
+    if d_row:
+        raw_val = d_row[0]
+        if raw_val:
+            try:
+                raw_ans = json.loads(raw_val) if isinstance(raw_val, str) else raw_val
+                if isinstance(raw_ans, dict) and len(raw_ans) >= 2:
+                    return True
+            except Exception:
+                pass
+        # Check if substantive answers exist
+        for col_idx in (1, 2, 3):
+            val = d_row[col_idx]
+            if val and val not in ("[]", '""', "null"):
+                try:
+                    parsed = json.loads(val) if isinstance(val, str) else val
+                    if isinstance(parsed, list) and len(parsed) > 0:
+                        return True
+                except Exception:
+                    pass
+    return False

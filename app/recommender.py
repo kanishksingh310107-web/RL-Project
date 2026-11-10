@@ -40,7 +40,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,500 - \u20b94,500 ($30 - $55) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,500 - \u20b94,500 / day \u00b7 Budget",
         "preferred_climate": [
             "cool",
             "cold"
@@ -96,7 +96,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "low",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,500 - \u20b96,000 ($45 - $75) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,500 - \u20b96,000 / day \u00b7 Balanced",
         "preferred_climate": [
             "warm",
             "tropical"
@@ -149,7 +149,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "comfort",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,000 - \u20b95,500 ($38 - $70) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "mild",
             "warm"
@@ -201,7 +201,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,500 - \u20b96,500 ($42 - $80) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,500 - \u20b96,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "mild",
             "tropical"
@@ -254,7 +254,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,800 - \u20b96,800 ($45 - $82) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,800 - \u20b96,800 / day \u00b7 Balanced",
         "preferred_climate": [
             "cold",
             "cool"
@@ -307,7 +307,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "high",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,000 - \u20b94,000 ($25 - $50) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,000 - \u20b94,000 / day \u00b7 Budget",
         "preferred_climate": [
             "mild",
             "cool"
@@ -360,7 +360,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "balanced",
         "crowd_level": "high",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,000 - \u20b95,500 ($36 - $68) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "mild",
             "cool"
@@ -411,7 +411,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "moderate",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,200 - \u20b94,200 ($28 - $52) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,200 - \u20b94,200 / day \u00b7 Budget",
         "preferred_climate": [
             "cool",
             "mild"
@@ -462,7 +462,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,200 - \u20b94,000 ($26 - $48) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,200 - \u20b94,000 / day \u00b7 Budget",
         "preferred_climate": [
             "mild",
             "warm"
@@ -511,7 +511,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "active",
         "crowd_level": "low",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,000 - \u20b95,500 ($36 - $66) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,000 - \u20b95,500 / day \u00b7 Balanced",
         "preferred_climate": [
             "cool",
             "mild"
@@ -563,7 +563,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "balanced",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,200 - \u20b95,800 ($38 - $70) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,200 - \u20b95,800 / day \u00b7 Balanced",
         "preferred_climate": [
             "cool",
             "cold"
@@ -615,7 +615,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "low",
         "budget_tier": "luxury",
-        "estimated_cost": "\u20b95,000 - \u20b99,500 ($60 - $115) / day \u00b7 Luxury",
+        "estimated_cost": "\u20b95,000 - \u20b99,500 / day \u00b7 Luxury",
         "preferred_climate": [
             "warm",
             "tropical"
@@ -666,7 +666,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "comfort",
         "crowd_level": "high",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,000 - \u20b94,000 ($25 - $48) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,000 - \u20b94,000 / day \u00b7 Budget",
         "preferred_climate": [
             "cool",
             "mild"
@@ -716,7 +716,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "relaxed",
         "crowd_level": "moderate",
         "budget_tier": "balanced",
-        "estimated_cost": "\u20b93,200 - \u20b95,800 ($38 - $70) / day \u00b7 Balanced",
+        "estimated_cost": "\u20b93,200 - \u20b95,800 / day \u00b7 Balanced",
         "preferred_climate": [
             "cool",
             "mild"
@@ -765,7 +765,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "comfort",
         "crowd_level": "moderate",
         "budget_tier": "luxury",
-        "estimated_cost": "\u20b94,500 - \u20b98,500 ($55 - $105) / day \u00b7 Luxury",
+        "estimated_cost": "\u20b94,500 - \u20b98,500 / day \u00b7 Luxury",
         "preferred_climate": [
             "cool",
             "mild"
@@ -814,7 +814,7 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "style": "balanced",
         "crowd_level": "high",
         "budget_tier": "budget",
-        "estimated_cost": "\u20b92,500 - \u20b94,800 ($30 - $58) / day \u00b7 Budget",
+        "estimated_cost": "\u20b92,500 - \u20b94,800 / day \u00b7 Budget",
         "preferred_climate": [
             "mild",
             "cool"
@@ -1190,7 +1190,7 @@ def score_destination_for_user(
     except Exception:
         pass
 
-    # 6. Deep Profile Constraints (Avoidances penalty)
+    # 6. Deep Profile Constraints (Hard Avoidance Filtering)
     active_avoidances = []
     if detailed_profile and detailed_profile.get("avoidances"):
         active_avoidances.extend([str(a).lower() for a in detailed_profile["avoidances"]])
@@ -1199,12 +1199,14 @@ def score_destination_for_user(
     if "q12" in raw_answers and isinstance(raw_answers["q12"], list):
         active_avoidances.extend([str(a).lower() for a in raw_answers["q12"]])
 
+    is_hard_conflict = False
     dest_triggers = [t.lower() for t in dest.get("avoidance_triggers", [])]
     for avoid in set(active_avoidances):
         for trigger in dest_triggers:
             if avoid in trigger or trigger in avoid:
-                score = max(5.0, score - w["avoidance_penalty"])
-                warnings.append(f"Notice: May conflict with your avoidance of {avoid.replace('_', ' ')}")
+                is_hard_conflict = True
+                score = 0.0
+                warnings.append(f"Excluded: Conflicts with your hard avoidance of {avoid.replace('_', ' ')} (Q12)")
 
     # 7. Past trip preference adjustment
     if past_trips:
@@ -1233,6 +1235,22 @@ def score_destination_for_user(
     else:
         why_text = f"Offers diverse {dest['style']} experiences suitable for general exploration."
 
+    # Build transparent "Because you said..." attribution citing specific questionnaire answers
+    because_items = []
+    if shared_tags:
+        t_names = [t.replace("_", " ").title() for t in list(shared_tags)[:2]]
+        because_items.append(f"you enjoy {', '.join(t_names)} (Q14)")
+    if raw_climate and raw_climate not in ["no_preference", "any", "unspecified", "none"]:
+        because_items.append(f"prefer {raw_climate.title()} climate (Q26)")
+    if raw_comp and raw_comp not in ["alone", "unspecified"]:
+        because_items.append(f"travel with {raw_comp.replace('_', ' ')} (Q3)")
+    if raw_budget and raw_budget not in ["unspecified", "none"]:
+        because_items.append(f"budget aligns with {raw_budget.replace('_', ' ')} (Q32)")
+    if not is_hard_conflict and active_avoidances:
+        because_items.append(f"respects your avoidance of {', '.join([a.replace('_', ' ') for a in active_avoidances[:2]])} (Q12)")
+
+    because_you_said = f"Because you said {' and '.join(because_items)}." if because_items else f"Because you selected {dest['style']} travel."
+
     return {
         "id": dest["id"],
         "name": dest["name"],
@@ -1242,6 +1260,8 @@ def score_destination_for_user(
         "duration": dest.get("duration", "4 - 7 days"),
         "match_score": final_score,
         "why_it_suits": why_text,
+        "because_you_said": because_you_said,
+        "is_hard_conflict": is_hard_conflict,
         "tags": [t.replace("_", " ").title() for t in dest.get("tags", [])[:4]],
         "available_experiences": dest["available_experiences"],
         "travel_style_and_atmosphere": dest["travel_style_and_atmosphere"],
@@ -1285,6 +1305,11 @@ def get_categorized_recommendations(
         sc = score_destination_for_user(d, profile, detailed_profile, past_trips)
         sc["is_shortlisted"] = sc["id"] in shortlist_set
         scored.append(sc)
+
+    # Hard constraints filtering: remove options that violate user avoidances / allergies
+    safe_scored = [s for s in scored if not s.get("is_hard_conflict")]
+    if safe_scored:
+        scored = safe_scored
 
     # Sort all by match score descending
     scored_sorted = sorted(scored, key=lambda x: x["match_score"], reverse=True)

@@ -507,6 +507,27 @@ def generate_timed_schedule(
         if not any(a.get("id") == ext["id"] for a in db_acts):
             db_acts.append(dict(ext))
 
+    # Places API dynamic integration for any destination with limited activities
+    if len(db_acts) < 8:
+        try:
+            from app.services.places_service import get_places_for_destination
+            places_res = get_places_for_destination(destination_id)
+            if places_res and places_res.get("places"):
+                for p in places_res["places"]:
+                    p_id = p.get("place_id") or f"{destination_id}_{p['name'].lower().replace(' ', '_')[:20]}"
+                    if not any(a.get("id") == p_id for a in db_acts):
+                        db_acts.append({
+                            "id": p_id,
+                            "destination_id": destination_id,
+                            "name": p["name"],
+                            "category": p.get("category", "sightseeing"),
+                            "neighborhood": f"Central Area",
+                            "estimated_cost": 250.0,
+                            "description": f"Verified destination highlight in {destination_id}."
+                        })
+        except Exception:
+            pass
+
     # Priority ordering for Manali to put Hadimba Temple in morning and Solang Valley in afternoon
     if destination_id == "manali_spiti_india":
         hadimba = next((a for a in db_acts if "hadimba" in a.get("id", "").lower() or "hadimba" in a.get("name", "").lower()), None)
@@ -523,6 +544,7 @@ def generate_timed_schedule(
 
     all_days = []
     act_index = 0
+    used_trip_acts = set()
 
     for day_num in range(1, total_days + 1):
         day_slots = []
@@ -537,15 +559,28 @@ def generate_timed_schedule(
             ord_idx = slot_tpl["order_index"]
 
             if stype == "activity":
-                # Find an unused activity for today
+                # Prefer activities not yet scheduled anywhere in the entire trip; fallback to not used today
                 chosen_act = None
                 start_search = act_index
+                # Pass 1: Unused across the whole trip
                 for _ in range(len(db_acts)):
                     candidate = db_acts[act_index % len(db_acts)]
                     act_index += 1
-                    if candidate.get("id") not in used_today_acts:
+                    cand_id = candidate.get("id")
+                    if cand_id and cand_id not in used_trip_acts:
                         chosen_act = candidate
                         break
+
+                # Pass 2: If all trip activities exhausted, pick one not used today
+                if not chosen_act:
+                    for _ in range(len(db_acts)):
+                        candidate = db_acts[act_index % len(db_acts)]
+                        act_index += 1
+                        cand_id = candidate.get("id")
+                        if cand_id and cand_id not in used_today_acts:
+                            chosen_act = candidate
+                            break
+
                 if not chosen_act and db_acts:
                     chosen_act = db_acts[start_search % len(db_acts)]
 
@@ -558,6 +593,7 @@ def generate_timed_schedule(
 
                 if act_id:
                     used_today_acts.add(act_id)
+                    used_trip_acts.add(act_id)
 
                 day_slots.append({
                     "day_number": day_num,

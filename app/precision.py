@@ -8,6 +8,7 @@
 #   4. build_precision_vector() - turns answers into extra RL state features, driven by the "vec" spec on each question.
 #   5. derive_insights() - human-readable planner rules the RL agent / planner can act on.
 import copy
+import json
 from typing import Any, Dict, List, Tuple
 
 from app.questionnaire import QUESTIONS as BASE_QUESTIONS
@@ -365,6 +366,36 @@ NEW_QUESTIONS: List[Dict[str, Any]] = [
                   ("full", "Full reasoning and alternatives")),
        vec=_ord("explanation_detail", {"brief": .2, "short_reason": .55, "full": 1.0}),
        why="Sets the verbosity of recommendation explanations."),
+    _q("q122", "p8", "How should the assistant handle sudden schedule delays or transit interruptions?", "single",
+       options=_o(("reschedule_auto", "Reschedule seamlessly and notify me"),
+                  ("suggest_choices", "Offer 2-3 alternate options to approve"),
+                  ("alert_only", "Just alert me; I'll adjust manually")),
+       vec=_ord("delay_handling", {"reschedule_auto": 1.0, "suggest_choices": .5, "alert_only": .1}),
+       why="Controls automated schedule recovery during active travel."),
+    _q("q123", "p8", "Would you like proactive local etiquette and cultural advisories?", "single",
+       options=_o(("always", "Yes, share etiquette tips before visits"),
+                  ("crucial_only", "Only for strict dress codes or sensitive sites"),
+                  ("none", "No, I prefer learning independently")),
+       vec=_ord("etiquette_advisory", {"always": 1.0, "crucial_only": .5, "none": .0}),
+       why="Governs pre-visit cultural and dress code briefings."),
+    _q("q124", "p8", "When suggesting alternative activities, should they match the current theme or introduce surprises?", "single",
+       options=_o(("same_theme", "Stick closely to the scheduled theme"),
+                  ("balanced", "Balanced mix of similar and fresh ideas"),
+                  ("novel_surprise", "Surprise me with contrasting experiences")),
+       vec=_ord("alternative_diversity", {"same_theme": .1, "balanced": .5, "novel_surprise": 1.0}),
+       why="Calibrates the diversity and novelty of LinUCB activity replacements."),
+    _q("q125", "p8", "How strictly should the daily budget cap be enforced when high-match opportunities arise?", "single",
+       options=_o(("strict", "Strictly enforce the cap at all times"),
+                  ("flexible_15", "Allow up to 15% flexibility for exceptional experiences"),
+                  ("value_first", "Prioritize experience quality over daily cap")),
+       vec=_ord("budget_flexibility", {"strict": .1, "flexible_15": .5, "value_first": 1.0}),
+       why="Defines budget elasticity for premium activity recommendations."),
+    _q("q126", "p8", "What communication tone do you prefer from your travel companion?", "single",
+       options=_o(("concise_pro", "Concise and action-oriented"),
+                  ("warm_friendly", "Warm, encouraging and conversational"),
+                  ("detailed_guide", "Deeply informative like a knowledgeable local guide")),
+       vec=_ord("companion_tone", {"concise_pro": .1, "warm_friendly": .5, "detailed_guide": 1.0}),
+       why="Sets the voice and style of assistant briefings and insights."),
 ]
 
 # --------------------------------------------------------------------------------------
@@ -673,3 +704,207 @@ def summarize_precision(answers: Dict[str, Any], context: Dict[str, Any] = None)
     constraints = sum(1 for i in insights if i["kind"] == "constraint")
     pct = round(100 * n_ans / n_vis) if n_vis else 0
     return f"Precision profile: {n_ans}/{n_vis} applicable questions answered ({pct}%), {constraints} hard constraints, {len(insights)} planner rules active."
+
+
+# --------------------------------------------------------------------------------------
+# Mandatory Profile Tracking and Enforcement (Task 1)
+# --------------------------------------------------------------------------------------
+
+BASIC_QUESTION_MAP = {
+    "q1": ("age_group", "Age group"),
+    "q2": ("travel_experience", "Travel experience"),
+    "q3": ("companions", "Travel companions"),
+    "q4": ("planning_approach", "Planning approach"),
+    "q5": ("travel_goals", "Primary travel goals"),
+    "q14": ("place_interests", "Favorite place types"),
+    "q17": ("experience_preference", "Experience style"),
+    "q20": ("dietary", "Dietary preferences"),
+    "q26": ("preferred_climate", "Preferred climate"),
+    "q32": ("budget_tier", "Budget tier"),
+    "q41": ("assistance_autonomy", "Assistance preference"),
+}
+
+def check_basic_missing(profile_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
+    missing = []
+    if not profile_dict:
+        for qid, (field, label) in BASIC_QUESTION_MAP.items():
+            missing.append({
+                "id": qid,
+                "field": field,
+                "label": label,
+                "level": "basic",
+                "question": BASE_QUESTIONS[qid]["question"] if qid in BASE_QUESTIONS else label
+            })
+        return missing
+
+    raw = profile_dict.get("raw_answers") or profile_dict
+    for qid, (field, label) in BASIC_QUESTION_MAP.items():
+        val = raw.get(field)
+        if val is None:
+            val = profile_dict.get(field)
+        if val is None:
+            val = raw.get(qid)
+        if not _is_answered(val):
+            missing.append({
+                "id": qid,
+                "field": field,
+                "label": label,
+                "level": "basic",
+                "question": BASE_QUESTIONS[qid]["question"] if qid in BASE_QUESTIONS else label
+            })
+    return missing
+
+def check_precision_missing(answers: Dict[str, Any], context: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], int, int]:
+    full = {**(context or {}), **(answers or {})}
+    missing = []
+    total_vis = 0
+    total_ans = 0
+    for qid, q in PRECISION_QUESTIONS.items():
+        if is_visible(qid, full):
+            total_vis += 1
+            val = (answers or {}).get(qid)
+            if _is_answered(val):
+                total_ans += 1
+            else:
+                missing.append({
+                    "id": qid,
+                    "label": q.get("question", qid),
+                    "question": q.get("question", qid),
+                    "section": q.get("section", "p1"),
+                    "level": "precision",
+                    "type": q.get("type", "single")
+                })
+    return missing, total_ans, total_vis
+
+def missing_required(user_id: str) -> List[Dict[str, Any]]:
+    """
+    Returns list of all applicable questions that have not yet been answered by user_id
+    across Basic and Precision profiles.
+    """
+    from app.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Load basic
+        cursor.execute("SELECT raw_answers_json, stated_vector_json, companions, budget_tier, preferred_climate, interests FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        b_row = cursor.fetchone()
+        base_dict = {}
+        if b_row:
+            raw_s = b_row[0]
+            if raw_s:
+                try:
+                    base_dict = json.loads(raw_s) if isinstance(raw_s, str) else raw_s
+                except Exception:
+                    pass
+            if not base_dict:
+                base_dict = {
+                    "companions": b_row[2],
+                    "budget_tier": b_row[3],
+                    "preferred_climate": b_row[4],
+                    "interests": json.loads(b_row[5]) if b_row[5] else []
+                }
+        basic_missing = check_basic_missing(base_dict)
+        
+        # Load detailed
+        cursor.execute("SELECT raw_answers_json FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        d_row = cursor.fetchone()
+        detailed_dict = {}
+        if d_row and d_row[0]:
+            try:
+                detailed_dict = json.loads(d_row[0]) if isinstance(d_row[0], str) else d_row[0]
+            except Exception:
+                pass
+
+        context = build_context_answers(base_dict, detailed_dict)
+
+        # Load precision
+        cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+        p_row = cursor.fetchone()
+        prec_answers = {}
+        if p_row and p_row[0]:
+            try:
+                prec_answers = json.loads(p_row[0]) if isinstance(p_row[0], str) else p_row[0]
+            except Exception:
+                pass
+
+        prec_missing, _, _ = check_precision_missing(prec_answers, context)
+        return basic_missing + prec_missing
+
+def profile_status(user_id: str) -> Dict[str, Any]:
+    """
+    Returns comprehensive profile status: complete, missing list, percent, and levels breakdown.
+    """
+    from app.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Basic
+        cursor.execute("SELECT raw_answers_json, companions, budget_tier, preferred_climate, interests FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        b_row = cursor.fetchone()
+        base_dict = {}
+        if b_row:
+            raw_s = b_row[0]
+            if raw_s:
+                try:
+                    base_dict = json.loads(raw_s) if isinstance(raw_s, str) else raw_s
+                except Exception:
+                    pass
+            if not base_dict:
+                base_dict = {
+                    "companions": b_row[1],
+                    "budget_tier": b_row[2],
+                    "preferred_climate": b_row[3],
+                    "interests": json.loads(b_row[4]) if b_row[4] else []
+                }
+        basic_missing = check_basic_missing(base_dict)
+        basic_app = len(BASIC_QUESTION_MAP)
+        basic_ans = basic_app - len(basic_missing)
+        
+        # Detailed
+        cursor.execute("SELECT raw_answers_json FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        d_row = cursor.fetchone()
+        detailed_dict = {}
+        if d_row and d_row[0]:
+            try:
+                detailed_dict = json.loads(d_row[0]) if isinstance(d_row[0], str) else d_row[0]
+            except Exception:
+                pass
+
+        context = build_context_answers(base_dict, detailed_dict)
+
+        # Precision
+        cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+        p_row = cursor.fetchone()
+        prec_answers = {}
+        if p_row and p_row[0]:
+            try:
+                prec_answers = json.loads(p_row[0]) if isinstance(p_row[0], str) else p_row[0]
+            except Exception:
+                pass
+
+        prec_missing, prec_ans, prec_app = check_precision_missing(prec_answers, context)
+        
+        all_missing = basic_missing + prec_missing
+        total_applicable = basic_app + prec_app
+        total_answered = basic_ans + prec_ans
+        pct = round((total_answered / total_applicable) * 100, 1) if total_applicable > 0 else 0.0
+
+        return {
+            "complete": len(all_missing) == 0,
+            "missing": all_missing,
+            "percent": pct,
+            "answered_count": total_answered,
+            "total_applicable": total_applicable,
+            "levels": {
+                "basic": {
+                    "complete": len(basic_missing) == 0,
+                    "answered": basic_ans,
+                    "applicable": basic_app
+                },
+                "precision": {
+                    "complete": len(prec_missing) == 0,
+                    "answered": prec_ans,
+                    "applicable": prec_app
+                }
+            }
+        }

@@ -92,6 +92,127 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     candidate_rows = cursor.fetchall()
     all_candidates = [dict(r) for r in candidate_rows]
 
+    # Integrate Live Places (Overpass API) and Places API dynamically if DB has few or no activities
+    if len(all_candidates) < 8:
+        try:
+            from app.services.live_api_service import get_live_places_around, search_geocoding
+            dest_name = trip.get("destination_name", "")
+            geo_res = search_geocoding(dest_name)
+            places_list = []
+            source_tag = "OpenStreetMap Overpass (source: api)"
+            if geo_res.get("results"):
+                top_geo = geo_res["results"][0]
+                lat = top_geo.get("latitude", 0.0)
+                lon = top_geo.get("longitude", 0.0)
+                live_p = get_live_places_around(lat, lon, city=dest_name, radius=6000)
+                if live_p and live_p.get("places"):
+                    places_list = live_p["places"]
+                    src = live_p.get("source", "api")
+                    source_tag = f"OpenStreetMap Overpass (source: {src})"
+
+            if places_list:
+                for p in places_list:
+                    p_id = p.get("place_id") or f"{trip['destination_id']}_{p['name'].lower().replace(' ', '_')[:25]}"
+                    cat_raw = p.get("category", "culture")
+                    cat_map = {
+                        "culture": "culture_history",
+                        "nature": "nature_outdoors",
+                        "food": "food_dining",
+                        "adventure": "nature_outdoors",
+                        "rest": "relaxation_wellness"
+                    }
+                    can_cat = cat_map.get(cat_raw, "culture_history")
+                    dur_mins = int((p.get("typical_duration_hours") or 1.5) * 60)
+                    cost = 250.0 if can_cat == "culture_history" else (450.0 if can_cat == "food_dining" else 150.0)
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO destination_activities (
+                            id, destination_id, name, category, neighborhood,
+                            latitude, longitude, duration_minutes, cost_tier,
+                            cost_amount, physical_intensity, crowd_level,
+                            opening_time, closing_time, tags, avoidance_triggers,
+                            description, photo_url, data_source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        p_id,
+                        trip["destination_id"],
+                        p["name"],
+                        can_cat,
+                        p.get("neighborhood") or f"Central {dest_name}",
+                        p.get("lat") or 0.0,
+                        p.get("lon") or 0.0,
+                        dur_mins,
+                        "budget",
+                        cost,
+                        "moderate",
+                        "moderate",
+                        "09:00",
+                        "18:00",
+                        json.dumps([can_cat, "live_overpass"]),
+                        json.dumps([]),
+                        f"Visit {p['name']}, a verified spot in {dest_name}.",
+                        None,
+                        source_tag
+                    ))
+                conn.commit()
+                cursor.execute("SELECT * FROM destination_activities WHERE destination_id = ?", (trip["destination_id"],))
+                all_candidates = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+    # Fallback to local places_service if still < 8
+    if len(all_candidates) < 8:
+        try:
+            from app.services.places_service import get_places_for_destination
+            places_res = get_places_for_destination(trip["destination_id"])
+            if places_res and places_res.get("places"):
+                for p in places_res["places"]:
+                    p_id = p.get("place_id") or f"{trip['destination_id']}_{p['name'].lower().replace(' ', '_')[:20]}"
+                    cat_raw = p.get("category", "culture")
+                    cat_map = {
+                        "culture": "culture_history",
+                        "nature": "nature_outdoors",
+                        "food": "food_dining",
+                        "adventure": "nature_outdoors",
+                        "rest": "relaxation_wellness"
+                    }
+                    can_cat = cat_map.get(cat_raw, "culture_history")
+                    dur_mins = int((p.get("typical_duration_hours") or 1.5) * 60)
+                    cost = 250.0 if can_cat == "culture_history" else (450.0 if can_cat == "food_dining" else 150.0)
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO destination_activities (
+                            id, destination_id, name, category, neighborhood,
+                            latitude, longitude, duration_minutes, cost_tier,
+                            cost_amount, physical_intensity, crowd_level,
+                            opening_time, closing_time, tags, avoidance_triggers,
+                            description, photo_url, data_source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        p_id,
+                        trip["destination_id"],
+                        p["name"],
+                        can_cat,
+                        f"Central {trip.get('destination_name', 'Area')}",
+                        p.get("lat") or 0.0,
+                        p.get("lon") or 0.0,
+                        dur_mins,
+                        "budget",
+                        cost,
+                        "moderate",
+                        "moderate",
+                        "09:00",
+                        "18:00",
+                        json.dumps([can_cat, "places_service"]),
+                        json.dumps([]),
+                        f"Explore {p['name']}, a verified highlight in {trip.get('destination_name', 'destination')}.",
+                        None,
+                        places_res.get("source", "places_service")
+                    ))
+                conn.commit()
+                cursor.execute("SELECT * FROM destination_activities WHERE destination_id = ?", (trip["destination_id"],))
+                all_candidates = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
     if not all_candidates:
         # Fallback dummy candidate if no specific activities in DB for unseeded destinations
         all_candidates = [{
@@ -215,10 +336,32 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                 transit_text = f"Depart from lodging to {chosen_act['neighborhood']}"
                 transit_mins = 15
 
-            # Tailored explanation
-            why_text = f"Chosen for your interest in {chosen_act['category'].replace('_', ' ')} with convenient pacing."
+            # Tailored explanation with explicit "Because you said..." attribution
+            because_reasons = []
+            if chosen_act["category"] == "food_dining":
+                diet_list = user_profile.get("dietary") or []
+                clean_diet = [d for d in diet_list if d != "none"]
+                if clean_diet:
+                    because_reasons.append(f"prefer {', '.join(clean_diet)} dining (Q20)")
+                else:
+                    because_reasons.append("enjoy authentic local food (Q21)")
+            elif any(t in chosen_act["category"] for t in ["culture", "history"]):
+                because_reasons.append("enjoy cultural and historical sites (Q14)")
+            elif any(t in chosen_act["category"] for t in ["nature", "outdoor", "adventure"]):
+                because_reasons.append("enjoy nature and outdoor exploration (Q5, Q14)")
+            elif any(t in chosen_act["category"] for t in ["relaxation", "wellness"]):
+                because_reasons.append("prefer peaceful, relaxing experiences (Q5)")
+            else:
+                because_reasons.append(f"enjoy {chosen_act['category'].replace('_', ' ')} (Q14)")
+
+            walking_val = user_profile.get("walking_tolerance")
+            if walking_val:
+                because_reasons.append(f"have a {str(walking_val).replace('_', ' ')} walking limit (Q74)")
+
+            because_you_said = f"Because you said you {' and '.join(because_reasons[:2])}."
+            why_text = f"{because_you_said} Paced comfortably for your schedule."
             if bonus_val > 0.35:
-                why_text += " (Exploration candidate to discover new local preferences)"
+                why_text += " (LinUCB exploration candidate)"
 
             act_record_id = str(uuid.uuid4())
             cost_val = float(chosen_act.get("cost_amount", 0.0))
@@ -271,6 +414,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                 "transit_suggestion": transit_text,
                 "transit_duration_minutes": transit_mins,
                 "why_it_suits": why_text,
+                "because_you_said": because_you_said,
                 "status": "proposed",
                 "photo_url": chosen_act.get("photo_url"),
                 "data_source": chosen_act.get("data_source", "curated")
@@ -429,24 +573,58 @@ def get_slot_alternatives(conn, user_id: str, itinerary_id: str, activity_id: st
     trip_exclusions.add(activity_id)
 
     # Exclude activities already scheduled on this same day and the activity itself
+    # Map all scheduled activities in this itinerary across all days
     cursor.execute("""
-        SELECT activity_id FROM itinerary_activities
-        WHERE itinerary_id = ? AND day_number = ?
-    """, (itinerary_id, day_num))
-    scheduled_today = set(r[0] for r in cursor.fetchall())
-    trip_exclusions.update(scheduled_today)
-    trip_exclusions.add(activity_id)
+        SELECT day_number, time_slot, activity_id, title FROM itinerary_activities
+        WHERE itinerary_id = ?
+    """, (itinerary_id,))
+    all_scheduled = cursor.fetchall()
+    scheduled_map = {r[2]: {"day_number": r[0], "time_slot": r[1], "title": r[3]} for r in all_scheduled}
 
     cursor.execute("SELECT * FROM destination_activities WHERE destination_id = ?", (dest_id,))
     all_candidates = [dict(r) for r in cursor.fetchall()]
 
-    valid = []
+    # If few candidates in DB, populate from Places API
+    if len(all_candidates) < 6:
+        try:
+            from app.services.places_service import get_places_for_destination
+            places_res = get_places_for_destination(dest_id)
+            if places_res and places_res.get("places"):
+                for p in places_res["places"]:
+                    p_id = p.get("place_id") or f"{dest_id}_{p['name'].lower().replace(' ', '_')[:20]}"
+                    cat_map = {"culture": "culture_history", "nature": "nature_outdoors", "food": "food_dining"}
+                    can_cat = cat_map.get(p.get("category", "culture"), "culture_history")
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO destination_activities (
+                            id, destination_id, name, category, neighborhood,
+                            latitude, longitude, duration_minutes, cost_tier,
+                            cost_amount, physical_intensity, crowd_level,
+                            opening_time, closing_time, tags, avoidance_triggers,
+                            description, photo_url, data_source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        p_id, dest_id, p["name"], can_cat, "Local Area",
+                        p.get("lat") or 0.0, p.get("lon") or 0.0, 90, "budget", 250.0,
+                        "moderate", "moderate", "09:00", "18:00", "[]", "[]",
+                        f"Visit {p['name']}.", None, places_res.get("source", "places_service")
+                    ))
+                conn.commit()
+                cursor.execute("SELECT * FROM destination_activities WHERE destination_id = ?", (dest_id,))
+                all_candidates = [dict(r) for r in cursor.fetchall()]
+        except Exception:
+            pass
+
+    fresh_candidates = []
+    switch_candidates = []
+
     for c in all_candidates:
-        if c["id"] in trip_exclusions:
+        if c["id"] == activity_id:
             continue
+
         is_safe, _ = is_activity_safe_and_valid(c, user_profile, trip_exclusions)
         if not is_safe:
             continue
+
         arm_id = c["category"] if c["category"] in CANONICAL_ARMS else "culture_history"
         context_x = extract_context_vector(
             user_profile=user_profile,
@@ -457,15 +635,32 @@ def get_slot_alternatives(conn, user_id: str, itinerary_id: str, activity_id: st
             activity=c
         )
         score, _, _ = policy.predict_score(arm_id, context_x)
-        if c["neighborhood"] == neighborhood:
+        if c.get("neighborhood") == neighborhood:
             score += 0.2
-        valid.append((score, c))
 
-    # If all other activities were on the same day, fall back to any other destination activity
-    if not valid:
-        for c in all_candidates:
-            if c["id"] != activity_id and c["id"] not in _get_trip_exclusions(conn, trip_id):
-                valid.append((0.5, c))
+        c_copy = dict(c)
+        if c["id"] in scheduled_map:
+            # Already in another day of this itinerary
+            c_copy["is_already_scheduled"] = True
+            c_copy["scheduled_day"] = scheduled_map[c["id"]]["day_number"]
+            c_copy["scheduled_time"] = scheduled_map[c["id"]]["time_slot"]
+            c_copy["alternative_type"] = "switch_day"
+            c_copy["reason"] = f"Already in your itinerary on Day {c_copy['scheduled_day']} ({c_copy['scheduled_time']}). You can switch activities with that day."
+            switch_candidates.append((score, c_copy))
+        else:
+            # Truly fresh alternative
+            c_copy["is_already_scheduled"] = False
+            c_copy["alternative_type"] = "new_replacement"
+            c_copy["reason"] = "Personalized alternative matching your profile and destination."
+            fresh_candidates.append((score, c_copy))
 
-    valid.sort(key=lambda item: item[0], reverse=True)
-    return [item[1] for item in valid[:3]]
+    fresh_candidates.sort(key=lambda item: item[0], reverse=True)
+    switch_candidates.sort(key=lambda item: item[0], reverse=True)
+
+    # Return top 3 fresh candidates, or if none, transparently return switch candidates
+    if fresh_candidates:
+        result = [item[1] for item in fresh_candidates[:3]]
+    else:
+        result = [item[1] for item in switch_candidates[:3]]
+
+    return result

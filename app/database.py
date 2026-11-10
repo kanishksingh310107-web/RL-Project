@@ -273,6 +273,18 @@ def init_db():
         if "total_reward" not in p_cols:
             cursor.execute("ALTER TABLE rl_user_policies ADD COLUMN total_reward REAL DEFAULT 0.0")
 
+                # API Response Cache table (Open-Meteo, Overpass, REST Countries)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_cache (
+                cache_key TEXT PRIMARY KEY,
+                response_json TEXT NOT NULL,
+                source TEXT DEFAULT 'api',
+                fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ttl_seconds INTEGER DEFAULT 86400
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_cache_key ON api_cache(cache_key)")
+
         conn.commit()
 
         # Seed curated activities catalog

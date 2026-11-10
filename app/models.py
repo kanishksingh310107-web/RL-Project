@@ -32,8 +32,8 @@ class ShortProfileCreate(BaseModel):
     travel_experience: str = "occasional"
     companions: str = "alone"
     planning_approach: str = "plan_essentials"
-    travel_goals: List[str] = [] # Q5 (up to 4)
-    place_interests: List[str] = [] # Q14 (up to 5)
+    travel_goals: List[str] = [] # Q5 (Select at least 2)
+    place_interests: List[str] = [] # Q14 (Select at least 2)
     experience_preference: str = "balanced_mix" # Q17
     dietary: List[str] = ["none"] # Q20
     preferred_climate: str = "mild" # Q26
@@ -218,6 +218,7 @@ class DestinationRecommendation(BaseModel):
     match_score: float
     why_it_suits: str
     tags: List[str] = []
+    because_you_said: Optional[str] = None
     available_experiences: List[str] = []
     travel_style_and_atmosphere: str
     practical_considerations: Optional[str] = None
@@ -263,8 +264,8 @@ class TripCreate(BaseModel):
     start_date: str # YYYY-MM-DD
     end_date: str # YYYY-MM-DD
     travellers_count: int = 1
-    total_budget: float = 1200.0
-    currency: str = "USD"
+    total_budget: float = 25000.0
+    currency: str = "INR"
     accommodation_tier: str = "balanced" # 'budget_hostel', 'boutique', 'resort', 'apartment'
     transit_pref: str = "public_transit" # 'public_transit', 'walking', 'rental_car', 'taxi'
     travel_pace: str = "balanced" # 'relaxed', 'balanced', 'packed'
@@ -305,6 +306,7 @@ class ItineraryActivityModel(BaseModel):
     transit_suggestion: Optional[str] = None
     transit_duration_minutes: int = 15
     why_it_suits: Optional[str] = None
+    because_you_said: Optional[str] = None
     status: str = "proposed" # 'proposed', 'accepted', 'rejected', 'modified'
     rejection_reason: Optional[str] = None
     order_index: int = 0

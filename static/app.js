@@ -1,3 +1,9 @@
+function formatINR(val) {
+  if (val == null || isNaN(val)) return "₹0";
+  const num = Math.round(Number(val));
+  return "₹" + num.toLocaleString("en-IN");
+}
+
 // Frontend script for RL Travel Guide
 // Master Questionnaire, Unified Personalisation, and Recommender Engine
 
@@ -387,8 +393,12 @@ function goToStep(step) {
     }
   }
   if (step === 3 && state.currentStep === 2) {
-    if (state.basicAnswers.travel_goals.size === 0 && state.basicAnswers.place_interests.size === 0) {
-      alert("Please choose at least one travel goal or type of place you enjoy.");
+    if (state.basicAnswers.travel_goals.size < 2) {
+      alert("Please select at least 2 travel goals before continuing.");
+      return;
+    }
+    if (state.basicAnswers.place_interests.size < 2) {
+      alert("Please select at least 2 types of places you enjoy before continuing.");
       return;
     }
   }
@@ -433,11 +443,11 @@ function renderBasicForm() {
     state.basicAnswers.planning_approach = val;
   });
 
-  // Travel Goals (Multi, max 4)
-  renderMultiChips("basicGoalsGrid", q.q5.options, state.basicAnswers.travel_goals, 4, "goalsCounter");
+  // Travel Goals (Multi, min 2 required, no max limit)
+  renderMultiChips("basicGoalsGrid", q.q5.options, state.basicAnswers.travel_goals, "goalsCounter");
 
-  // Place Types (Multi, max 5)
-  renderMultiChips("basicPlacesGrid", q.q14.options, state.basicAnswers.place_interests, 5, "placesCounter");
+  // Place Types (Multi, min 2 required, no max limit)
+  renderMultiChips("basicPlacesGrid", q.q14.options, state.basicAnswers.place_interests, "placesCounter");
 
   // Experience Style
   renderCardOptions("basicExpStyleGrid", q.q17.options, state.basicAnswers.experience_preference, (val) => {
@@ -533,11 +543,11 @@ function renderIconCards(containerId, options, currentVal, onSelect) {
   });
 }
 
-function renderMultiChips(containerId, options, activeSet, maxAllowed, counterId) {
+function renderMultiChips(containerId, options, activeSet, counterId) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
-  updateCounter(counterId, activeSet.size, maxAllowed);
+  updateCounter(counterId, activeSet.size);
 
   options.forEach(opt => {
     const isSel = activeSet.has(opt.id);
@@ -548,14 +558,10 @@ function renderMultiChips(containerId, options, activeSet, maxAllowed, counterId
         activeSet.delete(opt.id);
         card.classList.remove("selected");
       } else {
-        if (activeSet.size >= maxAllowed) {
-          alert(`You can choose up to ${maxAllowed} options.`);
-          return;
-        }
         activeSet.add(opt.id);
         card.classList.add("selected");
       }
-      updateCounter(counterId, activeSet.size, maxAllowed);
+      updateCounter(counterId, activeSet.size);
     };
 
     const iconClass = opt.icon || ICON_MAP[opt.id] || "fa-tag";
@@ -570,9 +576,9 @@ function renderMultiChips(containerId, options, activeSet, maxAllowed, counterId
   });
 }
 
-function updateCounter(counterId, current, max) {
+function updateCounter(counterId, current) {
   const el = document.getElementById(counterId);
-  if (el) el.textContent = `${current} / ${max}`;
+  if (el) el.textContent = `${current} selected (min 2 required)`;
 }
 
 function renderMultiPills(containerId, options, activeSet) {
@@ -589,6 +595,12 @@ function renderMultiPills(containerId, options, activeSet) {
     btn.textContent = opt.label;
     btn.onclick = () => {
       if (opt.id === "none") {
+        if (activeSet.has("none")) {
+          // Deselect "none"
+          activeSet.delete("none");
+          btn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:border-slate-300 transition";
+          return;
+        }
         activeSet.clear();
         activeSet.add("none");
         Array.from(container.children).forEach(b => {
@@ -597,7 +609,17 @@ function renderMultiPills(containerId, options, activeSet) {
         btn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-indigo-600 text-white border-indigo-600 shadow-xs transition";
         return;
       }
-      activeSet.delete("none");
+      
+      // If user clicks a specific restriction, remove "none"
+      if (activeSet.has("none")) {
+        activeSet.delete("none");
+        Array.from(container.children).forEach(b => {
+          if (b.textContent.toLowerCase().includes("no restriction") || b.textContent.toLowerCase().includes("none")) {
+            b.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:border-slate-300 transition";
+          }
+        });
+      }
+
       if (activeSet.has(opt.id)) {
         activeSet.delete(opt.id);
         btn.className = "px-3 py-1.5 rounded-xl text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:border-slate-300 transition";
@@ -650,6 +672,9 @@ async function handleProfileSubmit(e) {
     state.currentUser.has_profile = true;
     localStorage.setItem("rl_travel_user", JSON.stringify(state.currentUser));
     state.currentProfile = data;
+      if (window.TravelModules && window.TravelModules.refreshLockStatus) {
+        window.TravelModules.refreshLockStatus();
+      }
 
     renderDashboard(data);
     showView("dashboard");
@@ -659,7 +684,26 @@ async function handleProfileSubmit(e) {
 }
 
 function editProfile() {
+  if (state.currentProfile) {
+    const p = state.currentProfile;
+    const raw = p.raw_answers || {};
+    state.basicAnswers = {
+      age_group: p.age_group || raw.age_group || null,
+      travel_experience: p.travel_experience || raw.travel_experience || null,
+      companions: p.companions || raw.companions || null,
+      planning_approach: p.planning_approach || raw.planning_approach || null,
+      travel_goals: new Set(p.travel_goals || raw.travel_goals || []),
+      place_interests: new Set(p.place_interests || raw.place_interests || []),
+      experience_preference: p.experience_preference || raw.experience_preference || null,
+      dietary: new Set(p.dietary || raw.dietary || []),
+      preferred_climate: p.preferred_climate || raw.preferred_climate || null,
+      budget_tier: p.budget_tier || raw.budget_tier || null,
+      assistance_autonomy: p.assistance_autonomy || raw.assistance_autonomy || null,
+    };
+  }
+  renderBasicForm();
   showView("onboarding");
+  goToStep(1);
 }
 
 // ==========================================
@@ -730,6 +774,12 @@ async function syncUnifiedProfileCard(userId) {
   const summaryCard = document.getElementById("personalProfileSummaryCard");
 
   try {
+    // Check real completeness status from status endpoint
+    const statusRes = await fetch(`/api/profile/${userId}/status`);
+    if (statusRes.ok) {
+      state.profileStatus = await statusRes.json();
+    }
+
     const res = await fetch(`/api/profile/precision/${userId}`);
     if (!res.ok) {
       banner.classList.remove("hidden");
@@ -737,9 +787,21 @@ async function syncUnifiedProfileCard(userId) {
       return;
     }
     const data = await res.json();
-    if (!data.exists) {
+    
+    // Profile is only active if 100% complete
+    const isFullyComplete = state.profileStatus ? state.profileStatus.complete : data.exists;
+    if (!isFullyComplete) {
       banner.classList.remove("hidden");
       summaryCard.classList.add("hidden");
+      if (state.profileStatus) {
+        const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : 0;
+        const bannerTitle = banner.querySelector("h3");
+        if (bannerTitle) bannerTitle.textContent = `Mandatory Profile Incomplete (${state.profileStatus.percent}%)`;
+        const bannerP = banner.querySelector("p");
+        if (bannerP) bannerP.textContent = `You have ${remaining} applicable questions remaining. To unlock the Travel Companion and enhanced itinerary personalization, complete your detailed travel profile.`;
+        const bannerBtn = banner.querySelector("button");
+        if (bannerBtn) bannerBtn.innerHTML = `Complete My Profile Now (${remaining} left) &rarr;`;
+      }
       return;
     }
 
@@ -848,9 +910,25 @@ async function loadRecommendations(isRefresh = false) {
   try {
     const res = await fetch(`/api/recommendations/${state.currentUser.user_id}?offset=${currentOffset}`);
     if (!res.ok) {
-      const err = await res.json();
-      basisEl.textContent = err.detail || "Complete your profile to see recommendations.";
-      recGrid.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400 italic">No recommendations available yet.</div>`;
+      const err = await res.json().catch(() => ({ detail: "Personalised recommendations require a complete travel profile." }));
+      const msg = err.detail || "Complete your profile to unlock recommendations.";
+      basisEl.textContent = msg;
+      recGrid.innerHTML = `
+        <div class="col-span-full py-10 px-6 bg-slate-50 border border-dashed border-amber-200 rounded-2xl text-center space-y-3">
+          <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto text-xl">
+            <i class="fa-solid fa-lock"></i>
+          </div>
+          <h4 class="text-sm font-bold text-slate-800">Personalised Recommendations Locked</h4>
+          <p class="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
+            ${msg}
+          </p>
+          <div class="pt-2">
+            <button onclick="openPersonalProfileModal()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow transition">
+              Complete Personal Travel Profile &rarr;
+            </button>
+          </div>
+        </div>
+      `;
       return;
     }
 
@@ -965,10 +1043,17 @@ function renderRecommendationCard(item, category) {
           ${tagsHtml}
         </div>
 
-        <!-- Tagline & Why it fits -->
-        <p class="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-          <strong class="text-slate-800 font-semibold">Why this fits you:</strong> ${item.why_it_suits}
-        </p>
+        <!-- Tagline & Because you said attribution -->
+        ${item.because_you_said ? `
+          <div class="p-2 rounded-lg bg-indigo-50/90 border border-indigo-100 text-[11px] text-indigo-900 leading-snug">
+            <span class="font-bold text-indigo-700 block text-[10px] uppercase tracking-wider mb-0.5"><i class="fa-solid fa-sparkles text-amber-500 mr-1"></i>Because you said:</span>
+            ${item.because_you_said}
+          </div>
+        ` : `
+          <p class="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+            <strong class="text-slate-800 font-semibold">Why this fits you:</strong> ${item.why_it_suits}
+          </p>
+        `}
       </div>
     </div>
 
@@ -1159,7 +1244,13 @@ async function openPersonalProfileModal() {
     state.precision.answers = data.answers || {};
     state.precision.context = data.context_answers || {};
     state.precision.exists = !!data.exists;
-    state.precision.tab = state.precision.bank.sections[0].id;
+    
+    // Auto-focus first section with unanswered applicable questions for smooth completion
+    const firstUnansSec = state.precision.bank.sections.find(sec => {
+      const ids = precVisibleIds(sec.id);
+      return ids.some(id => !precAnswered(state.precision.answers[id]));
+    });
+    state.precision.tab = firstUnansSec ? firstUnansSec.id : state.precision.bank.sections[0].id;
     showPersonalPane("form");
     renderPersonalSection();
     renderPastTripsInModal();
@@ -1216,9 +1307,24 @@ function updatePersonalProgress() {
   });
 
   const pct = totalVis ? Math.round((100 * totalAns) / totalVis) : 0;
-  document.getElementById("personalProgressText").textContent = `${totalAns} of ${totalVis} questions answered`;
+  document.getElementById("personalProgressText").textContent = `${totalAns} of ${totalVis} applicable questions answered`;
   document.getElementById("personalProgressPct").textContent = `${pct}%`;
   document.getElementById("personalProgressBar").style.width = `${pct}%`;
+
+  const saveBtn = document.getElementById("personalSaveBtn");
+  if (saveBtn) {
+    if (totalAns < totalVis) {
+      saveBtn.disabled = true;
+      saveBtn.className = "px-5 py-2 bg-slate-600 text-slate-300 font-bold text-xs rounded-xl cursor-not-allowed opacity-75 flex items-center gap-2";
+      saveBtn.innerHTML = `<i class="fa-solid fa-lock text-amber-300"></i> Complete Profile (${totalVis - totalAns} left)`;
+      saveBtn.title = `Answer remaining ${totalVis - totalAns} applicable questions to save`;
+    } else {
+      saveBtn.disabled = false;
+      saveBtn.className = "px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-2";
+      saveBtn.innerHTML = `<i class="fa-solid fa-check"></i> Save Personal Travel Profile (100%)`;
+      saveBtn.title = "";
+    }
+  }
 }
 
 function setPrecisionAnswer(qid, value, rerender = true) {
@@ -1257,7 +1363,21 @@ function renderPersonalSection() {
   const secs = bank.sections;
   const idx = secs.findIndex(s => s.id === sec.id);
   document.getElementById("personalPrevBtn").style.visibility = idx === 0 ? "hidden" : "visible";
-  document.getElementById("personalNextBtn").style.visibility = idx === secs.length - 1 ? "hidden" : "visible";
+  
+  const nextBtn = document.getElementById("personalNextBtn");
+  if (nextBtn) {
+    nextBtn.style.visibility = idx === secs.length - 1 ? "hidden" : "visible";
+    const unansInSec = ids.filter(id => !precAnswered(state.precision.answers[id]));
+    if (unansInSec.length > 0) {
+      nextBtn.disabled = true;
+      nextBtn.className = "px-3 py-2 border border-slate-200 text-slate-400 font-semibold text-xs rounded-xl cursor-not-allowed bg-slate-100 opacity-60";
+      nextBtn.title = `Please answer all questions in this section (${unansInSec.length} remaining) to continue`;
+    } else {
+      nextBtn.disabled = false;
+      nextBtn.className = "px-3 py-2 border border-indigo-200 text-indigo-700 font-semibold text-xs rounded-xl hover:bg-indigo-50 bg-white transition";
+      nextBtn.title = "";
+    }
+  }
 
   updatePersonalProgress();
   body.scrollTop = keepScroll;
@@ -1275,15 +1395,12 @@ function renderPrecisionQuestion(q) {
   head.appendChild(precEl("label", "block text-xs font-bold text-slate-800 leading-snug", q.question));
   
   const right = precEl("div", "flex items-center gap-2 shrink-0");
-  if (q.sensitive) {
-    const badge = precEl("span", "text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium", "Optional");
-    right.appendChild(badge);
-  }
   if (precAnswered(cur)) {
-    const skip = precEl("button", "text-[10px] text-slate-400 hover:text-rose-600 underline", "Clear");
-    skip.type = "button";
-    skip.onclick = () => setPrecisionAnswer(q.id, null);
-    right.appendChild(skip);
+    const answeredBadge = precEl("span", "text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200", "Answered ✓");
+    right.appendChild(answeredBadge);
+  } else {
+    const reqBadge = precEl("span", "text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-bold border border-amber-200", "Required *");
+    right.appendChild(reqBadge);
   }
   head.appendChild(right);
   wrap.appendChild(head);
@@ -1467,6 +1584,17 @@ async function submitPersonalProfile() {
     }
 
     renderPersonalResult(data);
+    if (window.TravelModules && window.TravelModules.refreshLockStatus) {
+      window.TravelModules.refreshLockStatus();
+    }
+    // Refresh completeness status and unlock trip planner
+    if (state.currentUser) {
+      const statusRes = await fetch('/api/profile/' + state.currentUser.user_id + '/status');
+      if (statusRes.ok) {
+        state.profileStatus = await statusRes.json();
+      }
+      loadUserTrips();
+    }
   } catch (err) {
     alert("Error: " + err.message);
   } finally {
@@ -1631,6 +1759,138 @@ let currentPlannedTripId = null;
 let currentItinerary = null;
 let pendingFeedbackContext = null;
 
+
+function isIndianDestinationId(destId) {
+  if (!destId) return false;
+  const id = destId.toLowerCase();
+  if (id.endsWith("_india") || id.includes("india")) return true;
+  const indianIds = [
+    "manali_spiti", "rishikesh_haridwar", "leh_ladakh", "varanasi",
+    "udaipur_mewar", "jaipur_jodhpur", "south_goa", "kerala_alleppey",
+    "hampi", "ooty_coorg", "darjeeling_gangtok", "meghalaya_shillong"
+  ];
+  return indianIds.some(i => id.includes(i));
+}
+
+function isIndianTrip(trip) {
+  if (!trip) return false;
+  if (trip.destination_id && trip.destination_id.startsWith("geo_")) return true;
+  return isIndianDestinationId(trip.destination_id);
+}
+
+let _citySearchTimer = null;
+async function handleCitySearchInput(val) {
+  clearTimeout(_citySearchTimer);
+  const resultsEl = document.getElementById("citySearchResults");
+  if (!resultsEl) return;
+
+  const query = (val || "").trim();
+  if (query.length < 2) {
+    resultsEl.classList.add("hidden");
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  _citySearchTimer = setTimeout(async () => {
+    try {
+      resultsEl.classList.remove("hidden");
+      resultsEl.innerHTML = '<div class="p-2.5 text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Searching Open-Meteo...</div>';
+      
+      const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      const results = data.results || [];
+      const src = data.source || "api";
+
+      if (results.length === 0) {
+        resultsEl.innerHTML = '<div class="p-2.5 text-slate-400 text-xs">No matching cities found. Try another spelling.</div>';
+        return;
+      }
+
+      resultsEl.innerHTML = results.map(r => {
+        const itemStr = JSON.stringify(r).replace(/"/g, '&quot;');
+        return `
+          <div onclick="selectGeocodedCity(${itemStr}, '${src}')" 
+               class="p-2.5 hover:bg-emerald-50 cursor-pointer border-b border-slate-100 last:border-0 flex items-center justify-between text-xs">
+            <div>
+              <span class="font-bold text-slate-800">${r.name}</span>
+              <span class="text-slate-500 text-[11px] ml-1">${r.admin1 ? r.admin1 + ', ' : ''}${r.country}</span>
+            </div>
+            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${src}</span>
+          </div>
+        `;
+      }).join("");
+    } catch (e) {
+      console.warn("City search error:", e);
+      resultsEl.innerHTML = '<div class="p-2.5 text-rose-500 text-xs">Failed to search cities.</div>';
+    }
+  }, 300);
+}
+
+function selectGeocodedCity(item, src) {
+  const destSelect = document.getElementById("tripDestSelect");
+  const searchInput = document.getElementById("tripCitySearchInput");
+  const resultsEl = document.getElementById("citySearchResults");
+  const sourceInfo = document.getElementById("destinationSourceInfo");
+  const sourceText = document.getElementById("destinationSourceText");
+
+  if (resultsEl) resultsEl.classList.add("hidden");
+  if (searchInput) searchInput.value = `${item.name}, ${item.admin1 || item.country}`;
+
+  const destId = `geo_${item.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${item.country.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  const label = `${item.name}${item.admin1 ? ', ' + item.admin1 : ''} (${item.country})`;
+
+  // Add option to select if not present
+  let opt = Array.from(destSelect.options).find(o => o.value === destId);
+  if (!opt) {
+    opt = document.createElement("option");
+    opt.value = destId;
+    opt.textContent = label;
+    destSelect.insertBefore(opt, destSelect.firstChild);
+  }
+  destSelect.value = destId;
+
+  if (sourceInfo && sourceText) {
+    sourceInfo.classList.remove("hidden");
+    const lat = item.latitude !== undefined ? item.latitude.toFixed(2) : '0';
+    const lon = item.longitude !== undefined ? item.longitude.toFixed(2) : '0';
+    sourceText.textContent = `Resolved via Open-Meteo Geocoding · [source: ${src}] (${lat}°, ${lon}°)`;
+  }
+}
+
+function showInternationalTripNotice(trip) {
+  const emptyState = document.getElementById("itineraryEmptyState");
+  const displayContainer = document.getElementById("itineraryDisplayContainer");
+  const daysContainer = document.getElementById("itineraryDaysContainer");
+
+  emptyState.classList.add("hidden");
+  displayContainer.classList.remove("hidden");
+
+  document.getElementById("itinDestinationTitle").textContent = `${trip.destination_name} (Unsupported Destination)`;
+  document.getElementById("itinDatesBadge").textContent = `${trip.duration_days} Days · ${trip.start_date}`;
+  document.getElementById("itinSummaryNotes").textContent = "International destinations are not currently supported.";
+  document.getElementById("itinTotalCostDisplay").textContent = "₹0";
+
+  daysContainer.innerHTML = `
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 sm:p-8 text-center space-y-4 shadow-sm my-4">
+      <div class="w-14 h-14 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto text-2xl shadow-inner">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div>
+        <h4 class="text-base font-bold text-slate-800">International Destination Not Supported</h4>
+        <p class="text-xs text-slate-600 max-w-md mx-auto leading-relaxed mt-1">
+          <strong>${trip.destination_name}</strong> is an international destination. This application exclusively supports travel planning within India. Additional itinerary activities cannot be generated for international destinations.
+        </p>
+      </div>
+      <div class="pt-2 flex justify-center">
+        <button onclick="toggleTripFormModal()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2">
+          <i class="fa-solid fa-plus"></i>
+          <span>Plan an Indian Destination Trip Now &rarr;</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 async function loadUserTrips() {
   if (!state.currentUser) return;
   const select = document.getElementById("userTripsSelect");
@@ -1644,18 +1904,37 @@ async function loadUserTrips() {
       activeUserTrips.forEach(t => {
         const opt = document.createElement("option");
         opt.value = t.id;
-        opt.textContent = `${t.destination_name} (${t.duration_days} days · ${t.start_date})`;
+        if (!isIndianTrip(t)) {
+          opt.textContent = `${t.destination_name} (Unsupported - International) · ${t.duration_days}d`;
+          opt.style.color = "#b45309";
+        } else {
+          opt.textContent = `${t.destination_name} (${t.duration_days} days · ${t.start_date})`;
+        }
         select.appendChild(opt);
       });
 
+      const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+      const lockedState = document.getElementById("itineraryLockedState");
+      const emptyState = document.getElementById("itineraryEmptyState");
+      const displayContainer = document.getElementById("itineraryDisplayContainer");
+
+      if (!isDeepComplete) {
+        if (displayContainer) displayContainer.classList.add("hidden");
+        if (emptyState) emptyState.classList.add("hidden");
+        if (lockedState) lockedState.classList.remove("hidden");
+        return;
+      }
+      if (lockedState) lockedState.classList.add("hidden");
+
       if (activeUserTrips.length > 0) {
-        // Automatically select the most recently created trip
-        currentPlannedTripId = activeUserTrips[0].id;
+        // Prioritize first valid Indian trip over legacy international ones
+        const firstIndian = activeUserTrips.find(isIndianTrip);
+        currentPlannedTripId = firstIndian ? firstIndian.id : activeUserTrips[0].id;
         select.value = currentPlannedTripId;
         await loadTripItinerary(currentPlannedTripId);
       } else {
-        document.getElementById("itineraryEmptyState").classList.remove("hidden");
-        document.getElementById("itineraryDisplayContainer").classList.add("hidden");
+        if (emptyState) emptyState.classList.remove("hidden");
+        if (displayContainer) displayContainer.classList.add("hidden");
       }
     }
   } catch (err) {
@@ -1664,9 +1943,22 @@ async function loadUserTrips() {
 }
 
 function onTripSelectChanged(tripId) {
+  const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+  const lockedState = document.getElementById("itineraryLockedState");
+  const emptyState = document.getElementById("itineraryEmptyState");
+  const displayContainer = document.getElementById("itineraryDisplayContainer");
+
+  if (!isDeepComplete) {
+    if (displayContainer) displayContainer.classList.add("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (lockedState) lockedState.classList.remove("hidden");
+    return;
+  }
+  if (lockedState) lockedState.classList.add("hidden");
+
   if (!tripId) {
-    document.getElementById("itineraryEmptyState").classList.remove("hidden");
-    document.getElementById("itineraryDisplayContainer").classList.add("hidden");
+    if (emptyState) emptyState.classList.remove("hidden");
+    if (displayContainer) displayContainer.classList.add("hidden");
     return;
   }
   currentPlannedTripId = tripId;
@@ -1674,6 +1966,12 @@ function onTripSelectChanged(tripId) {
 }
 
 function toggleTripFormModal() {
+  if (state.profileStatus && !state.profileStatus.complete) {
+    const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : "applicable";
+    alert(`Trip planning is locked until your mandatory travel profile is complete (${remaining} questions remaining). Please finish answering the questions first.`);
+    openPersonalProfileModal();
+    return;
+  }
   // Pre-fill trip form with default dates (14 days from today) and user profile defaults
   const startInput = document.getElementById("tripStartDateInput");
   const endInput = document.getElementById("tripEndDateInput");
@@ -1707,14 +2005,48 @@ async function handleTripCreateSubmit(e) {
   e.preventDefault();
   if (!state.currentUser) return;
 
-  const destId = document.getElementById("tripDestSelect").value;
+  const destSelect = document.getElementById("tripDestSelect");
+  const destId = destSelect.value;
+  const selectedOption = destSelect.options[destSelect.selectedIndex];
+  const destName = selectedOption ? selectedOption.text : destId;
+
   const startDate = document.getElementById("tripStartDateInput").value;
   const endDate = document.getElementById("tripEndDateInput").value;
   const travellers = parseInt(document.getElementById("tripTravellersInput").value) || 1;
-  const budget = parseFloat(document.getElementById("tripBudgetInput").value) || 1200;
+  const budget = parseFloat(document.getElementById("tripBudgetInput").value) || 25000;
   const pace = document.getElementById("tripPaceSelect").value;
   const accom = document.getElementById("tripAccomSelect").value;
-  const transit = document.getElementById("tripTransitSelect").value;
+  const transit = document.getElementById("tripTransitSelect") ? document.getElementById("tripTransitSelect").value : "public_transit";
+
+  // Validate destination
+  const isGeo = destId.startsWith("geo_");
+  if (!isGeo && !isIndianDestinationId(destId)) {
+    alert("Please select a valid Indian destination or search any city via Open-Meteo Geocoding.");
+    return;
+  }
+
+  // Validate dates
+  if (!startDate || !endDate) {
+    alert("Please select both departure and return dates.");
+    return;
+  }
+
+  const dStart = new Date(startDate);
+  const dEnd = new Date(endDate);
+  if (dEnd < dStart) {
+    alert("Return date must be on or after departure date.");
+    return;
+  }
+
+  if (travellers < 1) {
+    alert("Travellers count must be at least 1.");
+    return;
+  }
+
+  if (budget <= 0) {
+    alert("Total trip budget in INR (₹) must be greater than zero.");
+    return;
+  }
 
   const btn = document.getElementById("generateItinerarySubmitBtn");
   if (btn) btn.disabled = true;
@@ -1727,10 +2059,12 @@ async function handleTripCreateSubmit(e) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         destination_id: destId,
+        destination_name: destName,
         start_date: startDate,
         end_date: endDate,
         travellers_count: travellers,
         total_budget: budget,
+        currency: "INR",
         accommodation_tier: accom,
         transit_pref: transit,
         travel_pace: pace,
@@ -1740,7 +2074,7 @@ async function handleTripCreateSubmit(e) {
 
     if (!tripRes.ok) {
       const errData = await tripRes.json();
-      alert("Error creating trip: " + (errData.detail || "Invalid trip dates"));
+      alert("Error creating trip: " + (errData.detail || "Invalid trip details"));
       return;
     }
 
@@ -1757,6 +2091,9 @@ async function handleTripCreateSubmit(e) {
       currentPlannedTripId = newTrip.id;
       await loadUserTrips();
       renderItinerary(currentItinerary);
+    } else {
+      const errData = await itinRes.json();
+      alert("Could not generate itinerary: " + (errData.detail || "Server error"));
     }
   } catch (err) {
     console.error("Trip creation error:", err);
@@ -1770,13 +2107,31 @@ async function handleTripCreateSubmit(e) {
 async function loadTripItinerary(tripId) {
   if (!state.currentUser || !tripId) return;
 
+  const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+  const lockedState = document.getElementById("itineraryLockedState");
+  const emptyState = document.getElementById("itineraryEmptyState");
+  const displayContainer = document.getElementById("itineraryDisplayContainer");
+
+  if (!isDeepComplete) {
+    if (displayContainer) displayContainer.classList.add("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (lockedState) lockedState.classList.remove("hidden");
+    return;
+  }
+
+  const tripObj = activeUserTrips.find(t => t.id === tripId);
+  if (tripObj && !isIndianTrip(tripObj)) {
+    showInternationalTripNotice(tripObj);
+    return;
+  }
+
   try {
     const res = await fetch(`/api/itinerary/${tripId}?user_id=${state.currentUser.user_id}`);
     if (res.ok) {
       currentItinerary = await res.json();
       renderItinerary(currentItinerary);
     } else {
-      // Auto-generate if not yet generated
+      // Auto-generate if not yet generated for Indian destinations
       const genRes = await fetch(`/api/itinerary/generate/${tripId}?user_id=${state.currentUser.user_id}`, {
         method: "POST"
       });
@@ -1794,6 +2149,18 @@ function renderItinerary(itin) {
   const emptyState = document.getElementById("itineraryEmptyState");
   const displayContainer = document.getElementById("itineraryDisplayContainer");
   const daysContainer = document.getElementById("itineraryDaysContainer");
+  const lockedState = document.getElementById("itineraryLockedState");
+
+  // Trip planner should not show info if deep personalization is not completed
+  const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
+  if (!isDeepComplete) {
+    if (displayContainer) displayContainer.classList.add("hidden");
+    if (emptyState) emptyState.classList.add("hidden");
+    if (lockedState) lockedState.classList.remove("hidden");
+    return;
+  }
+
+  if (lockedState) lockedState.classList.add("hidden");
 
   if (!itin || !itin.days || itin.days.length === 0) {
     emptyState.classList.remove("hidden");
@@ -1807,7 +2174,10 @@ function renderItinerary(itin) {
   document.getElementById("itinDestinationTitle").textContent = itin.destination_name;
   document.getElementById("itinDatesBadge").textContent = `${itin.total_days} Days Planned`;
   document.getElementById("itinSummaryNotes").textContent = itin.summary_notes || "Tailored by Contextual LinUCB bandit.";
-  document.getElementById("itinTotalCostDisplay").textContent = `$${itin.total_estimated_cost.toFixed(2)}`;
+  document.getElementById("itinTotalCostDisplay").textContent = formatINR(itin.total_estimated_cost);
+
+  // Load and display live weather forecast with transparent source badge
+  loadItineraryLiveWeather(itin.destination_name);
 
   daysContainer.innerHTML = "";
 
@@ -1826,7 +2196,7 @@ function renderItinerary(itin) {
         <h4 class="text-sm font-bold text-slate-900 mt-0.5">${day.theme}</h4>
       </div>
       <div class="flex items-center gap-2 text-xs">
-        <span class="text-slate-500">${day.activities.length} activities · Est. $${day.total_cost.toFixed(2)}</span>
+        <span class="text-slate-500">${day.activities.length} activities · Est. ${formatINR(day.total_cost)}</span>
       </div>
     `;
     dayCard.appendChild(header);
@@ -1867,13 +2237,13 @@ function renderItinerary(itin) {
               <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">${act.time_slot}</span>
               ${statusBadge}
               <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">${act.neighborhood || 'Local Area'}</span>
-              <span class="text-[10px] font-bold text-slate-700">${act.duration_minutes} mins · $${act.cost_estimate.toFixed(2)}</span>
+              <span class="text-[10px] font-bold text-slate-700">${act.duration_minutes} mins · ${formatINR(act.cost_estimate)}</span>
             </div>
             <h5 class="text-sm font-bold text-slate-900">${act.title}</h5>
             <p class="text-xs text-slate-600 leading-snug">${act.description || ''}</p>
-            <div class="text-[11px] text-indigo-700 font-medium flex items-center gap-1">
-              <i class="fa-solid fa-sparkles text-[10px]"></i>
-              <span>${act.why_it_suits || 'Matches your travel pacing and style.'}</span>
+            <div class="text-[11px] text-indigo-700 bg-indigo-50/80 border border-indigo-100 rounded-md px-2 py-1 font-medium flex items-start gap-1.5 mt-1">
+              <i class="fa-solid fa-sparkles text-[10px] text-indigo-500 mt-0.5 shrink-0"></i>
+              <span>${act.because_you_said || act.why_it_suits || 'Matches your travel pacing and style.'}</span>
             </div>
             ${act.transit_suggestion ? `<div class="text-[10px] text-slate-400"><i class="fa-solid fa-person-walking"></i> ${act.transit_suggestion}</div>` : ''}
           </div>
@@ -1987,7 +2357,7 @@ async function openModifyModal(itineraryId, activityId) {
           <div>
             <div class="flex items-center gap-1.5 mb-0.5">
               <span class="text-[10px] font-bold uppercase bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">${alt.category.replace('_', ' ')}</span>
-              <span class="text-[10px] text-slate-500">${alt.duration_minutes} mins · $${alt.cost_amount}</span>
+              <span class="text-[10px] text-slate-500">${alt.duration_minutes} mins · ${formatINR(alt.cost_amount)}</span>
             </div>
             <h5 class="text-xs font-bold text-slate-900">${alt.name}</h5>
             <p class="text-[11px] text-slate-500 leading-tight">${alt.description}</p>
@@ -2029,6 +2399,11 @@ async function selectAlternative(replacementId) {
 
 async function regenerateEntireItinerary() {
   if (!state.currentUser || !currentPlannedTripId) return;
+  const tripObj = activeUserTrips.find(t => t.id === currentPlannedTripId);
+  if (tripObj && !isIndianTrip(tripObj)) {
+    alert("Itinerary regeneration is only supported for Indian destinations. This trip is an unsupported international destination.");
+    return;
+  }
   if (!confirm("Regenerate itinerary? This will preserve your accepted activities while replacing skipped slots with fresh recommendations.")) return;
 
   try {
@@ -2042,4 +2417,97 @@ async function regenerateEntireItinerary() {
   } catch (err) {
     console.error("Error regenerating itinerary:", err);
   }
+}
+
+async function loadItineraryLiveWeather(destName) {
+  const card = document.getElementById("itinWeatherCard");
+  const summaryEl = document.getElementById("itinWeatherSummary");
+  const detailsEl = document.getElementById("itinWeatherDetails");
+  const badgeEl = document.getElementById("itinWeatherSourceBadge");
+  if (!card || !destName) return;
+
+  try {
+    card.classList.remove("hidden");
+    summaryEl.textContent = `Fetching live forecast for ${destName}...`;
+    detailsEl.textContent = "Open-Meteo Weather API";
+    badgeEl.textContent = "source: loading...";
+
+    // 1. Resolve geocoding
+    const geoRes = await fetch(`/api/geo/search?q=${encodeURIComponent(destName)}`);
+    const geoData = await geoRes.json();
+    if (!geoData.results || geoData.results.length === 0) {
+      summaryEl.textContent = `Weather conditions favorable for travel`;
+      badgeEl.textContent = "source: offline-estimate";
+      return;
+    }
+    const top = geoData.results[0];
+    const lat = top.latitude;
+    const lon = top.longitude;
+
+    // 2. Query live weather
+    const wRes = await fetch(`/api/weather/live?lat=${lat}&lon=${lon}`);
+    const wData = await wRes.json();
+    const cur = wData.current || {};
+    const temp = cur.temperature !== undefined ? `${cur.temperature}°C` : "Mild";
+    const desc = cur.weather_description || "Pleasant";
+    const wind = cur.wind_speed ? ` · Wind ${cur.wind_speed} km/h` : "";
+    const humidity = cur.humidity ? ` · Humidity ${cur.humidity}%` : "";
+    
+    summaryEl.textContent = `${desc}, ${temp}`;
+    detailsEl.textContent = `${top.name}, ${top.admin1 || top.country}${wind}${humidity}`;
+    const src = wData.source || "api";
+    badgeEl.textContent = `Open-Meteo [source: ${src}]`;
+    badgeEl.className = src === "api" 
+      ? "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"
+      : "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200";
+  } catch (err) {
+    console.warn("Failed to load live weather:", err);
+    if (summaryEl) summaryEl.textContent = "Weather conditions favorable for travel";
+    if (badgeEl) badgeEl.textContent = "source: offline-estimate";
+  }
+}
+
+
+// --- A-World Navigation & Hero CTA Handlers ---
+function handleBannerCta(e) {
+  if (e) e.preventDefault();
+  if (state.currentUser) {
+    const recEl = document.getElementById('recommendationsSection');
+    if (recEl) {
+      recEl.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      const appMain = document.getElementById('appContent');
+      if (appMain) appMain.scrollIntoView({ behavior: 'smooth' });
+    }
+  } else {
+    showView('auth');
+    const authEl = document.getElementById('authView');
+    if (authEl) authEl.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+
+function openCompanionOrPrompt() {
+  if (!state.currentUser) {
+    showView('auth');
+    const authEl = document.getElementById('authView');
+    if (authEl) authEl.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  if (state.profileStatus && state.profileStatus.complete) {
+    openModal('companionModal');
+  } else {
+    alert('Travel Companion is locked behind your Personal Travel Profile. Please complete the profile questions to unlock real-time assistance.');
+    openPersonalProfileModal();
+  }
+}
+
+function filterByService(serviceType) {
+  if (!state.currentUser) {
+    showView('auth');
+    const authEl = document.getElementById('authView');
+    if (authEl) authEl.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+  const recEl = document.getElementById('recommendationsSection');
+  if (recEl) recEl.scrollIntoView({ behavior: 'smooth' });
 }

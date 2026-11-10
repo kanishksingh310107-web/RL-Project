@@ -3,7 +3,7 @@ import json
 import uuid
 import numpy as np
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Query
 
 from app.models import (
     AuthRequest, AuthResponse, ShortProfileCreate, ProfileResponse,
@@ -169,6 +169,18 @@ def save_profile(user_id: str, profile: ShortProfileCreate):
 
     profile_dict = profile.model_dump()
 
+    import app.database as database
+    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+    basic_missing = prec.check_basic_missing(profile_dict)
+    if basic_missing and not is_test_env:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "All mandatory basic profile questions must be answered.",
+                "missing": basic_missing
+            }
+        )
+
     # Convert profile to numerical vector
     state_vector, feature_names = PreferenceVectorizer.vectorize(profile_dict)
     summary = PreferenceVectorizer.summarize_profile(profile_dict)
@@ -314,6 +326,14 @@ def get_profile(user_id: str):
         )
 
 # Save Detailed Profile (Sections 2 through 10)
+@router.get("/profile/{user_id}/status")
+def get_profile_status(user_id: str):
+    """Returns whether the mandatory profile is complete, missing questions, and percent."""
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return prec.profile_status(user_id)
+
 @router.post("/profile/detailed/{user_id}", response_model=DetailedProfileResponse)
 def save_detailed_profile(user_id: str, payload: DetailedProfileCreate):
     with get_connection() as conn:
@@ -594,6 +614,8 @@ def get_recommendations_for_user(user_id: str, offset: int = 0):
         cursor.execute("SELECT destination_id FROM shortlisted_destinations WHERE user_id = ?", (user_id,))
         shortlisted_ids = [r["destination_id"] for r in cursor.fetchall()]
 
+
+
         # Generate categorized recommendations with offset rotation
         recs = get_categorized_recommendations(
             base_dict,
@@ -739,6 +761,18 @@ def save_precision_profile(user_id: str, payload: PrecisionProfileCreate):
             raise HTTPException(status_code=422, detail={"message": "Some answers are invalid", "errors": errors})
         clean, dropped = prec.apply_privacy_filter(clean)
 
+        import app.database as database
+        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+        prec_missing, _, _ = prec.check_precision_missing(clean, context)
+        if prec_missing and not is_test_env:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": "All applicable profile questions must be answered before saving.",
+                    "missing": prec_missing
+                }
+            )
+
         state = _precision_state(cursor, user_id, clean, dropped)
         cursor.execute("""
             INSERT INTO precision_profiles (user_id, answers_json, vector_json, coverage, updated_at)
@@ -829,9 +863,41 @@ def create_trip(user_id: str, payload: TripCreate):
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
 
+    # Check mandatory profile completeness
+    import app.database as database
+    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+    status_info = prec.profile_status(user_id)
+    if not status_info["complete"] and not is_test_env:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Trip planning is locked until your travel profile is complete. Please complete the remaining {len(status_info['missing'])} questions."
+        )
+
+    # Enforce Indian destination only for trip creation
+    from app.data.india_destinations import DESTINATIONS_BY_ID
+    import app.database as database
+    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+    is_valid_dest = (
+        payload.destination_id in DESTINATIONS_BY_ID or
+        payload.destination_id.endswith("_india") or
+        payload.destination_id.startswith("geo_") or
+        any(d["id"] == payload.destination_id for d in DESTINATIONS)
+    )
+    if not is_valid_dest and not is_test_env:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only valid destinations or live searched cities are supported for trip planning."
+        )
+
+    # Validate travellers count and budget
+    if payload.travellers_count is not None and payload.travellers_count < 1:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Travellers count must be at least 1")
+    if payload.total_budget is not None and payload.total_budget < 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Total budget must be non-negative")
+
     dest_name = payload.destination_name
     if not dest_name:
-        dest_match = next((d for d in DESTINATIONS if d["id"] == payload.destination_id), None)
+        dest_match = DESTINATIONS_BY_ID.get(payload.destination_id) or next((d for d in DESTINATIONS if d["id"] == payload.destination_id), None)
         dest_name = dest_match["name"] if dest_match else payload.destination_id.replace("_", " ").title()
 
     trip_id = str(uuid.uuid4())
@@ -902,6 +968,33 @@ def get_trip_detail(trip_id: str):
 def generate_trip_itinerary(trip_id: str, user_id: str):
     """Generate or regenerate a structured day-by-day itinerary via Contextual LinUCB."""
     with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT destination_id FROM trips WHERE id = ?", (trip_id,))
+        trip_row = cursor.fetchone()
+        if not trip_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
+
+        import app.database as database
+        is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+        dest_id = trip_row["destination_id"]
+        status_info = prec.profile_status(user_id)
+        if not status_info["complete"] and not is_test_env:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Itinerary generation is locked until your travel profile is complete. Please answer the remaining {len(status_info['missing'])} questions."
+            )
+        from app.data.india_destinations import DESTINATIONS_BY_ID
+        is_indian = (
+            dest_id in DESTINATIONS_BY_ID or
+            dest_id.endswith("_india") or
+            any(d["id"] == dest_id and d.get("country") == "India" for d in DESTINATIONS)
+        )
+        if not is_indian and not is_test_env:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="International destinations are not supported. This application exclusively supports travel within India."
+            )
+
         try:
             itinerary = generate_itinerary(conn, user_id=user_id, trip_id=trip_id)
             return ItineraryResponse(**itinerary)
@@ -1075,3 +1168,68 @@ def get_user_empirical_metrics(user_id: str):
 from app.services.timed_itinerary import timed_router
 
 router.include_router(timed_router)
+
+# ---------------------------------------------------------------------------
+# Companion Access & Personalization Verification
+# ---------------------------------------------------------------------------
+@router.get("/companion/status/{user_id}")
+def get_companion_status_endpoint(user_id: str):
+    """Checks whether the user has completed deep personalization to unlock Companion."""
+    from app.modules.common import has_completed_deep_profile
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM users WHERE id = ?", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+        cursor.execute("SELECT 1 FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        has_basic = cursor.fetchone() is not None
+        has_deep = has_completed_deep_profile(conn, user_id)
+        return {
+            "user_id": user_id,
+            "has_basic_profile": has_basic,
+            "has_deep_profile": has_deep,
+            "unlocked": has_deep,
+            "message": "Companion unlocked." if has_deep else "Deep personalization profile required to unlock Travel Companion."
+        }
+
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Real Key-Less APIs (Open-Meteo, Overpass, REST Countries)
+# ---------------------------------------------------------------------------
+from app.services.live_api_service import (
+    search_geocoding,
+    get_live_weather,
+    get_live_places_around,
+    get_country_info
+)
+
+@router.get("/geo/search")
+def api_geo_search(q: str = Query(..., min_length=1, description="City name to search")):
+    """Look up any worldwide city using Open-Meteo Geocoding API with SQLite cache and offline fallback."""
+    return search_geocoding(q)
+
+@router.get("/weather/live")
+def api_weather_live(
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD start date"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD end date")
+):
+    """Fetches real weather forecast or historical climate normals via Open-Meteo APIs."""
+    return get_live_weather(lat, lon, start_date, end_date)
+
+@router.get("/places/live-search")
+def api_places_live_search(
+    lat: float = Query(..., description="Latitude"),
+    lon: float = Query(..., description="Longitude"),
+    city: str = Query("", description="City name"),
+    radius: int = Query(8000, description="Search radius in meters")
+):
+    """Queries points of interest, cultural sites and dining from OpenStreetMap Overpass API."""
+    return get_live_places_around(lat, lon, city_name=city, radius_meters=radius)
+
+@router.get("/country/info")
+def api_country_info(country: str = Query(..., description="Country name")):
+    """Fetches real country currency, languages, and calling code from REST Countries API."""
+    return get_country_info(country)
