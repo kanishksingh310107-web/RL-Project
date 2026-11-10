@@ -9,6 +9,8 @@ from app.questionnaire import QUESTIONS as BASE_QUESTIONS
 
 def run_tests():
     print("Running tests...")
+    import app.database as database
+    database.DB_PATH = database.DB_PATH.parent / "test.db"
     init_db()  # TestClient(app) does not fire the startup hook, so create tables explicitly
     client = TestClient(app)
 
