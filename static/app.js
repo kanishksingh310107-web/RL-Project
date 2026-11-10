@@ -471,9 +471,24 @@ function openModal(id) {
 }
 
 function closeModal(id) {
-  const el = document.getElementById(id);
+  const el = typeof id === "string" ? document.getElementById(id) : id;
   if (el) el.classList.add("hidden");
+  if (id === "activityRejectModal" || id === "activityAlternativeModal") {
+    pendingFeedbackContext = null;
+  }
 }
+
+// Global Escape listener to dismiss topmost visible modal
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" || e.keyCode === 27) {
+    const visibleOverlays = Array.from(document.querySelectorAll(".fixed.inset-0:not(.hidden)"));
+    if (visibleOverlays.length > 0) {
+      const topModal = visibleOverlays[visibleOverlays.length - 1];
+      closeModal(topModal.id || topModal);
+      pendingFeedbackContext = null;
+    }
+  }
+});
 
 // ==========================================
 // BASIC ONBOARDING FORM (30–60 SECONDS)
