@@ -60,6 +60,8 @@ def run_tests():
     # 3. Vectorizer test
     sample_profile = {
         "interests": ["nature_outdoors", "photography"],
+        "travel_goals": ["nature", "photography"],
+        "place_interests": ["mountains_nature", "architecture_photo"],
         "pace": 0.4,
         "crowd_tolerance": 0.3,
         "structure": 0.8,
