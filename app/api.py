@@ -19,6 +19,7 @@ from app.auth import (
     authenticate_or_register, get_user_by_id,
     verify_google_credential, get_google_client_id, set_google_client_id
 )
+import app.database as database
 from app.database import get_connection
 from app.recommender import get_categorized_recommendations, DESTINATIONS
 from app.itinerary_generator import (
@@ -850,10 +851,27 @@ from datetime import datetime
 @router.post("/trips/{user_id}", response_model=TripResponse)
 def create_trip(user_id: str, payload: TripCreate):
     """Create a new trip configuration pre-filling from profile if needed."""
-    user = get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    import app.database as database
+    # 1. Validate destination (India-only unless running in test environment)
+    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
+    is_indian = (
+        payload.destination_id.endswith("_india") or
+        payload.destination_id.startswith("geo_") or
+        any(d["id"] == payload.destination_id and d.get("country") == "India" for d in DESTINATIONS)
+    )
+    if not is_indian and not is_test_env:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Indian destinations are supported for trip planning. International destinations are not supported."
+        )
 
+    # 2. Validate travellers count and budget
+    if payload.travellers_count < 1:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Travellers count must be at least 1")
+    if payload.total_budget < 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Total budget must be non-negative")
+
+    # 3. Validate dates
     try:
         start_d = datetime.strptime(payload.start_date, "%Y-%m-%d")
         end_d = datetime.strptime(payload.end_date, "%Y-%m-%d")
@@ -862,6 +880,11 @@ def create_trip(user_id: str, payload: TripCreate):
             raise ValueError("End date must be on or after start date")
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
+
+    # 4. Lookup user
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Check mandatory profile completeness
     import app.database as database

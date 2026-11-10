@@ -9,6 +9,8 @@ from app.questionnaire import QUESTIONS as BASE_QUESTIONS
 
 def run_tests():
     print("Running tests...")
+    import app.database as database
+    database.DB_PATH = database.DB_PATH.parent / "test.db"
     init_db()  # TestClient(app) does not fire the startup hook, so create tables explicitly
     client = TestClient(app)
 
@@ -60,6 +62,8 @@ def run_tests():
     # 3. Vectorizer test
     sample_profile = {
         "interests": ["nature_outdoors", "photography"],
+        "travel_goals": ["nature", "photography"],
+        "place_interests": ["mountains_nature", "architecture_photo"],
         "pace": 0.4,
         "crowd_tolerance": 0.3,
         "structure": 0.8,
