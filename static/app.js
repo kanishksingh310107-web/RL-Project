@@ -46,6 +46,75 @@ let recCache = {};
 let currentOffset = 0;
 let totalCandidateCount = 16;
 
+// Helper: Format FastAPI / backend errors into human-readable text
+function formatApiError(data, fallback = "An unexpected error occurred") {
+  if (!data) return fallback;
+  const detail = data.detail !== undefined ? data.detail : (data.message || data.error || data);
+  if (!detail) return fallback;
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  const questionNames = {
+    age_group: "Age Group",
+    travel_experience: "Travel Experience",
+    companions: "Companions",
+    planning_approach: "Planning Approach",
+    travel_goals: "Travel Goals",
+    place_interests: "Place Interests",
+    experience_preference: "Experience Preference",
+    dietary: "Dietary Preferences",
+    preferred_climate: "Preferred Climate",
+    budget_tier: "Budget Tier",
+    assistance_autonomy: "AI Assistance Level",
+    interests: "Interests",
+    destination_id: "Destination",
+    start_date: "Start Date",
+    end_date: "End Date",
+    travellers_count: "Travellers Count",
+    total_budget: "Total Budget",
+    currency: "Currency"
+  };
+
+  if (Array.isArray(detail)) {
+    const lines = detail.map(item => {
+      if (typeof item === "string") return item;
+      const rawField = Array.isArray(item.loc)
+        ? item.loc.filter(l => l !== "body" && l !== "query" && l !== "path").join(".")
+        : (item.loc || "");
+      const fieldName = questionNames[rawField] || rawField;
+      const msg = item.msg || item.message || JSON.stringify(item);
+      return fieldName ? `${fieldName}: ${msg}` : msg;
+    });
+    return lines.join("\n");
+  }
+
+  if (typeof detail === "object") {
+    if (detail.missing && Array.isArray(detail.missing)) {
+      const missingLabels = detail.missing.map(m => questionNames[m] || m);
+      return (detail.message ? detail.message + ":\n• " : "Please answer the following required questions:\n• ") + missingLabels.join("\n• ");
+    }
+    if (detail.errors && Array.isArray(detail.errors)) {
+      const errList = detail.errors.map(e => typeof e === "string" ? e : (e.msg || JSON.stringify(e)));
+      return (detail.message ? detail.message + "\n• " : "") + errList.join("\n• ");
+    }
+    if (detail.message && typeof detail.message === "string") {
+      return detail.message;
+    }
+    try {
+      return Object.entries(detail).map(([k, v]) => {
+        const label = questionNames[k] || k;
+        return `${label}: ${typeof v === "object" ? JSON.stringify(v) : v}`;
+      }).join("\n");
+    } catch (e) {
+      return JSON.stringify(detail);
+    }
+  }
+
+  return String(detail);
+}
+
 // Icons map
 const ICON_MAP = {
   relaxation: "fa-umbrella-beach",
@@ -179,7 +248,7 @@ async function sendAuthRequest(payload) {
       body: JSON.stringify(payload)
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Login failed");
+    if (!res.ok) throw new Error(formatApiError(data, "Login failed"));
 
     state.currentUser = data;
     localStorage.setItem("rl_travel_user", JSON.stringify(data));
@@ -240,6 +309,31 @@ async function initGoogleGIS() {
       google.accounts.id.prompt();
     }
   } catch (e) {}
+}
+
+async function saveGoogleClientId() {
+  const input = document.getElementById("googleClientIdInput");
+  const clientId = input ? input.value.trim() : "";
+  if (!clientId) {
+    alert("Please enter a Google Client ID.");
+    return;
+  }
+  try {
+    const res = await fetch("/api/config/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: clientId })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(formatApiError(data, "Failed to save Google Client ID"));
+    }
+    closeModal("googleConfigModal");
+    alert("Google Client ID saved successfully.");
+    initGoogleGIS();
+  } catch (err) {
+    alert("Error saving Google Client ID: " + err.message);
+  }
 }
 
 function openGoogleModal() {
@@ -374,12 +468,33 @@ function openModal(id) {
   const el = document.getElementById(id);
   if (el) el.classList.remove("hidden");
   if (id === "academicModal") loadAcademicInspector();
+  if (id === "googleConfigModal") {
+    fetch("/api/config/google").then(r => r.json()).then(d => {
+      const inp = document.getElementById("googleClientIdInput");
+      if (inp && d.client_id) inp.value = d.client_id;
+    }).catch(() => {});
+  }
 }
 
 function closeModal(id) {
-  const el = document.getElementById(id);
+  const el = typeof id === "string" ? document.getElementById(id) : id;
   if (el) el.classList.add("hidden");
+  if (id === "activityRejectModal" || id === "activityAlternativeModal") {
+    pendingFeedbackContext = null;
+  }
 }
+
+// Global Escape listener to dismiss topmost visible modal
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" || e.keyCode === 27) {
+    const visibleOverlays = Array.from(document.querySelectorAll(".fixed.inset-0:not(.hidden)"));
+    if (visibleOverlays.length > 0) {
+      const topModal = visibleOverlays[visibleOverlays.length - 1];
+      closeModal(topModal.id || topModal);
+      pendingFeedbackContext = null;
+    }
+  }
+});
 
 // ==========================================
 // BASIC ONBOARDING FORM (30–60 SECONDS)
@@ -667,7 +782,7 @@ async function handleProfileSubmit(e) {
       body: JSON.stringify(payload)
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Save failed");
+    if (!res.ok) throw new Error(formatApiError(data, "Save failed"));
 
     state.currentUser.has_profile = true;
     localStorage.setItem("rl_travel_user", JSON.stringify(state.currentUser));
@@ -911,7 +1026,7 @@ async function loadRecommendations(isRefresh = false) {
     const res = await fetch(`/api/recommendations/${state.currentUser.user_id}?offset=${currentOffset}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: "Personalised recommendations require a complete travel profile." }));
-      const msg = err.detail || "Complete your profile to unlock recommendations.";
+      const msg = formatApiError(err, "Complete your profile to unlock recommendations.");
       basisEl.textContent = msg;
       recGrid.innerHTML = `
         <div class="col-span-full py-10 px-6 bg-slate-50 border border-dashed border-amber-200 rounded-2xl text-center space-y-3">
@@ -1151,7 +1266,10 @@ async function toggleShortlist(destId, btnElement) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ destination_id: destId })
     });
-    if (!res.ok) throw new Error("Could not update shortlist");
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      throw new Error(formatApiError(errData, "Could not update shortlist"));
+    }
     const data = await res.json();
     const isShort = data.is_shortlisted;
 
@@ -1240,7 +1358,7 @@ async function openPersonalProfileModal() {
     }
     const res = await fetch(`/api/profile/precision/${state.currentUser.user_id}`);
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Could not load your saved answers");
+    if (!res.ok) throw new Error(formatApiError(data, "Could not load your saved answers"));
     state.precision.answers = data.answers || {};
     state.precision.context = data.context_answers || {};
     state.precision.exists = !!data.exists;
@@ -1564,8 +1682,7 @@ async function submitPersonalProfile() {
     });
     const data = await res.json();
     if (!res.ok) {
-      const d = data.detail;
-      throw new Error(d && d.errors ? d.errors.join("; ") : (typeof d === "string" ? d : "Save failed"));
+      throw new Error(formatApiError(data, "Save failed"));
     }
 
     state.precision.answers = data.answers;
@@ -2074,7 +2191,7 @@ async function handleTripCreateSubmit(e) {
 
     if (!tripRes.ok) {
       const errData = await tripRes.json();
-      alert("Error creating trip: " + (errData.detail || "Invalid trip details"));
+      alert("Error creating trip: " + formatApiError(errData, "Invalid trip details"));
       return;
     }
 
@@ -2093,7 +2210,7 @@ async function handleTripCreateSubmit(e) {
       renderItinerary(currentItinerary);
     } else {
       const errData = await itinRes.json();
-      alert("Could not generate itinerary: " + (errData.detail || "Server error"));
+      alert("Could not generate itinerary: " + formatApiError(errData, "Server error"));
     }
   } catch (err) {
     console.error("Trip creation error:", err);
