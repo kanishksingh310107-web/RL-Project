@@ -45,11 +45,11 @@ window.TravelModules = (function () {
   function updateButtonState(btn) {
     if (!btn) return;
     if (isUnlocked) {
-      btn.className = "text-xs bg-[#2b2278] hover:bg-[#1b1452] text-white font-medium px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm";
-      btn.innerHTML = `<i class="fa-solid fa-compass text-[#e27141]"></i><span>Companion</span>`;
+      btn.className = "text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-sm";
+      btn.innerHTML = `<i class="fa-solid fa-suitcase-rolling"></i><span>Companion</span>`;
     } else {
-      btn.className = "text-xs bg-[#2b2278] hover:bg-[#1b1452] text-white font-medium px-3 py-1.5 rounded-xl transition flex items-center gap-1.5 shadow-sm border border-indigo-900";
-      btn.innerHTML = `<i class="fa-solid fa-lock text-[#e27141]"></i><span>Companion</span><span class="text-[10px] bg-[#e27141] text-white px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider">Locked</span>`;
+      btn.className = "text-xs bg-slate-700 hover:bg-slate-800 text-slate-200 font-medium px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 border border-slate-600";
+      btn.innerHTML = `<i class="fa-solid fa-lock text-amber-400"></i><span>Companion</span><span class="text-[10px] bg-amber-400 text-slate-900 px-1 rounded font-bold">Locked</span>`;
     }
   }
 
@@ -97,7 +97,7 @@ window.TravelModules = (function () {
     activeId = id;
     document.querySelectorAll("#companionTabs button").forEach(b => {
       const on = b.dataset.id === id;
-      b.classList.toggle("bg-[#2b2278]", on); b.classList.toggle("text-white", on);
+      b.classList.toggle("bg-indigo-600", on); b.classList.toggle("text-white", on);
       b.classList.toggle("bg-slate-100", !on);
     });
     const box = document.getElementById("companionBody");
