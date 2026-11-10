@@ -71,22 +71,23 @@ The project consists of a FastAPI service backed by SQLite and a responsive vani
 
 ---
 
-## Status of Project Components
+## Verified Capability Matrix
 
-| Component | Status | Location | Notes |
+| Capability / Subsystem | Verification Status | Location | Notes & Verification Scope |
 | :--- | :--- | :--- | :--- |
-| **User Authentication** | **IMPLEMENTED** | `app/auth.py` | Google Identity, email/password, phone, guest demo paths. |
-| **Progressive Profiling** | **IMPLEMENTED** | `app/vectorizer.py`, `app/precision.py` | 22-dim, 41-dim, and 126-dim feature vectors with server privacy filter. |
-| **Seasonal Ranking Engine** | **IMPLEMENTED** | `app/modules/ranking.py` | 6-component scoring, constraint filters, 4 views, questionnaire bug fix. |
-| **Ranking Companion Tab** | **IMPLEMENTED** | `static/modules/ranking.js` | Stacked breakdown bars, date/budget inputs, static sample disclosure. |
-| **Contextual LinUCB Bandit** | **IMPLEMENTED** | `app/rl_planner.py` | 7 canonical arms, 24-dim context, online Sherman-Morrison updates. |
-| **Feedback Loop** | **IMPLEMENTED** | `app/api.py` | Accept/reject/modify actions update per-user bandit weights in SQLite. |
-| **Honest RL Benchmark** | **IMPLEMENTED** | `scripts/evaluate.py` | Multi-seed, multi-persona, 150-round benchmark vs baseline, random, oracle. |
-| **Destination Catalogue** | **SIMULATED** | `app/recommender.py` | 16 curated destinations with sample metadata (not live GDS/travel API). |
-| **Live Telemetry & Feeds** | **SIMULATED** | `app/modules/ranking.py` | Offline placeholder (0.5 score); no real-time weather/transit API feeds. |
-| **Evaluation Environment** | **SIMULATED** | `scripts/evaluate.py` | Synthetic user personas with sigmoid acceptance probability functions. |
-| **Churn Prediction** | **FUTURE WORK** | — | Not implemented; proposed as post-submission extension. |
-| **Real User Study** | **FUTURE WORK** | — | Real-world A/B testing with live human interaction logs. |
+| **Contextual LinUCB Bandit** | Verified by Automated Test & Click-Through | `app/rl_planner.py` | 7 canonical arms, 24-dim context. Sherman-Morrison rank-1 updates mathematically verified in `tests/test_rl_policy.py`. |
+| **Comparative RL Benchmark** | Verified by Automated Test & Click-Through | `app/evaluation.py` | 100-seed Monte Carlo evaluation reporting empirical mean ± 95% CI. Verified in `run_tests.py` and `docs/evaluation_results.md`. |
+| **Trip Preparation Module (`prep`)** | Verified by Automated Test & Click-Through | `app/modules/prep.py` | Live Open-Meteo weather forecast, dynamic packing checklist, document requirements, Beta-Bernoulli reminder bandit. 16 tests passing in `tests/test_prep.py`. |
+| **Live Trip Companion (`live`)** | Verified by Automated Test & Click-Through | `app/modules/live.py` | During-trip timeline, activity status updates, simulated conditions/alerts, targeted replanning, post-trip feedback questionnaire. 13 tests passing in `tests/test_live.py`. |
+| **Real-Time Places & Geocoding (`places`)** | Verified by Automated Test & Click-Through | `app/modules/places.py` | Dynamic India location geocoding & live Overpass attraction queries. 12 tests passing in `tests/test_places.py` & `tests/test_places_api.py`. |
+| **Timed Itinerary Engine (`timed_itinerary`)** | Verified by Automated Test & Click-Through | `app/services/timed_itinerary.py` | Structured 09:00–21:00 daily scheduling (Activities, Transit, Meals, Rest), relaxed/balanced/active pace modes. 7 tests passing in `tests/test_timed_itinerary.py`. |
+| **Seasonal Ranking Engine (`ranking`)** | Verified by Automated Test & Click-Through | `app/modules/ranking.py` | 6-component multi-criteria scoring, month regex parsing, circular season distance, budget filtering. 16 tests passing in `tests/test_ranking.py`. |
+| **Progressive Profiling** | Verified by Automated Test & Click-Through | `app/vectorizer.py`, `app/precision.py` | 22-dim, 41-dim, and 126-dim feature vectors with server privacy filter. Verified in `run_tests.py`. |
+| **User Authentication** | Verified by Automated Test & Click-Through | `app/auth.py` | Salted SHA-256 password hashing, Google Identity Services mock, guest login. Verified in `run_tests.py`. |
+| **Academic Model Inspector** | Verified by Automated Test & Click-Through | `static/app.js` | State vector breakdown, MDP formulation, policy weights, and comparative simulation panel. Verified in `run_tests.py`. |
+| **Destination Catalogue** | Exists But Not Verified (Sample Data) | `app/recommender.py` | 16 curated destinations with sample metadata (offline photo fallbacks, sample attractions). |
+| **Live Telemetry in Ranking** | Exists But Not Verified (Simulated) | `app/modules/ranking.py` | Ranking component uses neutral 0.5 score placeholder (live weather is integrated separately in `prep.py`). |
+| **Churn Prediction & User Study** | Out of Scope / Roadmap | — | Proposed post-submission academic extensions. |
 
 ---
 

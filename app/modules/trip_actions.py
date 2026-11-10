@@ -250,7 +250,7 @@ def finalize_trip_itinerary(trip_id: str, user_id: str = Query(...)):
         if not trip_row:
             raise HTTPException(status_code=404, detail="Trip not found or unauthorized")
 
-        now_iso = datetime.datetime.utcnow().isoformat()
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cursor.execute("UPDATE trips SET status = 'finalized', finalized_at = ? WHERE id = ?", (now_iso, trip_id))
         cursor.execute("UPDATE itineraries SET status = 'finalized', updated_at = ? WHERE trip_id = ?", (now_iso, trip_id))
         conn.commit()
@@ -275,7 +275,7 @@ def start_trip(trip_id: str, user_id: str = Query(...)):
         if not trip_row:
             raise HTTPException(status_code=404, detail="Trip not found or unauthorized")
 
-        now_iso = datetime.datetime.utcnow().isoformat()
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cursor.execute("UPDATE trips SET status = 'active_trip', started_at = ? WHERE id = ?", (now_iso, trip_id))
         cursor.execute("UPDATE itineraries SET status = 'active_trip', updated_at = ? WHERE trip_id = ?", (now_iso, trip_id))
         conn.commit()

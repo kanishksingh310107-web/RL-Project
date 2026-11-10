@@ -64,27 +64,29 @@ class LinUCBPolicy:
             self._init_arm(arm)
 
     def _init_arm(self, arm_id: str):
-        # A_a is d x d identity matrix; b_a is d x 1 zero vector
+        # A_a is d x d identity matrix; A_inv is d x d identity matrix; b_a is d x 1 zero vector
         self.arms[arm_id] = {
             "A": np.eye(self.dimension, dtype=float),
+            "A_inv": np.eye(self.dimension, dtype=float),
             "b": np.zeros(self.dimension, dtype=float),
             "pull_count": 0,
             "total_reward": 0.0
         }
 
     def predict_score(self, arm_id: str, context: np.ndarray) -> Tuple[float, float, float]:
-        """Returns (total_score, exploitation_term, exploration_bonus)."""
+        """Returns (total_score, exploitation_term, exploration_bonus) in O(d^2) using maintained A_inv."""
         if arm_id not in self.arms:
             self._init_arm(arm_id)
 
         arm_data = self.arms[arm_id]
-        A = arm_data["A"]
-        b = arm_data["b"]
+        if "A_inv" not in arm_data:
+            try:
+                arm_data["A_inv"] = np.linalg.inv(arm_data["A"])
+            except np.linalg.LinAlgError:
+                arm_data["A_inv"] = np.linalg.pinv(arm_data["A"])
 
-        try:
-            A_inv = np.linalg.inv(A)
-        except np.linalg.LinAlgError:
-            A_inv = np.linalg.pinv(A)
+        A_inv = arm_data["A_inv"]
+        b = arm_data["b"]
 
         theta = A_inv.dot(b)
         exploitation = float(np.dot(theta, context))
@@ -94,11 +96,28 @@ class LinUCBPolicy:
         return total_score, exploitation, exploration
 
     def update(self, arm_id: str, context: np.ndarray, reward: float):
-        """Update arm covariance matrix and bias vector using closed-form Sherman-Morrison update."""
+        """
+        Update arm covariance matrix and bias vector using closed-form Sherman-Morrison rank-1 updates.
+        Maintains inverse covariance matrix A_inv directly in O(d^2) time via:
+            A_inv <- A_inv - (A_inv @ x @ x^T @ A_inv) / (1 + x^T @ A_inv @ x)
+        """
         if arm_id not in self.arms:
             self._init_arm(arm_id)
 
         arm_data = self.arms[arm_id]
+        if "A_inv" not in arm_data:
+            try:
+                arm_data["A_inv"] = np.linalg.inv(arm_data["A"])
+            except np.linalg.LinAlgError:
+                arm_data["A_inv"] = np.linalg.pinv(arm_data["A"])
+
+        # Incremental Sherman-Morrison rank-1 update of inverse covariance matrix
+        A_inv = arm_data["A_inv"]
+        v = A_inv.dot(context)
+        denom = 1.0 + float(np.dot(context, v))
+        if abs(denom) > 1e-12:
+            arm_data["A_inv"] -= np.outer(v, v) / denom
+
         # A_a <- A_a + x * x^T
         arm_data["A"] += np.outer(context, context)
         # b_a <- b_a + r * x
@@ -110,6 +129,8 @@ class LinUCBPolicy:
         if arm_id not in self.arms:
             return np.zeros(self.dimension)
         arm_data = self.arms[arm_id]
+        if "A_inv" in arm_data:
+            return arm_data["A_inv"].dot(arm_data["b"])
         try:
             A_inv = np.linalg.inv(arm_data["A"])
         except np.linalg.LinAlgError:
@@ -296,8 +317,13 @@ def load_user_policy(conn, user_id: str) -> LinUCBPolicy:
                 pull_count = row[4]
                 # Check for total_reward column safely
                 tot_reward = row[5] if len(row) > 5 and row[5] is not None else 0.0
+                try:
+                    A_inv = np.linalg.inv(A)
+                except Exception:
+                    A_inv = np.linalg.pinv(A)
                 policy.arms[arm_id] = {
                     "A": A,
+                    "A_inv": A_inv,
                     "b": b,
                     "pull_count": pull_count,
                     "total_reward": tot_reward
