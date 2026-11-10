@@ -236,6 +236,32 @@ async function initGoogleGIS() {
   } catch (e) {}
 }
 
+async function saveGoogleClientId() {
+  const input = document.getElementById("googleClientIdInput");
+  const clientId = input ? input.value.trim() : "";
+  if (!clientId) {
+    alert("Please enter a Google Client ID.");
+    return;
+  }
+  try {
+    const res = await fetch("/api/config/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: clientId })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = typeof data.detail === "string" ? data.detail : (data.detail ? JSON.stringify(data.detail) : "Failed to save Google Client ID");
+      throw new Error(msg);
+    }
+    closeModal("googleConfigModal");
+    alert("Google Client ID saved successfully.");
+    initGoogleGIS();
+  } catch (err) {
+    alert("Error saving Google Client ID: " + err.message);
+  }
+}
+
 function openGoogleModal() {
   const container = document.getElementById("googleSavedAccounts");
   container.innerHTML = "";
@@ -368,6 +394,12 @@ function openModal(id) {
   const el = document.getElementById(id);
   if (el) el.classList.remove("hidden");
   if (id === "academicModal") loadAcademicInspector();
+  if (id === "googleConfigModal") {
+    fetch("/api/config/google").then(r => r.json()).then(d => {
+      const inp = document.getElementById("googleClientIdInput");
+      if (inp && d.client_id) inp.value = d.client_id;
+    }).catch(() => {});
+  }
 }
 
 function closeModal(id) {
