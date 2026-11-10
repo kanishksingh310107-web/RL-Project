@@ -1,0 +1,2229 @@
+{
+  "schema_version": "2.0.0",
+  "country_scope": "India",
+  "currency": "INR",
+  "budget_config": {
+    "currency": "INR",
+    "symbol": "₹",
+    "note": "Indicative daily budget per person excluding intercity flights/trains",
+    "tiers": {
+      "budget_backpacker": {
+        "label": "Budget Backpacker (₹1,000 - ₹2,500 / day)",
+        "min_inr": 1000,
+        "max_inr": 2500,
+        "desc": "Hostels, dhabas, local buses/trains, free monuments"
+      },
+      "mid_range_comfortable": {
+        "label": "Comfortable Mid-Range (₹2,500 - ₹6,000 / day)",
+        "min_inr": 2500,
+        "max_inr": 6000,
+        "desc": "3-star stays, boutique homestays, AC cabs/trains, casual dining"
+      },
+      "premium_luxury": {
+        "label": "Premium & Luxury (₹6,000 - ₹15,000+ / day)",
+        "min_inr": 6000,
+        "max_inr": 18000,
+        "desc": "Heritage palaces, 5-star resorts, private chauffeur cabs, fine dining"
+      }
+    }
+  },
+  "basic_sections": [
+    {
+      "id": "b_sec_1",
+      "title": "Traveller Profile & Party",
+      "desc": "Basic details about who is travelling and your travel style"
+    },
+    {
+      "id": "b_sec_2",
+      "title": "Interests, Landscapes & Rhythm",
+      "desc": "What you love exploring and your preferred trip pace"
+    },
+    {
+      "id": "b_sec_3",
+      "title": "Dining, Budget & Comfort",
+      "desc": "Food preferences, comfort zone and daily budget in India"
+    }
+  ],
+  "deep_sections": [
+    {
+      "id": "d_sec_1",
+      "title": "Party & Personal Comfort",
+      "desc": "Safety, accessibility, and party-specific details"
+    },
+    {
+      "id": "d_sec_2",
+      "title": "Terrain, Weather & Altitude",
+      "desc": "Tolerance for monsoon rains, Himalayan heights, and weather extremes"
+    },
+    {
+      "id": "d_sec_3",
+      "title": "Dining, Spice & Regional Food",
+      "desc": "Spice comfort, street food appetite, and food allergies"
+    },
+    {
+      "id": "d_sec_4",
+      "title": "Transport & Long-Distance Transit",
+      "desc": "Train classes, road transit, and mountain road comfort"
+    },
+    {
+      "id": "d_sec_5",
+      "title": "Stays & Hospitality Styles",
+      "desc": "Havelis, homestays, ashrams, and essential room amenities"
+    },
+    {
+      "id": "d_sec_6",
+      "title": "Physical Capacity & Walking",
+      "desc": "Daily walking distance, temple steps, and health items"
+    },
+    {
+      "id": "d_sec_7",
+      "title": "Avoidances, Permits & Culture",
+      "desc": "Things to exclude, paperwork comfort, and depth of cultural history"
+    },
+    {
+      "id": "d_sec_8",
+      "title": "Planning Autonomy & Privacy",
+      "desc": "Budget flexibility, companion proactivity, and data saving preferences"
+    }
+  ],
+  "questions": [
+    {
+      "id": "b01_age",
+      "legacy_id": "q1",
+      "concept": "demographics.age",
+      "tier": "basic",
+      "step": 1,
+      "section": "b_sec_1",
+      "text": "Which age group do you belong to?",
+      "why": "Helps calibrate activity physical demands, pacing, and stay recommendations.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "18_24",
+          "label": "18 - 24",
+          "desc": "Student / young adult"
+        },
+        {
+          "id": "25_34",
+          "label": "25 - 34",
+          "desc": "Early to mid career"
+        },
+        {
+          "id": "35_49",
+          "label": "35 - 49",
+          "desc": "Established professional / family"
+        },
+        {
+          "id": "50_64",
+          "label": "50 - 64",
+          "desc": "Mature traveller"
+        },
+        {
+          "id": "65_plus",
+          "label": "65+",
+          "desc": "Senior citizen / relaxed pacing"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "age_18_24",
+          "age_25_34",
+          "age_35_49",
+          "age_50_64",
+          "age_65_plus"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "b01_age",
+        "options": [
+          "18_24",
+          "25_34",
+          "35_49",
+          "50_64",
+          "65_plus"
+        ]
+      },
+      "question": "Which age group do you belong to?"
+    },
+    {
+      "id": "b02_home_region",
+      "legacy_id": "b02",
+      "concept": "origin.home_region",
+      "tier": "basic",
+      "step": 1,
+      "section": "b_sec_1",
+      "text": "Which region of India is your home base or starting point?",
+      "why": "Helps reason about journey distances, transit feasibility, and seasonal contrast.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "north_india",
+          "label": "North India",
+          "desc": "Delhi NCR, Punjab, Haryana, UP, Rajasthan, J&K, HP, UK"
+        },
+        {
+          "id": "west_india",
+          "label": "West India",
+          "desc": "Maharashtra, Gujarat, Goa"
+        },
+        {
+          "id": "south_india",
+          "label": "South India",
+          "desc": "Karnataka, Tamil Nadu, Kerala, Andhra Pradesh, Telangana"
+        },
+        {
+          "id": "east_india",
+          "label": "East India",
+          "desc": "West Bengal, Odisha, Bihar, Jharkhand"
+        },
+        {
+          "id": "central_india",
+          "label": "Central India",
+          "desc": "Madhya Pradesh, Chhattisgarh"
+        },
+        {
+          "id": "northeast_india",
+          "label": "North-East India",
+          "desc": "Assam, Meghalaya, Sikkim, Arunachal & sister states"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "origin_north",
+          "origin_west",
+          "origin_south",
+          "origin_east",
+          "origin_central",
+          "origin_northeast"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "b02_home_region",
+        "options": [
+          "north_india",
+          "west_india",
+          "south_india",
+          "east_india",
+          "central_india",
+          "northeast_india"
+        ]
+      },
+      "question": "Which region of India is your home base or starting point?"
+    },
+    {
+      "id": "b03_companions",
+      "legacy_id": "q3",
+      "concept": "party.composition",
+      "tier": "basic",
+      "step": 1,
+      "section": "b_sec_1",
+      "text": "Who are you travelling with on this trip?",
+      "why": "Party composition drives suitable stays, child-friendly or elder-accessible pacing.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "solo",
+          "label": "Solo Traveller",
+          "desc": "Independent journey"
+        },
+        {
+          "id": "partner_couple",
+          "label": "Couple / Partner",
+          "desc": "Romantic or pair exploration"
+        },
+        {
+          "id": "friends",
+          "label": "Group of Friends",
+          "desc": "Active peer group"
+        },
+        {
+          "id": "family_kids",
+          "label": "Family with Children",
+          "desc": "Kid-friendly attractions and safety"
+        },
+        {
+          "id": "family_seniors",
+          "label": "Family with Elders",
+          "desc": "Comfortable pacing and gentle terrain"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "companion_solo",
+          "companion_couple",
+          "companion_friends",
+          "companion_family_kids",
+          "companion_family_seniors"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "b03_companions",
+        "options": [
+          "solo",
+          "partner_couple",
+          "friends",
+          "family_kids",
+          "family_seniors"
+        ]
+      },
+      "question": "Who are you travelling with on this trip?"
+    },
+    {
+      "id": "b04_experience",
+      "legacy_id": "q2",
+      "concept": "travel.experience",
+      "tier": "basic",
+      "step": 1,
+      "section": "b_sec_1",
+      "text": "How would you describe your travel experience in India?",
+      "why": "First-time travelers receive clearer local navigation context and transit advice.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "first_time",
+          "label": "First-Time Explorer",
+          "desc": "New to travelling independently in India"
+        },
+        {
+          "id": "occasional",
+          "label": "Occasional Leisure Traveller",
+          "desc": "A couple of trips a year"
+        },
+        {
+          "id": "frequent",
+          "label": "Frequent Road / Train Traveller",
+          "desc": "Comfortable across multiple states"
+        },
+        {
+          "id": "veteran_explorer",
+          "label": "Offbeat Veteran",
+          "desc": "Experienced with remote routes and varied terrains"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "first_time": 0.0,
+          "occasional": 0.33,
+          "frequent": 0.67,
+          "veteran_explorer": 1.0
+        }
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "b04_experience",
+        "map": {
+          "first_time": 0.0,
+          "occasional": 0.3333,
+          "frequent": 0.6667,
+          "veteran_explorer": 1.0
+        }
+      },
+      "question": "How would you describe your travel experience in India?"
+    },
+    {
+      "id": "b05_travel_goals",
+      "legacy_id": "q5",
+      "concept": "interests.primary_goals",
+      "tier": "basic",
+      "step": 2,
+      "section": "b_sec_2",
+      "text": "What do you most want to experience on your India trip? (Select at least 2)",
+      "why": "Core interest tags drive destination discovery and bandit arm scoring.",
+      "type": "multi",
+      "min": 2,
+      "required": true,
+      "options": [
+        {
+          "id": "heritage_history",
+          "label": "Heritage & Forts",
+          "desc": "Mughal, Rajput, Chola architecture and ruins"
+        },
+        {
+          "id": "spiritual_pilgrimage",
+          "label": "Spirituality & Temples",
+          "desc": "Ghats, aartis, ancient shrines, meditation"
+        },
+        {
+          "id": "nature_wildlife",
+          "label": "Nature & Tiger Safaris",
+          "desc": "National parks, dense jungles, bird sanctuaries"
+        },
+        {
+          "id": "adventure_trekking",
+          "label": "Adventure & Treks",
+          "desc": "Himalayan passes, river rafting, mountain trails"
+        },
+        {
+          "id": "relaxation_wellness",
+          "label": "Relaxation & Ayurveda",
+          "desc": "Backwaters, quiet hills, yoga retreats, calm beaches"
+        },
+        {
+          "id": "culinary_food_trails",
+          "label": "Food & Street Trails",
+          "desc": "Authentic regional thalis, street food, tea gardens"
+        },
+        {
+          "id": "photography_scenic",
+          "label": "Photography & Landscapes",
+          "desc": "Panoramic vistas, vibrant bazaars, historic alleys"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "goal_heritage",
+          "goal_spiritual",
+          "goal_nature",
+          "goal_adventure",
+          "goal_relaxation",
+          "goal_food",
+          "goal_photography"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "ranking",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "b05_travel_goals",
+        "options": [
+          "heritage_history",
+          "spiritual_pilgrimage",
+          "nature_wildlife",
+          "adventure_trekking",
+          "relaxation_wellness",
+          "culinary_food_trails",
+          "photography_scenic"
+        ]
+      },
+      "question": "What do you most want to experience on your India trip? (Select at least 2)"
+    },
+    {
+      "id": "b06_place_interests",
+      "legacy_id": "q14",
+      "concept": "interests.landscapes",
+      "tier": "basic",
+      "step": 2,
+      "section": "b_sec_2",
+      "text": "Which types of Indian landscapes interest you most? (Select at least 2)",
+      "why": "Pinpoints geography: snow peaks, tropical coasts, or desert fortresses.",
+      "type": "multi",
+      "min": 2,
+      "required": true,
+      "options": [
+        {
+          "id": "himalayan_mountains",
+          "label": "Himalayan Mountains & Valleys",
+          "desc": "Himachal, Ladakh, Kashmir, Uttarakhand, Sikkim"
+        },
+        {
+          "id": "beaches_coastal",
+          "label": "Beaches & Coastal Towns",
+          "desc": "Goa, Gokarna, Kerala coast, Andaman"
+        },
+        {
+          "id": "royal_forts_palaces",
+          "label": "Royal Forts & Palaces",
+          "desc": "Rajasthan havelis, Mewar palaces, Gwalior"
+        },
+        {
+          "id": "holy_temple_ghats",
+          "label": "Sacred Ghats & Temple Towns",
+          "desc": "Varanasi, Rishikesh, Haridwar, Madurai, Hampi"
+        },
+        {
+          "id": "lush_backwaters_plantations",
+          "label": "Backwaters & Hill Plantations",
+          "desc": "Alleppey lagoons, Munnar tea estates, Coorg coffee groves"
+        },
+        {
+          "id": "desert_dunes",
+          "label": "Thar Desert & Salt Flats",
+          "desc": "Jaisalmer golden sand dunes, Rann of Kutch"
+        },
+        {
+          "id": "dense_jungles",
+          "label": "Deep Forests & Wildlife Reserves",
+          "desc": "Jim Corbett, Ranthambore, Kanha, Kaziranga"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "place_himalayas",
+          "place_beaches",
+          "place_forts",
+          "place_temples",
+          "place_backwaters",
+          "place_desert",
+          "place_jungles"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "ranking",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "b06_place_interests",
+        "options": [
+          "himalayan_mountains",
+          "beaches_coastal",
+          "royal_forts_palaces",
+          "holy_temple_ghats",
+          "lush_backwaters_plantations",
+          "desert_dunes",
+          "dense_jungles"
+        ]
+      },
+      "question": "Which types of Indian landscapes interest you most? (Select at least 2)"
+    },
+    {
+      "id": "b07_pace",
+      "legacy_id": "q17",
+      "concept": "trip.pacing",
+      "tier": "basic",
+      "step": 2,
+      "section": "b_sec_2",
+      "text": "What daily travel pace feels most comfortable?",
+      "why": "Determines daily itinerary activity density and rest buffers.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "relaxed_1_2",
+          "label": "Relaxed & Immersive (1-2 main places / day)",
+          "desc": "Unhurried mornings, cafe time, deep exploration"
+        },
+        {
+          "id": "balanced_2_3",
+          "label": "Balanced & Steady (2-3 places / day)",
+          "desc": "Good mix of sightseeing, meals, and free time"
+        },
+        {
+          "id": "packed_all_day",
+          "label": "Fast-Paced Explorer (4+ places / day)",
+          "desc": "Sunrise to late evening packed discovery"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "relaxed_1_2": 0.2,
+          "balanced_2_3": 0.5,
+          "packed_all_day": 0.9
+        }
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "b07_pace",
+        "map": {
+          "relaxed_1_2": 0.0,
+          "balanced_2_3": 0.5,
+          "packed_all_day": 1.0
+        }
+      },
+      "question": "What daily travel pace feels most comfortable?"
+    },
+    {
+      "id": "b08_crowd_tolerance",
+      "legacy_id": "crowd",
+      "concept": "comfort.crowd_level",
+      "tier": "basic",
+      "step": 2,
+      "section": "b_sec_2",
+      "text": "How comfortable are you with lively crowds and bustling bazaars?",
+      "why": "Filters crowded market stalls or routes users toward serene viewpoints.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "prefer_quiet_secluded",
+          "label": "Quiet & Secluded",
+          "desc": "Prefer uncrowded nature trails and calm temples"
+        },
+        {
+          "id": "moderate_crowds_fine",
+          "label": "Moderate Crowds Fine",
+          "desc": "Comfortable with standard popular tourist spots"
+        },
+        {
+          "id": "love_bustling_festive",
+          "label": "Love Bustling & Festive",
+          "desc": "Thrive in festive melas, lively ghats, and night markets"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "prefer_quiet_secluded": 0.1,
+          "moderate_crowds_fine": 0.5,
+          "love_bustling_festive": 0.9
+        }
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "b08_crowd_tolerance",
+        "map": {
+          "prefer_quiet_secluded": 0.0,
+          "moderate_crowds_fine": 0.5,
+          "love_bustling_festive": 1.0
+        }
+      },
+      "question": "How comfortable are you with lively crowds and bustling bazaars?"
+    },
+    {
+      "id": "b09_dietary",
+      "legacy_id": "q20",
+      "concept": "food.diet_preference",
+      "tier": "basic",
+      "step": 3,
+      "section": "b_sec_3",
+      "text": "Which dietary preferences should the guide strictly respect?",
+      "why": "Enforces restaurant and activity food suitability constraints across India.",
+      "type": "multi",
+      "required": true,
+      "options": [
+        {
+          "id": "pure_veg",
+          "label": "Pure Vegetarian",
+          "desc": "No meat, fish or eggs; dairy is fine"
+        },
+        {
+          "id": "jain",
+          "label": "Jain Vegetarian",
+          "desc": "Strict vegetarian without onion, garlic or root vegetables"
+        },
+        {
+          "id": "eggetarian",
+          "label": "Eggetarian",
+          "desc": "Vegetarian including eggs; no meat or seafood"
+        },
+        {
+          "id": "non_veg",
+          "label": "Non-Vegetarian",
+          "desc": "Chicken, mutton, seafood as available"
+        },
+        {
+          "id": "halal",
+          "label": "Halal Certified",
+          "desc": "Halal-prepared meats only"
+        },
+        {
+          "id": "vegan",
+          "label": "Vegan",
+          "desc": "100% plant-based, strictly no dairy or honey"
+        },
+        {
+          "id": "no_restrictions",
+          "label": "No Restrictions",
+          "desc": "Comfortable with any food"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "diet_veg",
+          "diet_jain",
+          "diet_eggetarian",
+          "diet_nonveg",
+          "diet_halal",
+          "diet_vegan",
+          "diet_none"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "itinerary",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "b09_dietary",
+        "options": [
+          "pure_veg",
+          "jain",
+          "eggetarian",
+          "non_veg",
+          "halal",
+          "vegan",
+          "no_restrictions"
+        ]
+      },
+      "question": "Which dietary preferences should the guide strictly respect?"
+    },
+    {
+      "id": "b10_budget",
+      "legacy_id": "q32",
+      "concept": "budget.daily_tier",
+      "tier": "basic",
+      "step": 3,
+      "section": "b_sec_3",
+      "text": "What is your typical per-person per-day budget band (indicative INR)?",
+      "why": "Calibrates hotel tier, activity costs, and dining recommendations in Indian Rupees.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "budget_backpacker",
+          "label": "Budget Backpacker (₹1,000 - ₹2,500 / day)",
+          "desc": "Hostels, dhabas, local buses/trains"
+        },
+        {
+          "id": "mid_range_comfortable",
+          "label": "Comfortable Mid-Range (₹2,500 - ₹6,000 / day)",
+          "desc": "3-star stays, boutique homestays, AC cabs/trains"
+        },
+        {
+          "id": "premium_luxury",
+          "label": "Premium & Luxury (₹6,000 - ₹15,000+ / day)",
+          "desc": "Heritage palaces, 5-star resorts, private chauffeur cabs"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "budget_backpacker": 0.2,
+          "mid_range_comfortable": 0.5,
+          "premium_luxury": 0.9
+        }
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "ranking",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "b10_budget",
+        "map": {
+          "budget_backpacker": 0.0,
+          "mid_range_comfortable": 0.5,
+          "premium_luxury": 1.0
+        }
+      },
+      "question": "What is your typical per-person per-day budget band (indicative INR)?"
+    },
+    {
+      "id": "b11_climate",
+      "legacy_id": "q26",
+      "concept": "climate.comfort_zone",
+      "tier": "basic",
+      "step": 3,
+      "section": "b_sec_3",
+      "text": "Which weather conditions do you feel most comfortable in?",
+      "why": "Filters seasonal destination weather matches across North, South, and Central India.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "cold_himalayan",
+          "label": "Cold & Snowy",
+          "desc": "Snowcapped peaks, sub-zero winters, crisp mountain air"
+        },
+        {
+          "id": "cool_hillstation",
+          "label": "Cool & Breezy Hill Station",
+          "desc": "Pleasant 15°C - 24°C in places like Shimla, Munnar, Ooty"
+        },
+        {
+          "id": "moderate_pleasant",
+          "label": "Moderate & Mild",
+          "desc": "Comfortable 20°C - 28°C plains winter or coastal breeze"
+        },
+        {
+          "id": "warm_tropical",
+          "label": "Warm & Sun-drenched",
+          "desc": "Sunny coastal beaches, tropical winter warmth"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "clim_cold",
+          "clim_cool",
+          "clim_moderate",
+          "clim_warm"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "b11_climate",
+        "options": [
+          "cold_himalayan",
+          "cool_hillstation",
+          "moderate_pleasant",
+          "warm_tropical"
+        ]
+      },
+      "question": "Which weather conditions do you feel most comfortable in?"
+    },
+    {
+      "id": "b12_autonomy",
+      "legacy_id": "q41",
+      "concept": "ai.assistance_level",
+      "tier": "basic",
+      "step": 3,
+      "section": "b_sec_3",
+      "text": "How much independence do you want in making travel decisions?",
+      "why": "Configures whether AI presents fully-timed schedules or high-level candidate shortlists.",
+      "type": "single",
+      "required": true,
+      "options": [
+        {
+          "id": "full_curated_schedule",
+          "label": "Curated Daily Schedule",
+          "desc": "Build complete morning-to-night plans with routes"
+        },
+        {
+          "id": "shortlist_with_explanations",
+          "label": "Shortlist with Explanations",
+          "desc": "Show top 3-4 options per slot and let me pick"
+        },
+        {
+          "id": "on_demand_advice_only",
+          "label": "On-Demand Intelligence",
+          "desc": "Keep plans loose, advise only when requested"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "full_curated_schedule": 0.1,
+          "shortlist_with_explanations": 0.5,
+          "on_demand_advice_only": 0.9
+        }
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "b12_autonomy",
+        "map": {
+          "full_curated_schedule": 0.0,
+          "shortlist_with_explanations": 0.5,
+          "on_demand_advice_only": 1.0
+        }
+      },
+      "question": "How much independence do you want in making travel decisions?"
+    },
+    {
+      "id": "d01_solo_safety",
+      "concept": "party.solo_safety_preference",
+      "tier": "deep",
+      "section": "d_sec_1",
+      "text": "For solo travel, do you prefer verified women-friendly accommodations, daytime arrival schedules, and local safety check-ins?",
+      "why": "Ensures station/airport arrivals avoid late-night hours and recommends pre-verified homestays with strong female-solo safety records.",
+      "type": "single",
+      "required": false,
+      "show_if": {
+        "q": "b03_companions",
+        "includes_any": [
+          "solo"
+        ]
+      },
+      "refines": "party.composition",
+      "prefill_from": "b03_companions",
+      "options": [
+        {
+          "id": "always_prefer_verified",
+          "label": "Yes, prioritize verified stays & daytime arrivals",
+          "desc": "Plan daytime station arrivals, verified homestays, and well-lit neighborhood bases"
+        },
+        {
+          "id": "appreciate_options",
+          "label": "Helpful, but flexible",
+          "desc": "Appreciate safety tips, but open to standard travel timings and hotels"
+        },
+        {
+          "id": "neutral",
+          "label": "No special preference",
+          "desc": "Comfortable with standard recommendations and independent transit"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "solo_safety_strict",
+          "solo_safety_flexible",
+          "solo_safety_neutral"
+        ]
+      },
+      "consumers": [
+        "itinerary",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d01_solo_safety",
+        "options": [
+          "always_prefer_verified",
+          "appreciate_options",
+          "neutral"
+        ]
+      },
+      "question": "For solo travel, do you prefer verified women-friendly accommodations, daytime arrival schedules, and local safety check-ins?"
+    },
+    {
+      "id": "d02_children_age_group",
+      "legacy_id": "q64",
+      "concept": "party.child_age_bracket",
+      "tier": "deep",
+      "section": "d_sec_1",
+      "text": "What is the age bracket of the youngest child travelling in your family party?",
+      "why": "Customizes daily schedules for pram/stroller access, milk/feeding breaks, kid-friendly parks, and avoids high-altitude or rigorous trails.",
+      "type": "single",
+      "required": false,
+      "show_if": {
+        "q": "b03_companions",
+        "includes_any": [
+          "family_kids"
+        ]
+      },
+      "refines": "party.composition",
+      "prefill_from": "b03_companions",
+      "options": [
+        {
+          "id": "infant_under_2",
+          "label": "Infant (Under 2 years)",
+          "desc": "Needs calm pacing, stroller-friendly paths, and easy baby food/milk access"
+        },
+        {
+          "id": "toddler_2_5",
+          "label": "Toddler (2 – 5 years)",
+          "desc": "Needs short walking distances, open gardens, playground breaks, and afternoon rest"
+        },
+        {
+          "id": "child_6_12",
+          "label": "Child (6 – 12 years)",
+          "desc": "Enjoys interactive science museums, royal fort ramparts, boat rides, and wildlife safaris"
+        },
+        {
+          "id": "teen_13_17",
+          "label": "Teenager (13 – 17 years)",
+          "desc": "Excited for gentle adventure, photography, street food markets, and cultural trails"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "infant_under_2": 0.1,
+          "toddler_2_5": 0.3,
+          "child_6_12": 0.6,
+          "teen_13_17": 0.9
+        }
+      },
+      "consumers": [
+        "itinerary",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "d02_children_age_group",
+        "map": {
+          "infant_under_2": 0.25,
+          "toddler_2_5": 0.5,
+          "child_6_12": 0.75,
+          "teen_13_17": 1.0
+        }
+      },
+      "question": "What is the age bracket of the youngest child travelling in your family party?"
+    },
+    {
+      "id": "d03_senior_accessibility",
+      "concept": "party.senior_mobility_needs",
+      "tier": "deep",
+      "section": "d_sec_1",
+      "text": "Do senior family members in your group require elevator access, step-free walking paths, or temple battery cars / dolis?",
+      "why": "Filters monuments with battery buggies and avoids steep unassisted temple staircases (e.g. Tirupati, Hampi, Amer Fort).",
+      "type": "single",
+      "required": false,
+      "show_if": {
+        "q": "b03_companions",
+        "includes_any": [
+          "family_seniors"
+        ]
+      },
+      "refines": "party.composition",
+      "prefill_from": "b03_companions",
+      "options": [
+        {
+          "id": "essential_step_free",
+          "label": "Essential step-free & ground floor access",
+          "desc": "Wheelchair / battery buggy / palki support needed; strictly avoid steep stairs"
+        },
+        {
+          "id": "moderate_stairs_fine",
+          "label": "Gentle stairs fine with railings",
+          "desc": "Can walk moderate flat distances with occasional rest benches"
+        },
+        {
+          "id": "fully_active_elders",
+          "label": "Fully active elders",
+          "desc": "Comfortable with standard Indian walking distances, gentle inclines, and heritage sites"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "essential_step_free": 0.1,
+          "moderate_stairs_fine": 0.5,
+          "fully_active_elders": 1.0
+        }
+      },
+      "consumers": [
+        "itinerary",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "d03_senior_accessibility",
+        "map": {
+          "essential_step_free": 0.25,
+          "moderate_stairs_fine": 0.625,
+          "fully_active_elders": 1.0
+        }
+      },
+      "question": "Do senior family members in your group require elevator access, step-free walking paths, or temple battery cars / dolis?"
+    },
+    {
+      "id": "d04_languages",
+      "concept": "communication.languages",
+      "tier": "deep",
+      "section": "d_sec_1",
+      "text": "Which Indian languages are you comfortable speaking or understanding during your journey?",
+      "why": "Matches monument audio guides, licensed tour companions, and local driver communications with your language comfort.",
+      "type": "multi",
+      "required": false,
+      "options": [
+        {
+          "id": "hindi",
+          "label": "Hindi",
+          "desc": "Widely spoken across North, Central, and Western Indian states"
+        },
+        {
+          "id": "english",
+          "label": "English",
+          "desc": "Standard across airports, starred hotels, and urban tourist hubs"
+        },
+        {
+          "id": "bengali",
+          "label": "Bengali",
+          "desc": "Spoken across West Bengal, Tripura, and Eastern travel corridors"
+        },
+        {
+          "id": "tamil",
+          "label": "Tamil",
+          "desc": "Spoken across Tamil Nadu, Puducherry, and major southern temple circuits"
+        },
+        {
+          "id": "kannada",
+          "label": "Kannada",
+          "desc": "Spoken across Karnataka, Bangalore, Western Ghats, and heritage hubs"
+        },
+        {
+          "id": "telugu",
+          "label": "Telugu",
+          "desc": "Spoken across Andhra Pradesh, Telangana, and Deccan heritage sites"
+        },
+        {
+          "id": "malayalam",
+          "label": "Malayalam",
+          "desc": "Spoken across Kerala backwaters, Kochi, Munnar, and coastal circuits"
+        },
+        {
+          "id": "marathi",
+          "label": "Marathi",
+          "desc": "Spoken across Maharashtra, Mumbai, Pune, Konkan coast, and Ajanta-Ellora"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "lang_hindi",
+          "lang_english",
+          "lang_bengali",
+          "lang_tamil",
+          "lang_kannada",
+          "lang_telugu",
+          "lang_malayalam",
+          "lang_marathi"
+        ]
+      },
+      "consumers": [
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d04_languages",
+        "options": [
+          "hindi",
+          "english",
+          "bengali",
+          "tamil",
+          "kannada",
+          "telugu",
+          "malayalam",
+          "marathi"
+        ]
+      },
+      "question": "Which Indian languages are you comfortable speaking or understanding during your journey?"
+    },
+    {
+      "id": "d05_monsoon_rain",
+      "legacy_id": "q81",
+      "concept": "climate.monsoon_rain_tolerance",
+      "tier": "deep",
+      "section": "d_sec_2",
+      "text": "How comfortable are you continuing to explore and sightsee if it rains heavily during the monsoon?",
+      "why": "Adjusts indoor museum fallbacks, alerts for waterlogging or hill landslides, and suggests scenic monsoon viewing spots.",
+      "type": "scale",
+      "low": "Head indoors immediately (take cover in cafes, museums or hotels)",
+      "high": "Love the rain, keep exploring with umbrella/raincoat",
+      "required": false,
+      "refines": "climate.comfort_zone",
+      "prefill_from": "b11_climate",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "prep",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d05_monsoon_rain"
+      },
+      "question": "How comfortable are you continuing to explore and sightsee if it rains heavily during the monsoon?"
+    },
+    {
+      "id": "d06_high_altitude",
+      "concept": "climate.himalayan_altitude_comfort",
+      "tier": "deep",
+      "section": "d_sec_2",
+      "text": "How comfortable are you with high-altitude Himalayan travel (over 3,000 metres / 10,000 feet, like Leh Ladakh, Spiti, Kedarnath, or North Sikkim)?",
+      "why": "Mandates 48-hour rest buffers for Leh/Spiti and advises portable oxygen cylinder precautions.",
+      "type": "scale",
+      "low": "Sensitive to altitude (prone to mountain sickness, need slow ascent)",
+      "high": "Acclimatize easily & thrive at high mountain elevations",
+      "required": false,
+      "refines": "climate.comfort_zone",
+      "prefill_from": "b11_climate",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "recommender",
+        "prep",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d06_high_altitude"
+      },
+      "question": "How comfortable are you with high-altitude Himalayan travel (over 3,000 metres / 10,000 feet, like Leh Ladakh, Spiti, Kedarnath, or North Sikkim)?"
+    },
+    {
+      "id": "d07_heat_humidity",
+      "legacy_id": "q79",
+      "concept": "climate.heat_humidity_tolerance",
+      "tier": "deep",
+      "section": "d_sec_2",
+      "text": "How well do you tolerate intense summer heat and humidity (35°C–45°C, common in North Indian plains, Rajasthan, or coastal Chennai/Kolkata)?",
+      "why": "Shifts outdoor fort and ruins visits to early morning / post-4 PM slots to prevent heat exhaustion.",
+      "type": "scale",
+      "low": "Exhausted quickly (need air-conditioned vehicles and indoor venues)",
+      "high": "Handle heat very well (happy walking forts and bazaars in daytime)",
+      "required": false,
+      "refines": "climate.comfort_zone",
+      "prefill_from": "b11_climate",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "prep",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d07_heat_humidity"
+      },
+      "question": "How well do you tolerate intense summer heat and humidity (35°C–45°C, common in North Indian plains, Rajasthan, or coastal Chennai/Kolkata)?"
+    },
+    {
+      "id": "d08_winter_cold",
+      "legacy_id": "q78",
+      "concept": "climate.cold_snow_tolerance",
+      "tier": "deep",
+      "section": "d_sec_2",
+      "text": "How comfortable are you in severe winter cold or snowy conditions (sub-zero to 5°C, like Shimla, Manali, Kashmir, or Tawang in December–February)?",
+      "why": "Triggers thermal innerwear, windproof jackets, and snow gear packing checklists.",
+      "type": "scale",
+      "low": "Dislike cold intensely (prefer tropical warmth & sunshine)",
+      "high": "Thrive in snow & cold (love crisp mountain winter chill)",
+      "required": false,
+      "refines": "climate.comfort_zone",
+      "prefill_from": "b11_climate",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "prep",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d08_winter_cold"
+      },
+      "question": "How comfortable are you in severe winter cold or snowy conditions (sub-zero to 5°C, like Shimla, Manali, Kashmir, or Tawang in December–February)?"
+    },
+    {
+      "id": "d09_spice_tolerance",
+      "legacy_id": "q91",
+      "concept": "food.spice_tolerance",
+      "tier": "deep",
+      "section": "d_sec_3",
+      "text": "What level of Indian spice and green chili heat can you comfortably enjoy in your daily meals?",
+      "why": "Recommends suitable dishes and flags intensely spicy regional preparations (e.g. fiery Andhra curries, Kolhapuri rassa, or Chettinad pepper gravies).",
+      "type": "scale",
+      "low": "Mild / zero green chili (gentle spices, curd, mild gravies)",
+      "high": "Love authentic spicy desi food (traditional regional chili heat)",
+      "required": false,
+      "refines": "food.diet_preference",
+      "prefill_from": "b09_dietary",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "itinerary",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d09_spice_tolerance"
+      },
+      "question": "What level of Indian spice and green chili heat can you comfortably enjoy in your daily meals?"
+    },
+    {
+      "id": "d10_street_food",
+      "legacy_id": "q92",
+      "concept": "food.street_food_interest",
+      "tier": "deep",
+      "section": "d_sec_3",
+      "text": "How adventurous are you with local Indian street food stalls, halwai shops, and chaat corners?",
+      "why": "Curates street food trail walks (golgappe, kachori, jalebi) or sticks strictly to hygienic seated restaurants.",
+      "type": "scale",
+      "low": "Only seated hygienic restaurants (avoid roadside stalls)",
+      "high": "Eager street food explorer (love authentic local food stalls)",
+      "required": false,
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d10_street_food"
+      },
+      "question": "How adventurous are you with local Indian street food stalls, halwai shops, and chaat corners?"
+    },
+    {
+      "id": "d11_food_allergens",
+      "legacy_id": "q95",
+      "concept": "health.food_allergies",
+      "tier": "deep",
+      "section": "d_sec_3",
+      "text": "Do you or anyone in your party have food allergies or strict ingredient exclusions that restaurants must honor?",
+      "why": "Enforces non-negotiable safety masks on food stops, street food trails, and hotel dining.",
+      "type": "multi",
+      "sensitivity": true,
+      "required": false,
+      "options": [
+        {
+          "id": "peanuts",
+          "label": "Peanuts / Groundnuts (Moongphali)",
+          "desc": "Common in poha, sabudana khichdi, chikkis, and peanut podi"
+        },
+        {
+          "id": "tree_nuts",
+          "label": "Tree Nuts (Cashew, Almond, Walnut)",
+          "desc": "Common in royal Mughlai kormas, shahi paneer, and Indian sweets"
+        },
+        {
+          "id": "lactose_dairy",
+          "label": "Lactose / Milk / Paneer / Ghee",
+          "desc": "Dairy in chai, butter gravies, curd, and desi ghee sweets"
+        },
+        {
+          "id": "gluten_wheat",
+          "label": "Gluten / Wheat / Atta / Maida",
+          "desc": "Tandoori rotis, naans, parathas, poori, and bhature"
+        },
+        {
+          "id": "seafood_shellfish",
+          "label": "Seafood / Shellfish / Fish",
+          "desc": "Coastal fish, prawns, crabs, and dried fish condiments"
+        },
+        {
+          "id": "soy",
+          "label": "Soy & Soy derivatives",
+          "desc": "Soybean chunks, tofu, and Indo-Chinese sauces"
+        },
+        {
+          "id": "sesame",
+          "label": "Sesame / Til / Mustard Oil",
+          "desc": "Common in til laddoos, Gujarati snacks, and Bengali/Bihari gravies"
+        },
+        {
+          "id": "no_allergies",
+          "label": "No food allergies",
+          "desc": "Safe with standard regional ingredients and preparations"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "allergen_peanuts",
+          "allergen_tree_nuts",
+          "allergen_dairy",
+          "allergen_gluten",
+          "allergen_seafood",
+          "allergen_soy",
+          "allergen_sesame"
+        ]
+      },
+      "consumers": [
+        "itinerary",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "allergen",
+        "options": [
+          "peanuts",
+          "tree_nuts",
+          "lactose_dairy",
+          "gluten_wheat",
+          "seafood_shellfish",
+          "soy",
+          "sesame",
+          "no_allergies"
+        ]
+      },
+      "question": "Do you or anyone in your party have food allergies or strict ingredient exclusions that restaurants must honor?"
+    },
+    {
+      "id": "d12_regional_cuisines",
+      "legacy_id": "q101",
+      "concept": "food.regional_traditions",
+      "tier": "deep",
+      "section": "d_sec_3",
+      "text": "Which regional Indian culinary traditions are you most eager to savor on your travels?",
+      "why": "Directs daily meal recommendations toward authentic regional specialties rather than generic multi-cuisine hotel food.",
+      "type": "multi",
+      "required": false,
+      "options": [
+        {
+          "id": "mughlai_awadhi",
+          "label": "Awadhi & Mughlai",
+          "desc": "Fragrant dum biryanis, galouti kebabs, roomali roti, and rich slow-cooked kormas"
+        },
+        {
+          "id": "rajasthani_dalbaati",
+          "label": "Rajasthani Marwari",
+          "desc": "Dal Baati Churma, Gatte ki Sabzi, Ker Sangri, and Bajra Roti with white butter"
+        },
+        {
+          "id": "kerala_coastal",
+          "label": "Kerala Malabari & Coastal",
+          "desc": "Appam with vegetable/meat stew, coastal fish curry, and Malabar parotta"
+        },
+        {
+          "id": "pahadi_himachali",
+          "label": "Himachali & Kashmiri Wazwan",
+          "desc": "Rogan Josh, Kashmiri Dum Aloo, Siddu with ghee, and fragrant Kahwa tea"
+        },
+        {
+          "id": "south_indian_tiffin",
+          "label": "Chettinad & South Indian Tiffin",
+          "desc": "Crisp ghee roast dosas, idli-vada sambar, pepper chicken, and filter coffee"
+        },
+        {
+          "id": "bengali_sweets",
+          "label": "Bengali & Odia Specialties",
+          "desc": "Macher Jhol, Luchi with Chholar Dal, Kosha Mangsho, and warm Rasgulla"
+        },
+        {
+          "id": "gujarati_kathiyawadi",
+          "label": "Gujarati & Kathiyawadi",
+          "desc": "Traditional Gujarati Thali, Undhiyu, Sev Tameta, and Thepla with chunda"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "cuisine_mughlai",
+          "cuisine_rajasthani",
+          "cuisine_kerala",
+          "cuisine_pahadi",
+          "cuisine_south_tiffin",
+          "cuisine_bengali",
+          "cuisine_gujarati"
+        ]
+      },
+      "consumers": [
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d12_regional_cuisines",
+        "options": [
+          "mughlai_awadhi",
+          "rajasthani_dalbaati",
+          "kerala_coastal",
+          "pahadi_himachali",
+          "south_indian_tiffin",
+          "bengali_sweets",
+          "gujarati_kathiyawadi"
+        ]
+      },
+      "question": "Which regional Indian culinary traditions are you most eager to savor on your travels?"
+    },
+    {
+      "id": "d13_train_class",
+      "concept": "transport.train_class",
+      "tier": "deep",
+      "section": "d_sec_4",
+      "text": "When travelling between cities on Indian Railways (IRCTC), which travel class do you typically prefer?",
+      "why": "Prioritizes train schedules matching your preferred comfort tier or switches to domestic flights for long distances.",
+      "type": "single",
+      "required": false,
+      "options": [
+        {
+          "id": "vande_bharat_executive",
+          "label": "Vande Bharat / Tejas Chair Car",
+          "desc": "Fast daytime premium travel with scenic broad windows and onboard meals"
+        },
+        {
+          "id": "ac_first_class",
+          "label": "AC First Class (1A)",
+          "desc": "Maximum privacy with lockable 2-berth coupes or 4-berth cabins"
+        },
+        {
+          "id": "ac_2_tier",
+          "label": "AC 2 Tier (2A)",
+          "desc": "Spacious, comfortable overnight berths with privacy curtains and clean linen"
+        },
+        {
+          "id": "ac_3_tier",
+          "label": "AC 3 Tier (3A / 3E)",
+          "desc": "Reliable and economical air-conditioned travel for budget and family trips"
+        },
+        {
+          "id": "sleeper_class",
+          "label": "Sleeper Class (SL)",
+          "desc": "Budget-conscious, non-AC open window train travel for authentic journeys"
+        },
+        {
+          "id": "prefer_flights",
+          "label": "Prefer Domestic Flights",
+          "desc": "Save travel time by flying long intercity sectors (over 6 hours by rail)"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "train_vande_bharat",
+          "train_1a",
+          "train_2a",
+          "train_3a",
+          "train_sl",
+          "train_flights"
+        ]
+      },
+      "consumers": [
+        "prep",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d13_train_class",
+        "options": [
+          "vande_bharat_executive",
+          "ac_first_class",
+          "ac_2_tier",
+          "ac_3_tier",
+          "sleeper_class",
+          "prefer_flights"
+        ]
+      },
+      "question": "When travelling between cities on Indian Railways (IRCTC), which travel class do you typically prefer?"
+    },
+    {
+      "id": "d14_road_transit",
+      "legacy_id": "q35",
+      "concept": "transport.road_mode",
+      "tier": "deep",
+      "section": "d_sec_4",
+      "text": "For road journeys between cities, heritage sites, or day excursions, what is your preferred mode of transit?",
+      "why": "Configures chauffeur-driven outstation cabs versus intercity sleeper buses or self-drive rentals.",
+      "type": "single",
+      "required": false,
+      "refines": "trip.pacing",
+      "options": [
+        {
+          "id": "chauffeur_hired_cab",
+          "label": "Chauffeur-Driven Private Cab (Sedan / Innova)",
+          "desc": "Dedicated vehicle with experienced local driver for door-to-door comfort and luggage ease"
+        },
+        {
+          "id": "self_drive_rental",
+          "label": "Self-Drive Rental Car / SUV",
+          "desc": "Driving yourself at your own leisure on expressways and scenic national highways"
+        },
+        {
+          "id": "volvo_overnight_bus",
+          "label": "Overnight AC Sleeper / Volvo Bus",
+          "desc": "Reliable intercity buses (KSRTC, RSRTC, private Volvo/Scania sleeper buses)"
+        },
+        {
+          "id": "local_autos_taxis",
+          "label": "Local Auto-rickshaws & App Cabs",
+          "desc": "Quick point-to-point transit using city auto-rickshaws, e-rickshaws, and Ola/Uber"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "road_hired_cab",
+          "road_self_drive",
+          "road_volvo_bus",
+          "road_local_auto"
+        ]
+      },
+      "consumers": [
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d14_road_transit",
+        "options": [
+          "chauffeur_hired_cab",
+          "self_drive_rental",
+          "volvo_overnight_bus",
+          "local_autos_taxis"
+        ]
+      },
+      "question": "For road journeys between cities, heritage sites, or day excursions, what is your preferred mode of transit?"
+    },
+    {
+      "id": "d15_motion_sickness",
+      "legacy_id": "q104",
+      "concept": "health.motion_sensitivity",
+      "tier": "deep",
+      "section": "d_sec_4",
+      "text": "Do you or your co-travellers experience motion sickness (nausea / dizziness) on hill roads or boat rides?",
+      "why": "Advises medication buffers, schedules frequent viewpoint breaks on ghat passes, and selects gentler route alternatives.",
+      "type": "multi",
+      "required": false,
+      "options": [
+        {
+          "id": "winding_mountain_roads",
+          "label": "Winding Mountain Roads & Ghat Bends",
+          "desc": "Frequent hairpins on hill routes (e.g. Ooty, Manali, Mussoorie, Sikkim)"
+        },
+        {
+          "id": "boats_ferries",
+          "label": "Boats, Ferries & Backwaters",
+          "desc": "Sea ferries (e.g. Havelock/Neil in Andamans, Mumbai-Alibaug, open water)"
+        },
+        {
+          "id": "none",
+          "label": "No motion sickness",
+          "desc": "Comfortable travelling on all types of winding roads, boats, and flights"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "nausea_ghat_roads",
+          "nausea_boats",
+          "nausea_none"
+        ]
+      },
+      "consumers": [
+        "prep",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d15_motion_sickness",
+        "options": [
+          "winding_mountain_roads",
+          "boats_ferries",
+          "none"
+        ]
+      },
+      "question": "Do you or your co-travellers experience motion sickness (nausea / dizziness) on hill roads or boat rides?"
+    },
+    {
+      "id": "d16_early_starts",
+      "legacy_id": "q75",
+      "concept": "trip.early_starts_comfort",
+      "tier": "deep",
+      "section": "d_sec_4",
+      "text": "How willing are you to wake up before dawn (5:00 AM) for special travel experiences (e.g. morning tiger safaris, sunrise ghat boat rides, or temple aartis)?",
+      "why": "Allocates pre-dawn alarm slots for Ranthambore/Kaziranga safaris or Varanasi Subah-e-Banaras ghat walks.",
+      "type": "scale",
+      "low": "Prefer sleeping in (start relaxed sightseeing after 9:00 AM)",
+      "high": "Happy to rise before dawn for magic morning light & aartis",
+      "required": false,
+      "refines": "trip.pacing",
+      "prefill_from": "b07_pace",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d16_early_starts"
+      },
+      "question": "How willing are you to wake up before dawn (5:00 AM) for special travel experiences (e.g. morning tiger safaris, sunrise ghat boat rides, or temple aartis)?"
+    },
+    {
+      "id": "d17_stay_types",
+      "legacy_id": "q34",
+      "concept": "stay.preferred_style",
+      "tier": "deep",
+      "section": "d_sec_5",
+      "text": "What type of accommodation feels most appealing and authentic for your Indian trip?",
+      "why": "Filters hotels matching your architectural taste and hospitality atmosphere.",
+      "type": "single",
+      "required": false,
+      "refines": "budget.daily_tier",
+      "prefill_from": "b10_budget",
+      "options": [
+        {
+          "id": "heritage_haveli_palace",
+          "label": "Heritage Haveli, Fort Hotel, or Royal Palace",
+          "desc": "Historic properties with courtyards, jharokhas, and royal Indian charm"
+        },
+        {
+          "id": "boutique_plantation_homestay",
+          "label": "Boutique Plantation Homestay / Estate",
+          "desc": "Cozy heritage bungalows nestled in tea, coffee, or spice plantations"
+        },
+        {
+          "id": "ashram_wellness_retreat",
+          "label": "Ashram, Dharamshala, or Ayurveda Retreat",
+          "desc": "Tranquil spiritual environment focused on wellness, yoga, and meditation"
+        },
+        {
+          "id": "comfortable_city_hotel",
+          "label": "Reliable 3-Star or 4-Star Modern Hotel",
+          "desc": "Clean, standardized amenities with dependable breakfast, AC, and room service"
+        },
+        {
+          "id": "luxury_5star_resort",
+          "label": "Luxury 5-Star Hotel or Resort",
+          "desc": "Full-service luxury, swimming pool, spa, fine dining, and personalized hospitality"
+        },
+        {
+          "id": "backpacker_hostel",
+          "label": "Social Backpacker Hostel (Zostel / goSTOPS)",
+          "desc": "Vibrant social atmosphere, bunk dorms/private rooms, and community activities"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "stay_heritage",
+          "stay_homestay",
+          "stay_ashram",
+          "stay_city_hotel",
+          "stay_resort",
+          "stay_hostel"
+        ]
+      },
+      "consumers": [
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d17_stay_types",
+        "options": [
+          "heritage_haveli_palace",
+          "boutique_plantation_homestay",
+          "ashram_wellness_retreat",
+          "comfortable_city_hotel",
+          "luxury_5star_resort",
+          "backpacker_hostel"
+        ]
+      },
+      "question": "What type of accommodation feels most appealing and authentic for your Indian trip?"
+    },
+    {
+      "id": "d18_stay_amenities",
+      "concept": "stay.essential_amenities",
+      "tier": "deep",
+      "section": "d_sec_5",
+      "text": "Which room and property amenities are non-negotiable for your stay comfort in India?",
+      "why": "Filters accommodation properties in hill stations or remote towns for critical comforts.",
+      "type": "multi",
+      "required": false,
+      "options": [
+        {
+          "id": "power_backup_generator",
+          "label": "24x7 Power Backup Generator / Inverter",
+          "desc": "Crucial during load-shedding and power cuts in hill towns and remote areas"
+        },
+        {
+          "id": "room_heating_geyser",
+          "label": "Running Hot Water (Geyser) & Room Heater",
+          "desc": "Essential for winter mornings in Himalayan and North Indian hill stations"
+        },
+        {
+          "id": "high_speed_wifi",
+          "label": "High-Speed Wi-Fi Internet",
+          "desc": "Reliable connectivity for remote work, video calls, or travel streaming"
+        },
+        {
+          "id": "pure_veg_kitchen",
+          "label": "Dedicated Pure-Veg / Satvik Kitchen on premises",
+          "desc": "No non-veg or egg prepared in the hotel kitchen for strict vegetarian travelers"
+        },
+        {
+          "id": "in_house_restaurant",
+          "label": "In-House Multi-Cuisine Restaurant",
+          "desc": "Convenient dining on property after tiring day-long sightseeing excursions"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "amenity_power_backup",
+          "amenity_heating",
+          "amenity_wifi",
+          "amenity_pure_veg",
+          "amenity_restaurant"
+        ]
+      },
+      "consumers": [
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d18_stay_amenities",
+        "options": [
+          "power_backup_generator",
+          "room_heating_geyser",
+          "high_speed_wifi",
+          "pure_veg_kitchen",
+          "in_house_restaurant"
+        ]
+      },
+      "question": "Which room and property amenities are non-negotiable for your stay comfort in India?"
+    },
+    {
+      "id": "d19_daily_walking_km",
+      "legacy_id": "q73",
+      "concept": "physical.daily_walking_capacity_km",
+      "tier": "deep",
+      "section": "d_sec_6",
+      "text": "How many kilometres can you comfortably walk in a single sightseeing day (exploring bazaars, temple complexes, and forts)?",
+      "why": "Caps total daily walking routes across crowded bazaars, massive forts, and heritage streets.",
+      "type": "number",
+      "min": 1,
+      "max": 20,
+      "default": 6,
+      "unit": "km",
+      "required": false,
+      "refines": "trip.pacing",
+      "prefill_from": "b07_pace",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 20
+      },
+      "consumers": [
+        "rl_context",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "number",
+        "name": "d19_daily_walking_km"
+      },
+      "question": "How many kilometres can you comfortably walk in a single sightseeing day (exploring bazaars, temple complexes, and forts)?"
+    },
+    {
+      "id": "d20_temple_stairs_terrain",
+      "legacy_id": "q74",
+      "concept": "physical.stairs_and_uneven_terrain",
+      "tier": "deep",
+      "section": "d_sec_6",
+      "text": "How comfortable are you climbing steep temple staircases, fort ramparts, or uneven boulder paths (e.g. Hampi, Amer Fort, Palitana, Tirupati)?",
+      "why": "Flags rigorous climbs like Hampi Matanga Hill or Gwalior Fort ramps, suggesting battery buggies or lifts where available.",
+      "type": "scale",
+      "low": "Need flat terrain, elevators, or battery carts",
+      "high": "Love climbing steep stone stairs & high fort ramparts",
+      "required": false,
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "itinerary",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d20_temple_stairs_terrain"
+      },
+      "question": "How comfortable are you climbing steep temple staircases, fort ramparts, or uneven boulder paths (e.g. Hampi, Amer Fort, Palitana, Tirupati)?"
+    },
+    {
+      "id": "d21_medical_logistics",
+      "legacy_id": "q103",
+      "concept": "health.medical_logistics",
+      "tier": "deep",
+      "section": "d_sec_6",
+      "text": "Do you or your companions require any specific health or medical logistics while travelling?",
+      "why": "Triggers refrigerator verification reminders, cooler bag tips, and medical document alerts.",
+      "type": "multi",
+      "sensitivity": true,
+      "required": false,
+      "options": [
+        {
+          "id": "needs_refrigeration",
+          "label": "Medication requires daily refrigeration (e.g. Insulin)",
+          "desc": "Hotel mini-fridge verification and portable cold pouch reminders required"
+        },
+        {
+          "id": "prescription_meds",
+          "label": "Carrying regular daily prescription medications",
+          "desc": "Keep doctor prescription handy and ensure access to local pharmacies"
+        },
+        {
+          "id": "sensitive_to_dust",
+          "label": "Respiratory sensitivity / Dust allergy / Asthma",
+          "desc": "Advises dust masks and air purification in bustling city bazaars"
+        },
+        {
+          "id": "no_medical_logistics",
+          "label": "No special medical logistics",
+          "desc": "Standard health readiness for normal travel across India"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "med_refrigeration",
+          "med_prescription",
+          "med_dust_asthma",
+          "med_none"
+        ]
+      },
+      "consumers": [
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d21_medical_logistics",
+        "options": [
+          "needs_refrigeration",
+          "prescription_meds",
+          "sensitive_to_dust",
+          "no_medical_logistics"
+        ]
+      },
+      "question": "Do you or your companions require any specific health or medical logistics while travelling?"
+    },
+    {
+      "id": "d22_avoidances",
+      "legacy_id": "q12",
+      "concept": "experience.avoidances",
+      "tier": "deep",
+      "section": "d_sec_7",
+      "text": "Are there specific environments or activities you wish to strictly avoid on your Indian trip?",
+      "why": "Acts as a negative filter in the LinUCB recommendation policy so disliked spots are excluded.",
+      "type": "multi",
+      "required": false,
+      "options": [
+        {
+          "id": "avoid_strenuous_hikes",
+          "label": "Strenuous mountain treks & steep rocky hikes",
+          "desc": "Keep to paved paths, promenades, and gentle walking trails"
+        },
+        {
+          "id": "avoid_extreme_heights",
+          "label": "Extreme heights, sheer cliff ropeways & viewpoints",
+          "desc": "Acrophobia or vertigo safety — keep firmly grounded"
+        },
+        {
+          "id": "avoid_crowded_clubs",
+          "label": "Loud nightclubs, noisy party hubs & rowdy bars",
+          "desc": "Prefer tranquil evenings, cultural performances, or quiet cafes"
+        },
+        {
+          "id": "avoid_early_starts",
+          "label": "Pre-dawn wakeups before 6:30 AM",
+          "desc": "No 5:00 AM safaris, early train departures, or sunrise treks"
+        },
+        {
+          "id": "avoid_long_bus_rides",
+          "label": "Overnight bus journeys over 8 hours",
+          "desc": "Prefer overnight train sleepers (2A/3A) or domestic flights"
+        },
+        {
+          "id": "avoid_narrow_caves",
+          "label": "Enclosed unventilated caves & dark underground tunnels",
+          "desc": "Claustrophobia safety — keep to open-air heritage monuments"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "avoid_hikes",
+          "avoid_heights",
+          "avoid_clubs",
+          "avoid_early_starts",
+          "avoid_bus",
+          "avoid_caves"
+        ]
+      },
+      "consumers": [
+        "recommender",
+        "rl_context",
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "avoid",
+        "options": [
+          "avoid_strenuous_hikes",
+          "avoid_extreme_heights",
+          "avoid_crowded_clubs",
+          "avoid_early_starts",
+          "avoid_long_bus_rides",
+          "avoid_narrow_caves"
+        ]
+      },
+      "question": "Are there specific environments or activities you wish to strictly avoid on your Indian trip?"
+    },
+    {
+      "id": "d23_cultural_depth",
+      "legacy_id": "q107",
+      "concept": "interests.cultural_depth",
+      "tier": "deep",
+      "section": "d_sec_7",
+      "text": "What level of cultural, historical, and architectural depth do you enjoy during heritage site visits?",
+      "why": "Determines whether to allocate 3 hours with licensed ASI guides or 45-minute scenic highlights.",
+      "type": "single",
+      "required": false,
+      "refines": "interests.primary_goals",
+      "prefill_from": "b05_travel_goals",
+      "options": [
+        {
+          "id": "deep_historical_guide",
+          "label": "Deep Archaeological & Historical Context",
+          "desc": "Love detailed ASI guides, stone inscriptions, royal dynasties, and architectural details"
+        },
+        {
+          "id": "mythology_temple_rituals",
+          "label": "Mythology, Legends & Living Temple Rituals",
+          "desc": "Drawn to sacred stories, aartis, festive traditions, and spiritual folklore"
+        },
+        {
+          "id": "crafts_and_artisans",
+          "label": "Traditional Handicrafts & Living Artisans",
+          "desc": "Visiting handloom weaving clusters, block printers, potters, and local folk artists"
+        },
+        {
+          "id": "scenic_photo_overview",
+          "label": "Scenic Highlights & Photography",
+          "desc": "Appreciate beautiful facades and viewpoints without lengthy historical lectures"
+        }
+      ],
+      "encoding": {
+        "type": "onehot",
+        "features": [
+          "cult_deep_history",
+          "cult_mythology",
+          "cult_crafts",
+          "cult_scenic"
+        ]
+      },
+      "consumers": [
+        "itinerary",
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d23_cultural_depth",
+        "options": [
+          "deep_historical_guide",
+          "mythology_temple_rituals",
+          "crafts_and_artisans",
+          "scenic_photo_overview"
+        ]
+      },
+      "question": "What level of cultural, historical, and architectural depth do you enjoy during heritage site visits?"
+    },
+    {
+      "id": "d24_permits",
+      "concept": "trip.permit_willingness",
+      "tier": "deep",
+      "section": "d_sec_7",
+      "text": "Are you willing to organize special travel permits for border regions or protected islands (e.g. Ladakh Pangong/Nubra, Tawang, Sikkim, Lakshadweep)?",
+      "why": "Border and tribal areas require online Inner Line Permits (ILP) and identity verification.",
+      "type": "single",
+      "required": false,
+      "options": [
+        {
+          "id": "happy_to_organize",
+          "label": "Happy to arrange permits for unique frontier destinations",
+          "desc": "Open to Ladakh high passes, Tawang monastery, Lachung Sikkim, and Lakshadweep"
+        },
+        {
+          "id": "prefer_hassle_free",
+          "label": "Prefer permit-free, hassle-free destinations only",
+          "desc": "Stick to destinations needing zero paperwork beyond standard Indian ID proof"
+        }
+      ],
+      "encoding": {
+        "type": "ordinal_0_1",
+        "map": {
+          "happy_to_organize": 1.0,
+          "prefer_hassle_free": 0.0
+        }
+      },
+      "consumers": [
+        "recommender",
+        "prep",
+        "summary"
+      ],
+      "vec": {
+        "type": "ordinal",
+        "name": "d24_permits",
+        "map": {
+          "happy_to_organize": 0.0,
+          "prefer_hassle_free": 1.0
+        }
+      },
+      "question": "Are you willing to organize special travel permits for border regions or protected islands (e.g. Ladakh Pangong/Nubra, Tawang, Sikkim, Lakshadweep)?"
+    },
+    {
+      "id": "d25_budget_flexibility",
+      "legacy_id": "q125",
+      "concept": "budget.flexibility_scale",
+      "tier": "deep",
+      "section": "d_sec_8",
+      "text": "When an exceptional local experience arises (e.g. private tiger safari, royal palace dining, helicopter darshan), how flexible is your budget?",
+      "why": "Determines whether AI may occasionally recommend premium excursions above the daily budget band.",
+      "type": "scale",
+      "low": "Strict hard cap (never exceed daily budget limit)",
+      "high": "Very flexible for once-in-a-lifetime memorable moments",
+      "required": false,
+      "refines": "budget.daily_tier",
+      "prefill_from": "b10_budget",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "rl_context",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d25_budget_flexibility"
+      },
+      "question": "When an exceptional local experience arises (e.g. private tiger safari, royal palace dining, helicopter darshan), how flexible is your budget?"
+    },
+    {
+      "id": "d26_proactivity",
+      "legacy_id": "q42",
+      "concept": "ai.proactivity_level",
+      "tier": "deep",
+      "section": "d_sec_8",
+      "text": "How proactively should your AI travel guide offer real-time updates and suggestions during your trip?",
+      "why": "Controls the notification frequency for weather alerts, aarti timings, train platform updates, and transit delays.",
+      "type": "scale",
+      "low": "Quiet mode (only advise when specifically asked)",
+      "high": "Proactive mode (timely alerts on weather, crowd surges, aartis & delays)",
+      "required": false,
+      "refines": "ai.assistance_level",
+      "prefill_from": "b12_autonomy",
+      "encoding": {
+        "type": "numeric_normalised",
+        "min": 1,
+        "max": 5
+      },
+      "consumers": [
+        "live",
+        "summary"
+      ],
+      "vec": {
+        "type": "scale",
+        "name": "d26_proactivity"
+      },
+      "question": "How proactively should your AI travel guide offer real-time updates and suggestions during your trip?"
+    },
+    {
+      "id": "d27_privacy_saving",
+      "legacy_id": "q47",
+      "concept": "privacy.storage_consent",
+      "tier": "deep",
+      "section": "d_sec_8",
+      "text": "Which categories of your travel profile may the assistant save persistently across your future Indian trips?",
+      "why": "Strictly enforces user privacy; unselected categories are forgotten upon session completion.",
+      "type": "multi",
+      "required": false,
+      "options": [
+        {
+          "id": "travel_prefs",
+          "label": "Travel goals, landscape interests & pacing",
+          "desc": "Remember your favorite themes, preferred daily rhythm, and preferred states"
+        },
+        {
+          "id": "dietary_needs",
+          "label": "Dietary preferences & food traditions",
+          "desc": "Remember pure veg, Jain, spice level, and regional cuisine preferences"
+        },
+        {
+          "id": "health_accessibility",
+          "label": "Health, walking limits & medical reminders",
+          "desc": "Remember walking limits, stair climbing comfort, and medication needs"
+        },
+        {
+          "id": "budget_comfort",
+          "label": "Budget tier & transport preferences",
+          "desc": "Remember preferred train classes (Vande Bharat/AC), stays, and daily budget"
+        }
+      ],
+      "encoding": {
+        "type": "multihot",
+        "features": [
+          "priv_prefs",
+          "priv_diet",
+          "priv_health",
+          "priv_budget"
+        ]
+      },
+      "consumers": [
+        "summary"
+      ],
+      "vec": {
+        "type": "flags",
+        "prefix": "d27_privacy_saving",
+        "options": [
+          "travel_prefs",
+          "dietary_needs",
+          "health_accessibility",
+          "budget_comfort"
+        ]
+      },
+      "question": "Which categories of your travel profile may the assistant save persistently across your future Indian trips?"
+    }
+  ],
+  "total_basic_questions": 12,
+  "total_deep_questions": 27,
+  "total_questions": 39
+}

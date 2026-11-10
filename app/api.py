@@ -30,7 +30,7 @@ from app.rl_planner import (
 )
 from app.evaluation import run_comparative_simulation, get_user_live_evaluation
 from app.vectorizer import (
-    PreferenceVectorizer, INTERESTS, COMPANIONS,
+    PreferenceVectorizer, SchemaAdapter, INTERESTS, COMPANIONS,
     AVOIDANCES, STAY_STYLES, TRANSIT_PREFS
 )
 from app.questionnaire import (
@@ -42,6 +42,12 @@ from app import precision as prec
 router = APIRouter(prefix="/api")
 
 # Master Questionnaire Bank (56 Questions, 10 Sections)
+@router.get("/config/questionnaire-schema")
+def get_questionnaire_schema():
+    """Returns the single-source-of-truth questionnaire schema JSON (version 2.0.0)."""
+    return SchemaAdapter.get_schema()
+
+
 @router.get("/config/questionnaire")
 def get_master_questionnaire():
     return {
@@ -760,7 +766,6 @@ def save_precision_profile(user_id: str, payload: PrecisionProfileCreate):
         clean, errors = prec.validate_answers(payload.answers, context)
         if errors:
             raise HTTPException(status_code=422, detail={"message": "Some answers are invalid", "errors": errors})
-        clean, dropped = prec.apply_privacy_filter(clean)
 
         import app.database as database
         is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
@@ -773,6 +778,8 @@ def save_precision_profile(user_id: str, payload: PrecisionProfileCreate):
                     "missing": prec_missing
                 }
             )
+
+        clean, dropped = prec.apply_privacy_filter(clean)
 
         state = _precision_state(cursor, user_id, clean, dropped)
         cursor.execute("""
@@ -840,6 +847,99 @@ def get_precision_profile(user_id: str):
         row = cursor.fetchone()
         answers = json.loads(row["answers_json"]) if row else {}
         return PrecisionProfileResponse(**_precision_state(cursor, user_id, answers, exists=bool(row)))
+
+
+@router.get("/profile/{user_id}/features")
+def get_profile_features(user_id: str, format: str = Query("named", pattern="^(named|vector|onehot)$")):
+    """Extracts features for LinUCB, ranking models, or scikit-learn models."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+
+        answers = {}
+        cursor.execute("SELECT raw_answers_json FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        b_row = cursor.fetchone()
+        if b_row and b_row["raw_answers_json"]:
+            try: answers.update(json.loads(b_row["raw_answers_json"]))
+            except Exception: pass
+
+        cursor.execute("SELECT raw_answers_json FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        d_row = cursor.fetchone()
+        if d_row and d_row["raw_answers_json"]:
+            try: answers.update(json.loads(d_row["raw_answers_json"]))
+            except Exception: pass
+
+        cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+        p_row = cursor.fetchone()
+        if p_row and p_row["answers_json"]:
+            try: answers.update(json.loads(p_row["answers_json"]))
+            except Exception: pass
+
+        return SchemaAdapter.extract_features(answers, format_type=format)
+
+
+@router.get("/profile/{user_id}/export")
+def export_profile(user_id: str):
+    """Returns model-agnostic profile export with standardized answers and LLM prompt context."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+
+        answers = {}
+        cursor.execute("SELECT raw_answers_json FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        b_row = cursor.fetchone()
+        if b_row and b_row["raw_answers_json"]:
+            try: answers.update(json.loads(b_row["raw_answers_json"]))
+            except Exception: pass
+
+        cursor.execute("SELECT raw_answers_json FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        d_row = cursor.fetchone()
+        if d_row and d_row["raw_answers_json"]:
+            try: answers.update(json.loads(d_row["raw_answers_json"]))
+            except Exception: pass
+
+        cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+        p_row = cursor.fetchone()
+        if p_row and p_row["answers_json"]:
+            try: answers.update(json.loads(p_row["answers_json"]))
+            except Exception: pass
+
+        return SchemaAdapter.export_profile(user_id, answers)
+
+
+@router.get("/profile/{user_id}/summary")
+def get_profile_summary_endpoint(user_id: str):
+    """Returns structured narrative summary across party, climate, food, transit, stay, constraints."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+
+        answers = {}
+        cursor.execute("SELECT raw_answers_json FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        b_row = cursor.fetchone()
+        if b_row and b_row["raw_answers_json"]:
+            try: answers.update(json.loads(b_row["raw_answers_json"]))
+            except Exception: pass
+
+        cursor.execute("SELECT raw_answers_json FROM detailed_profiles WHERE user_id = ?", (user_id,))
+        d_row = cursor.fetchone()
+        if d_row and d_row["raw_answers_json"]:
+            try: answers.update(json.loads(d_row["raw_answers_json"]))
+            except Exception: pass
+
+        cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+        p_row = cursor.fetchone()
+        if p_row and p_row["answers_json"]:
+            try: answers.update(json.loads(p_row["answers_json"]))
+            except Exception: pass
+
+        return SchemaAdapter.summarize_narrative(answers)
 
 
 # =============================================================

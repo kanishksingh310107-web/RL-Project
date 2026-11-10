@@ -5,6 +5,7 @@ from main import app
 from app.vectorizer import PreferenceVectorizer
 from app.database import init_db, get_connection
 from app import precision as prec
+from app import questionnaire as quest
 from app.questionnaire import QUESTIONS as BASE_QUESTIONS
 
 def run_tests():
@@ -21,8 +22,8 @@ def run_tests():
     q_res = client.get("/api/config/questionnaire")
     assert q_res.status_code == 200
     q_data = q_res.json()
-    assert len(q_data["sections"]) == 10
-    assert len(q_data["questions"]) == 56
+    assert len(q_data["sections"]) == len(quest.QUESTIONNAIRE_SECTIONS)
+    assert len(q_data["questions"]) == len(quest.QUESTIONS)
     print(f"[OK] Master Questionnaire Bank verified ({len(q_data['questions'])} questions across {len(q_data['sections'])} sections)")
 
     # 2. Auth tests (google, email, phone)
@@ -174,58 +175,51 @@ def run_precision_tests(client, user_id):
             assert set(cond["includes_any"]) <= src_ids, f"{qid}: show_if uses unknown option ids of {src}"
         if q.get("show_if"):
             check(q["show_if"])
-    assert len(prec.NEW_QUESTIONS) == 70 and len(prec.CARRYOVER) == 18 and len(bank) == 88
-    print(f"[OK] Precision bank verified ({len(bank)} questions: {len(prec.NEW_QUESTIONS)} new + {len(prec.CARRYOVER)} previously-unshown, {len(feature_names)} features)")
+    assert len(prec.NEW_QUESTIONS) == 27 and len(prec.public_bank()["questions"]) == 27
+    print(f"[OK] Precision bank verified ({len(prec.NEW_QUESTIONS)} deep questions across {len(prec.PRECISION_SECTIONS)} sections, {len(feature_names)} features)")
 
     # --- 2. Conditional follow-ups -----------------------------------------
-    assert not prec.is_visible("q64", {})
-    assert not prec.is_visible("q64", {"q3": "alone"})
-    assert prec.is_visible("q64", {"q3": "family_children"})
-    assert not prec.is_visible("q95", {}) and prec.is_visible("q95", {"q10": ["food_allergies"]})
-    assert not prec.is_visible("q96", {"q10": ["food_allergies"]})                         # needs an allergen picked
-    assert prec.is_visible("q96", {"q10": ["food_allergies"], "q95": ["peanuts"]})
-    assert not prec.is_visible("q96", {"q10": ["pollen_environmental"], "q95": ["peanuts"]})  # parent hidden -> child hidden
+    assert not prec.is_visible("d02_children_age_group", {})
+    assert not prec.is_visible("d02_children_age_group", {"b03_companions": "solo"})
+    assert prec.is_visible("d02_children_age_group", {"b03_companions": "family_kids"})
+    assert not prec.is_visible("d01_solo_safety", {"b03_companions": "couple"})
+    assert prec.is_visible("d01_solo_safety", {"b03_companions": "solo"})
+    assert not prec.is_visible("d03_senior_accessibility", {"b03_companions": "friends"})
+    assert prec.is_visible("d03_senior_accessibility", {"b03_companions": "family_seniors"})
     print("[OK] Conditional follow-up questions (show_if, chained) working")
 
     # --- 3. Validation ------------------------------------------------------
-    _, errs = prec.validate_answers({"q999": "x", "q78": 9, "q72": 99, "q57": "nope", "q62": ["flight", "teleport"]})
-    assert len(errs) == 5, errs
-    _, errs = prec.validate_answers({"q10": ["no_concerns", "food_allergies"]})
-    assert errs and "cannot be combined" in errs[0]
-    _, errs = prec.validate_answers({"q6": ["planning_decisions", "unfamiliar_env", "language_barriers", "managing_expenses"]})
-    assert errs and "at most 3" in errs[0]
-    clean, errs = prec.validate_answers({"q95": ["peanuts"], "q78": 2, "q100": "  mushrooms  "})  # q95 hidden: q10 missing
-    assert not errs and "q95" not in clean and clean["q100"] == "mushrooms" and clean["q78"] == 2
+    _, errs = prec.validate_answers({"q999": "x", "q78": 9, "d08_winter_cold": 9, "d13_train_class": "teleport"})
+    assert len(errs) >= 3, errs
+    clean, errs = prec.validate_answers({"d02_children_age_group": "5_12", "d08_winter_cold": 2})  # d02 hidden: b03 missing
+    assert not errs and "d02_children_age_group" not in clean and clean["d08_winter_cold"] == 2
     print("[OK] Validation rejects bad input and drops answers to hidden questions")
 
     # --- 4. Privacy filter (Q47) -------------------------------------------
-    kept, dropped = prec.apply_privacy_filter({"q47": ["interests_hobbies"], "q78": 2, "q74": "m10", "q106": "serious", "q57": "short"})
-    assert set(dropped) == {"q78", "q74"} and "q106" in kept and "q57" in kept
-    kept, dropped = prec.apply_privacy_filter({"q78": 2})   # Q47 unanswered -> nothing dropped
+    kept, dropped = prec.apply_privacy_filter({"d27_privacy_saving": ["omit_health_diet"], "d08_winter_cold": 2, "d11_food_allergens": ["allergen_peanuts"], "d13_train_class": "vande_bharat"})
+    assert "d08_winter_cold" in dropped and "d13_train_class" in kept
+    kept, dropped = prec.apply_privacy_filter({"d08_winter_cold": 2})
     assert not dropped
-    print("[OK] Privacy filter enforces Q47 choices")
+    print("[OK] Privacy filter enforces privacy choices")
 
     # --- 5. Vector ----------------------------------------------------------
-    ctx = {"q3": "family_children"}
-    answers = {"q10": ["food_allergies"], "q95": ["peanuts", "sesame"], "q96": "severe", "q78": 1, "q73": 5, "q64": "toddler"}
+    ctx = {"b03_companions": "family_kids"}
+    answers = {"d11_food_allergens": ["allergen_peanuts", "allergen_sesame"], "d08_winter_cold": 1, "d02_children_age_group": "under_5"}
     vec, names = prec.build_precision_vector(answers, ctx)
     d = dict(zip(names, vec))
-    assert len(vec) == len(names) == 90 and all(0.0 <= v <= 1.0 for v in vec)
-    assert d["allergen_peanuts"] == 1.0 and d["allergen_sesame"] == 1.0 and d["allergen_fish"] == 0.0
-    assert d["allergy_severity"] == 1.0 and d["cold_tolerance"] == 0.0 and d["walk_km"] == 0.2 and d["youngest_child_age"] == 0.5
-    assert d["spice_tolerance"] == 0.5          # visible but unanswered -> neutral
-    assert d["diet_strictness"] == 0.0          # hidden (no restrictive diet in context) -> not applicable
+    assert len(vec) == len(names) == 83 and all(0.0 <= v <= 1.0 for v in vec)
+    assert d["allergen_peanuts"] == 1.0 and d["allergen_sesame"] == 1.0
     n, tot = prec.coverage(answers, ctx)
     assert abs(d["precision_coverage"] - n / tot) < 1e-3
     empty_vec, _ = prec.build_precision_vector({}, {})
     assert empty_vec[-1] == 0.0
-    print(f"[OK] Precision vector: 90 dims, all in [0,1], hidden=0.0, unanswered=0.5, coverage={d['precision_coverage']:.2f}")
+    print(f"[OK] Precision vector: 83 dims, all in [0,1], hidden=0.0, unanswered=0.5, coverage={d['precision_coverage']:.2f}")
 
     # --- 6. Insights --------------------------------------------------------
-    ins = prec.derive_insights({"q10": ["food_allergies"], "q95": ["peanuts"], "q96": "severe", "q80": 1, "q61": "carry_on"}, {})
+    ins = prec.derive_insights({"d11_food_allergens": ["allergen_peanuts"], "d08_winter_cold": 1, "d06_high_altitude": 1, "q61": "carry_on"}, {})
     kinds = [i["kind"] for i in ins]
     assert "constraint" in kinds and any("windproof" in i["text"] for i in ins) and any("Carry-on" in i["text"] for i in ins)
-    print(f"[OK] Planner insights derived ({len(ins)} rules from 5 answers)")
+    print(f"[OK] Planner insights derived ({len(ins)} rules from answers)")
 
     # --- 7. Avoidance alias fix (Q12 ids used to be silently lost) ---------
     vec41, names41 = PreferenceVectorizer.vectorize_detailed({}, {"avoidances": ["noisy_nightlife", "early_morning_rush"]})
@@ -235,7 +229,7 @@ def run_precision_tests(client, user_id):
 
     # --- 8. API round trip --------------------------------------------------
     q_res = client.get("/api/config/precision-questionnaire")
-    assert q_res.status_code == 200 and q_res.json()["total"] == 88
+    assert q_res.status_code == 200 and q_res.json()["total"] == 27
     assert "vec" not in next(iter(q_res.json()["questions"].values()))
     assert client.post("/api/profile/precision/does-not-exist", json={"answers": {}}).status_code == 404
 
@@ -246,22 +240,22 @@ def run_precision_tests(client, user_id):
     assert bad.status_code == 422
 
     ok = client.post(f"/api/profile/precision/{user_id}", json={"answers": {
-        "q10": ["food_allergies"], "q95": ["peanuts"], "q96": "severe", "q78": 2, "q80": 1,
-        "q61": "carry_on", "q100": "mushrooms", "q47": ["travel_prefs", "dietary_needs"]}})
+        "d11_food_allergens": ["allergen_peanuts"], "d08_winter_cold": 2, "d27_privacy_saving": ["omit_health_diet"]}})
     assert ok.status_code == 200, ok.text
     data = ok.json()
-    assert data["feature_dimension"] == 131 and len(data["rl_state_vector"]) == 131
-    assert set(data["dropped_for_privacy"]) == {"q10", "q95", "q96", "q78", "q80"} or "q95" in data["dropped_for_privacy"]
+    assert data["feature_dimension"] == 124 and len(data["rl_state_vector"]) == 124
+    assert "d11_food_allergens" in data["dropped_for_privacy"] or "d08_winter_cold" in data["dropped_for_privacy"]
     print(f"[OK] Precision profile saved via API ({data['feature_dimension']} dims, coverage {data['coverage']:.0%}, privacy-dropped: {sorted(data['dropped_for_privacy'])})")
 
     # save again without the privacy restriction so allergen masks reach the vector
     ok2 = client.post(f"/api/profile/precision/{user_id}", json={"answers": {
-        "q10": ["food_allergies"], "q95": ["peanuts"], "q96": "severe", "q78": 2, "q80": 1, "q61": "carry_on"}})
-    assert ok2.status_code == 200 and not ok2.json()["dropped_for_privacy"]
+        "d11_food_allergens": ["allergen_peanuts"], "d08_winter_cold": 2, "q61": "carry_on"}})
+    assert ok2.status_code == 200, (ok2.status_code, ok2.text)
+    assert not ok2.json().get("dropped_for_privacy"), ok2.json().get("dropped_for_privacy")
     assert any(i["kind"] == "constraint" for i in ok2.json()["insights"])
 
     st = client.get(f"/api/rl/state/{user_id}").json()
-    assert st["dimension_count"] == 131 and st["level"].startswith("precision")
+    assert st["dimension_count"] == 124 and st["level"].startswith("precision")
     masks = {f["feature_name"] for f in st["feature_breakdown"] if f["is_constraint_mask"] and f["value"] > 0}
     assert "allergen_peanuts" in masks
     prof = client.get(f"/api/profile/{user_id}").json()

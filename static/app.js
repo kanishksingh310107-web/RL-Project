@@ -92,7 +92,13 @@ function formatApiError(data, fallback = "An unexpected error occurred") {
 
   if (typeof detail === "object") {
     if (detail.missing && Array.isArray(detail.missing)) {
-      const missingLabels = detail.missing.map(m => questionNames[m] || m);
+      const missingLabels = detail.missing.map(m => {
+        if (typeof m === "string") return questionNames[m] || m;
+        if (typeof m === "object" && m !== null) {
+          return m.question || m.label || questionNames[m.field] || m.field || m.id || JSON.stringify(m);
+        }
+        return String(m);
+      });
       return (detail.message ? detail.message + ":\n• " : "Please answer the following required questions:\n• ") + missingLabels.join("\n• ");
     }
     if (detail.errors && Array.isArray(detail.errors)) {
@@ -536,54 +542,54 @@ function goToStep(step) {
 
 function renderBasicForm() {
   if (!state.questionnaire) return;
-  const q = state.questionnaire.questions;
+  const q = state.questionnaire.questions || {};
 
   // Age Group
-  renderPillOptions("basicAgeGroupGrid", q.q1.options, state.basicAnswers.age_group, (val) => {
+  renderPillOptions("basicAgeGroupGrid", (q.q1 || q.b01_age || {}).options || [], state.basicAnswers.age_group, (val) => {
     state.basicAnswers.age_group = val;
   });
 
   // Travel Experience
-  renderCardOptions("basicExperienceGrid", q.q2.options, state.basicAnswers.travel_experience, (val) => {
+  renderCardOptions("basicExperienceGrid", (q.q2 || q.b04_experience || {}).options || [], state.basicAnswers.travel_experience, (val) => {
     state.basicAnswers.travel_experience = val;
   });
 
   // Companions
-  renderIconCards("basicCompanionsGrid", q.q3.options, state.basicAnswers.companions, (val) => {
+  renderIconCards("basicCompanionsGrid", (q.q3 || q.b03_companions || {}).options || [], state.basicAnswers.companions, (val) => {
     state.basicAnswers.companions = val;
   });
 
   // Planning Approach
-  renderCardOptions("basicPlanningGrid", q.q4.options, state.basicAnswers.planning_approach, (val) => {
+  renderCardOptions("basicPlanningGrid", (q.q4 || q.planning_approach || {}).options || [], state.basicAnswers.planning_approach, (val) => {
     state.basicAnswers.planning_approach = val;
   });
 
   // Travel Goals (Multi, min 2 required, no max limit)
-  renderMultiChips("basicGoalsGrid", q.q5.options, state.basicAnswers.travel_goals, "goalsCounter");
+  renderMultiChips("basicGoalsGrid", (q.q5 || q.b05_travel_goals || {}).options || [], state.basicAnswers.travel_goals, "goalsCounter");
 
   // Place Types (Multi, min 2 required, no max limit)
-  renderMultiChips("basicPlacesGrid", q.q14.options, state.basicAnswers.place_interests, "placesCounter");
+  renderMultiChips("basicPlacesGrid", (q.q14 || q.b06_place_interests || {}).options || [], state.basicAnswers.place_interests, "placesCounter");
 
   // Experience Style
-  renderCardOptions("basicExpStyleGrid", q.q17.options, state.basicAnswers.experience_preference, (val) => {
+  renderCardOptions("basicExpStyleGrid", (q.q17 || q.b07_pace || {}).options || [], state.basicAnswers.experience_preference, (val) => {
     state.basicAnswers.experience_preference = val;
   });
 
   // Dietary Needs
-  renderMultiPills("basicDietaryGrid", q.q20.options, state.basicAnswers.dietary);
+  renderMultiPills("basicDietaryGrid", (q.q20 || q.b09_dietary || {}).options || [], state.basicAnswers.dietary);
 
   // Climate
-  renderPillOptions("basicClimateGrid", q.q26.options, state.basicAnswers.preferred_climate, (val) => {
+  renderPillOptions("basicClimateGrid", (q.q26 || q.b11_climate || {}).options || [], state.basicAnswers.preferred_climate, (val) => {
     state.basicAnswers.preferred_climate = val;
   });
 
   // Budget
-  renderCardOptions("basicBudgetGrid", q.q32.options, state.basicAnswers.budget_tier, (val) => {
+  renderCardOptions("basicBudgetGrid", (q.q32 || q.b10_budget || {}).options || [], state.basicAnswers.budget_tier, (val) => {
     state.basicAnswers.budget_tier = val;
   });
 
   // Assistance Autonomy
-  renderCardOptions("basicAutonomyGrid", q.q41.options, state.basicAnswers.assistance_autonomy, (val) => {
+  renderCardOptions("basicAutonomyGrid", (q.q41 || q.b12_autonomy || {}).options || [], state.basicAnswers.assistance_autonomy, (val) => {
     state.basicAnswers.assistance_autonomy = val;
   });
 }
@@ -593,7 +599,7 @@ function renderPillOptions(containerId, options, currentVal, onSelect) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
-  options.forEach(opt => {
+  (options || []).forEach(opt => {
     const btn = document.createElement("button");
     btn.type = "button";
     const isSel = opt.id === currentVal;
@@ -616,7 +622,7 @@ function renderCardOptions(containerId, options, currentVal, onSelect) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
-  options.forEach(opt => {
+  (options || []).forEach(opt => {
     const card = document.createElement("div");
     const isSel = opt.id === currentVal;
     card.className = `selectable-card p-3 rounded-xl bg-white border cursor-pointer text-left transition ${isSel ? "selected" : ""}`;
@@ -640,7 +646,7 @@ function renderIconCards(containerId, options, currentVal, onSelect) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
-  options.forEach(opt => {
+  (options || []).forEach(opt => {
     const card = document.createElement("div");
     const isSel = opt.id === currentVal;
     card.className = `selectable-card p-2.5 rounded-xl bg-white border text-center cursor-pointer transition ${isSel ? "selected" : ""}`;
@@ -662,9 +668,9 @@ function renderMultiChips(containerId, options, activeSet, counterId) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
-  updateCounter(counterId, activeSet.size);
+  updateCounter(counterId, (activeSet ? activeSet.size : 0));
 
-  options.forEach(opt => {
+  (options || []).forEach(opt => {
     const isSel = activeSet.has(opt.id);
     const card = document.createElement("div");
     card.className = `selectable-card p-2.5 rounded-xl bg-white border flex items-center justify-between text-xs cursor-pointer transition ${isSel ? "selected" : ""}`;
@@ -700,7 +706,7 @@ function renderMultiPills(containerId, options, activeSet) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = "";
-  options.forEach(opt => {
+  (options || []).forEach(opt => {
     const btn = document.createElement("button");
     btn.type = "button";
     const isSel = activeSet.has(opt.id);
@@ -903,28 +909,34 @@ async function syncUnifiedProfileCard(userId) {
     }
     const data = await res.json();
     
-    // Profile is only active if 100% complete
-    const isFullyComplete = state.profileStatus ? state.profileStatus.complete : data.exists;
-    if (!isFullyComplete) {
-      banner.classList.remove("hidden");
-      summaryCard.classList.add("hidden");
-      if (state.profileStatus) {
-        const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : 0;
-        const bannerTitle = banner.querySelector("h3");
-        if (bannerTitle) bannerTitle.textContent = `Mandatory Profile Incomplete (${state.profileStatus.percent}%)`;
-        const bannerP = banner.querySelector("p");
-        if (bannerP) bannerP.textContent = `You have ${remaining} applicable questions remaining. To unlock the Travel Companion and enhanced itinerary personalization, complete your detailed travel profile.`;
-        const bannerBtn = banner.querySelector("button");
-        if (bannerBtn) bannerBtn.innerHTML = `Complete My Profile Now (${remaining} left) &rarr;`;
-      }
-      return;
-    }
-
-    state.precision.exists = true;
+    const hasPrecision = !!(data && data.exists);
+    state.precision.exists = hasPrecision;
     state.precision.answers = data.answers || {};
 
-    banner.classList.add("hidden");
-    summaryCard.classList.remove("hidden");
+    if (!hasPrecision) {
+      // Keep the central prominent Deep Personalisation box visible!
+      banner.classList.remove("hidden");
+      summaryCard.classList.remove("hidden");
+
+      const badge = banner.querySelector(".inline-flex");
+      if (badge) badge.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Deep AI Personalisation for India`;
+
+      const bannerTitle = banner.querySelector("h3");
+      if (bannerTitle) bannerTitle.textContent = "Complete Deep Personalisation for India";
+
+      const bannerP = banner.querySelector("p");
+      if (bannerP) bannerP.textContent = "Calibrate the AI guide for Indian travel realities: winding ghat roads, Vande Bharat & train classes, Himalayan altitude acclimatization, temple stairs, and regional food traditions.";
+
+      const bannerBtn = banner.querySelector("button");
+      if (bannerBtn) bannerBtn.innerHTML = `Complete Deep Personalisation (24 questions) &rarr;`;
+    } else {
+      // Deep personalisation is fully calibrated
+      banner.classList.add("hidden");
+      summaryCard.classList.remove("hidden");
+      
+      const statusEl = document.getElementById("personalProfileStatus");
+      if (statusEl) statusEl.textContent = "Recommendations tailored to your travel style • Deep Personalisation Active (100%)";
+    }
 
     // Display human-readable preferences
     const walkVal = data.answers.q74 || "m10";
@@ -1510,7 +1522,8 @@ function renderPrecisionQuestion(q) {
   const head = precEl("div", "flex items-start justify-between gap-2");
   
   // Clean question title: ONLY English text, no raw ID prefix!
-  head.appendChild(precEl("label", "block text-xs font-bold text-slate-800 leading-snug", q.question));
+  const qText = q.question || q.text || q.label || "";
+  head.appendChild(precEl("label", "block text-xs font-bold text-slate-800 leading-snug", qText));
   
   const right = precEl("div", "flex items-center gap-2 shrink-0");
   if (precAnswered(cur)) {
