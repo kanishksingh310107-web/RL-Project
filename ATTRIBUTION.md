@@ -52,6 +52,8 @@ In accordance with academic integrity guidelines, the table below documents the 
 | `app/rl_planner.py` | Teammate | Yes | Contextual LinUCB matrix updates and 24-dimensional feature extraction code assisted by LLM. |
 | `app/evaluation.py` | Teammate | Yes | Initial 20-round prototype benchmark comparing LinUCB vs static keyword ranking. |
 | `app/modules/ranking.py` | Person C | Yes (Claude / Gemini) | Designed 6-component scoring system, strict regex month parser, hard constraint filters, and bug fixes for questionnaire answer extraction. |
+| `app/core/*` | Person C | Yes (Gemini / Antigravity) | Centralized configuration, Pydantic shared schemas (`Place`, `TripPlan`, etc.), centralized assumptions (`assumptions.py`), SQLite persistence (`stores.py`), and unified profile loader fixing the interest bug. |
+| `app/providers/*` | Person C | Yes (Gemini / Antigravity) | Geoapify geocoding & places provider with 7-day TTL caching, 2500 calls/day credit guard, and Open-Meteo historical climate & forecast provider. |
 | `static/modules/ranking.js` | Person C | Yes (Claude / Gemini) | Frontend Companion tab featuring stacked 6-color breakdown bars, input controls, and sample data disclosure banners. |
 | `tests/test_ranking.py` | Person C | Yes (Claude / Gemini) | Unit tests (16 tests) covering weight normalization, circular season distance, budget filtering, and evaluation metrics. |
 | `scripts/evaluate.py` | Person C | Yes (Claude / Gemini) | Engineered multi-persona (3), multi-seed (10), 150-round benchmark with separate RNGs and alpha sweeps. |

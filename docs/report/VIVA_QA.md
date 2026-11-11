@@ -62,8 +62,8 @@ Through empirical diagnosis, we identified four structural reasons:
 ### Q7: Under what conditions does LinUCB actually outperform the static baseline?
 **Answer:**
 When we extended the benchmark to **150 rounds** across **10 independent seeds** and **3 personas** using separate RNGs:
-- **LinUCB ($\alpha = 0.1$) achieved an 83.0% $\pm$ 6.2% acceptance rate** and **+99.1 cumulative reward**, approaching within 3.3% of the theoretical Oracle upper bound (86.3%).
-- **Static Baseline dropped to 69.9% $\pm$ 5.0%** (cumulative reward: +59.8).
+- **LinUCB ($\alpha = 0.1$) achieved an 83.3% $\pm$ 5.9% acceptance rate** and **+99.9 cumulative reward**, approaching within 3.0% of the theoretical Oracle upper bound (86.3%).
+- **Static Baseline dropped to 68.8% $\pm$ 4.0%** (cumulative reward: +56.3).
 - **Reason:** Once interaction rounds exceed ~30–35, the static baseline's cycling exhausts the matching activities and is forced to recommend low-preference activities. LinUCB, by contrast, converges on the user's latent preferences and continuously exploits high-reward categories.
 
 ---

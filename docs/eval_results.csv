@@ -1,211 +1,211 @@
 persona,policy,alpha,seed,rounds,accepts,acceptance_rate,cumulative_reward
 nature_enthusiast,Oracle,,42,150,130,0.8667,110.0
-nature_enthusiast,Static Baseline,,42,150,92,0.6133,34.0
-nature_enthusiast,Random,,42,150,105,0.7,60.0
+nature_enthusiast,Static Baseline,,42,150,104,0.6933,58.0
+nature_enthusiast,Random,,42,150,93,0.62,36.0
 nature_enthusiast,LinUCB,0.1,42,150,133,0.8867,116.0
 nature_enthusiast,LinUCB,0.3,42,150,130,0.8667,110.0
-nature_enthusiast,LinUCB,0.5,42,150,130,0.8667,110.0
-nature_enthusiast,LinUCB,1.0,42,150,129,0.86,108.0
+nature_enthusiast,LinUCB,0.5,42,150,129,0.86,108.0
+nature_enthusiast,LinUCB,1.0,42,150,127,0.8467,104.0
 nature_enthusiast,Oracle,,43,150,137,0.9133,124.0
-nature_enthusiast,Static Baseline,,43,150,98,0.6533,46.0
-nature_enthusiast,Random,,43,150,109,0.7267,68.0
+nature_enthusiast,Static Baseline,,43,150,96,0.64,42.0
+nature_enthusiast,Random,,43,150,102,0.68,54.0
 nature_enthusiast,LinUCB,0.1,43,150,123,0.82,96.0
-nature_enthusiast,LinUCB,0.3,43,150,115,0.7667,80.0
-nature_enthusiast,LinUCB,0.5,43,150,111,0.74,72.0
-nature_enthusiast,LinUCB,1.0,43,150,117,0.78,84.0
+nature_enthusiast,LinUCB,0.3,43,150,114,0.76,78.0
+nature_enthusiast,LinUCB,0.5,43,150,107,0.7133,64.0
+nature_enthusiast,LinUCB,1.0,43,150,116,0.7733,82.0
 nature_enthusiast,Oracle,,44,150,133,0.8867,116.0
-nature_enthusiast,Static Baseline,,44,150,98,0.6533,46.0
-nature_enthusiast,Random,,44,150,105,0.7,60.0
+nature_enthusiast,Static Baseline,,44,150,91,0.6067,32.0
+nature_enthusiast,Random,,44,150,94,0.6267,38.0
 nature_enthusiast,LinUCB,0.1,44,150,128,0.8533,106.0
-nature_enthusiast,LinUCB,0.3,44,150,120,0.8,90.0
-nature_enthusiast,LinUCB,0.5,44,150,121,0.8067,92.0
-nature_enthusiast,LinUCB,1.0,44,150,117,0.78,84.0
+nature_enthusiast,LinUCB,0.3,44,150,114,0.76,78.0
+nature_enthusiast,LinUCB,0.5,44,150,117,0.78,84.0
+nature_enthusiast,LinUCB,1.0,44,150,116,0.7733,82.0
 nature_enthusiast,Oracle,,45,150,130,0.8667,110.0
-nature_enthusiast,Static Baseline,,45,150,119,0.7933,88.0
-nature_enthusiast,Random,,45,150,98,0.6533,46.0
+nature_enthusiast,Static Baseline,,45,150,96,0.64,42.0
+nature_enthusiast,Random,,45,150,96,0.64,42.0
 nature_enthusiast,LinUCB,0.1,45,150,133,0.8867,116.0
-nature_enthusiast,LinUCB,0.3,45,150,128,0.8533,106.0
-nature_enthusiast,LinUCB,0.5,45,150,130,0.8667,110.0
-nature_enthusiast,LinUCB,1.0,45,150,125,0.8333,100.0
+nature_enthusiast,LinUCB,0.3,45,150,126,0.84,102.0
+nature_enthusiast,LinUCB,0.5,45,150,131,0.8733,112.0
+nature_enthusiast,LinUCB,1.0,45,150,123,0.82,96.0
 nature_enthusiast,Oracle,,46,150,138,0.92,126.0
-nature_enthusiast,Static Baseline,,46,150,97,0.6467,44.0
-nature_enthusiast,Random,,46,150,114,0.76,78.0
+nature_enthusiast,Static Baseline,,46,150,98,0.6533,46.0
+nature_enthusiast,Random,,46,150,109,0.7267,68.0
 nature_enthusiast,LinUCB,0.1,46,150,135,0.9,120.0
-nature_enthusiast,LinUCB,0.3,46,150,126,0.84,102.0
+nature_enthusiast,LinUCB,0.3,46,150,124,0.8267,98.0
 nature_enthusiast,LinUCB,0.5,46,150,132,0.88,114.0
-nature_enthusiast,LinUCB,1.0,46,150,128,0.8533,106.0
+nature_enthusiast,LinUCB,1.0,46,150,131,0.8733,112.0
 nature_enthusiast,Oracle,,47,150,128,0.8533,106.0
-nature_enthusiast,Static Baseline,,47,150,99,0.66,48.0
+nature_enthusiast,Static Baseline,,47,150,94,0.6267,38.0
 nature_enthusiast,Random,,47,150,93,0.62,36.0
 nature_enthusiast,LinUCB,0.1,47,150,116,0.7733,82.0
 nature_enthusiast,LinUCB,0.3,47,150,115,0.7667,80.0
-nature_enthusiast,LinUCB,0.5,47,150,115,0.7667,80.0
-nature_enthusiast,LinUCB,1.0,47,150,109,0.7267,68.0
+nature_enthusiast,LinUCB,0.5,47,150,111,0.74,72.0
+nature_enthusiast,LinUCB,1.0,47,150,111,0.74,72.0
 nature_enthusiast,Oracle,,48,150,134,0.8933,118.0
-nature_enthusiast,Static Baseline,,48,150,108,0.72,66.0
-nature_enthusiast,Random,,48,150,108,0.72,66.0
+nature_enthusiast,Static Baseline,,48,150,92,0.6133,34.0
+nature_enthusiast,Random,,48,150,102,0.68,54.0
 nature_enthusiast,LinUCB,0.1,48,150,128,0.8533,106.0
-nature_enthusiast,LinUCB,0.3,48,150,123,0.82,96.0
-nature_enthusiast,LinUCB,0.5,48,150,126,0.84,102.0
-nature_enthusiast,LinUCB,1.0,48,150,119,0.7933,88.0
+nature_enthusiast,LinUCB,0.3,48,150,122,0.8133,94.0
+nature_enthusiast,LinUCB,0.5,48,150,124,0.8267,98.0
+nature_enthusiast,LinUCB,1.0,48,150,123,0.82,96.0
 nature_enthusiast,Oracle,,49,150,130,0.8667,110.0
-nature_enthusiast,Static Baseline,,49,150,101,0.6733,52.0
-nature_enthusiast,Random,,49,150,99,0.66,48.0
+nature_enthusiast,Static Baseline,,49,150,98,0.6533,46.0
+nature_enthusiast,Random,,49,150,92,0.6133,34.0
 nature_enthusiast,LinUCB,0.1,49,150,126,0.84,102.0
-nature_enthusiast,LinUCB,0.3,49,150,126,0.84,102.0
-nature_enthusiast,LinUCB,0.5,49,150,116,0.7733,82.0
-nature_enthusiast,LinUCB,1.0,49,150,124,0.8267,98.0
+nature_enthusiast,LinUCB,0.3,49,150,123,0.82,96.0
+nature_enthusiast,LinUCB,0.5,49,150,124,0.8267,98.0
+nature_enthusiast,LinUCB,1.0,49,150,116,0.7733,82.0
 nature_enthusiast,Oracle,,50,150,134,0.8933,118.0
-nature_enthusiast,Static Baseline,,50,150,99,0.66,48.0
-nature_enthusiast,Random,,50,150,110,0.7333,70.0
+nature_enthusiast,Static Baseline,,50,150,97,0.6467,44.0
+nature_enthusiast,Random,,50,150,104,0.6933,58.0
 nature_enthusiast,LinUCB,0.1,50,150,134,0.8933,118.0
-nature_enthusiast,LinUCB,0.3,50,150,126,0.84,102.0
-nature_enthusiast,LinUCB,0.5,50,150,127,0.8467,104.0
-nature_enthusiast,LinUCB,1.0,50,150,124,0.8267,98.0
+nature_enthusiast,LinUCB,0.3,50,150,124,0.8267,98.0
+nature_enthusiast,LinUCB,0.5,50,150,125,0.8333,100.0
+nature_enthusiast,LinUCB,1.0,50,150,122,0.8133,94.0
 nature_enthusiast,Oracle,,51,150,136,0.9067,122.0
-nature_enthusiast,Static Baseline,,51,150,110,0.7333,70.0
-nature_enthusiast,Random,,51,150,111,0.74,72.0
+nature_enthusiast,Static Baseline,,51,150,101,0.6733,52.0
+nature_enthusiast,Random,,51,150,102,0.68,54.0
 nature_enthusiast,LinUCB,0.1,51,150,131,0.8733,112.0
-nature_enthusiast,LinUCB,0.3,51,150,118,0.7867,86.0
-nature_enthusiast,LinUCB,0.5,51,150,117,0.78,84.0
-nature_enthusiast,LinUCB,1.0,51,150,119,0.7933,88.0
+nature_enthusiast,LinUCB,0.3,51,150,116,0.7733,82.0
+nature_enthusiast,LinUCB,0.5,51,150,124,0.8267,98.0
+nature_enthusiast,LinUCB,1.0,51,150,117,0.78,84.0
 culture_buff,Oracle,,42,150,130,0.8667,110.0
-culture_buff,Static Baseline,,42,150,100,0.6667,50.0
-culture_buff,Random,,42,150,101,0.6733,52.0
+culture_buff,Static Baseline,,42,150,109,0.7267,68.0
+culture_buff,Random,,42,150,107,0.7133,64.0
 culture_buff,LinUCB,0.1,42,150,138,0.92,126.0
-culture_buff,LinUCB,0.3,42,150,131,0.8733,112.0
-culture_buff,LinUCB,0.5,42,150,131,0.8733,112.0
-culture_buff,LinUCB,1.0,42,150,126,0.84,102.0
+culture_buff,LinUCB,0.3,42,150,133,0.8867,116.0
+culture_buff,LinUCB,0.5,42,150,132,0.88,114.0
+culture_buff,LinUCB,1.0,42,150,130,0.8667,110.0
 culture_buff,Oracle,,43,150,137,0.9133,124.0
 culture_buff,Static Baseline,,43,150,108,0.72,66.0
-culture_buff,Random,,43,150,101,0.6733,52.0
+culture_buff,Random,,43,150,114,0.76,78.0
 culture_buff,LinUCB,0.1,43,150,129,0.86,108.0
-culture_buff,LinUCB,0.3,43,150,123,0.82,96.0
-culture_buff,LinUCB,0.5,43,150,122,0.8133,94.0
-culture_buff,LinUCB,1.0,43,150,117,0.78,84.0
+culture_buff,LinUCB,0.3,43,150,119,0.7933,88.0
+culture_buff,LinUCB,0.5,43,150,121,0.8067,92.0
+culture_buff,LinUCB,1.0,43,150,114,0.76,78.0
 culture_buff,Oracle,,44,150,133,0.8867,116.0
-culture_buff,Static Baseline,,44,150,96,0.64,42.0
+culture_buff,Static Baseline,,44,150,107,0.7133,64.0
 culture_buff,Random,,44,150,107,0.7133,64.0
 culture_buff,LinUCB,0.1,44,150,127,0.8467,104.0
 culture_buff,LinUCB,0.3,44,150,118,0.7867,86.0
-culture_buff,LinUCB,0.5,44,150,121,0.8067,92.0
-culture_buff,LinUCB,1.0,44,150,113,0.7533,76.0
+culture_buff,LinUCB,0.5,44,150,123,0.82,96.0
+culture_buff,LinUCB,1.0,44,150,111,0.74,72.0
 culture_buff,Oracle,,45,150,130,0.8667,110.0
-culture_buff,Static Baseline,,45,150,114,0.76,78.0
-culture_buff,Random,,45,150,102,0.68,54.0
+culture_buff,Static Baseline,,45,150,109,0.7267,68.0
+culture_buff,Random,,45,150,109,0.7267,68.0
 culture_buff,LinUCB,0.1,45,150,137,0.9133,124.0
-culture_buff,LinUCB,0.3,45,150,135,0.9,120.0
-culture_buff,LinUCB,0.5,45,150,132,0.88,114.0
-culture_buff,LinUCB,1.0,45,150,126,0.84,102.0
+culture_buff,LinUCB,0.3,45,150,134,0.8933,118.0
+culture_buff,LinUCB,0.5,45,150,128,0.8533,106.0
+culture_buff,LinUCB,1.0,45,150,125,0.8333,100.0
 culture_buff,Oracle,,46,150,138,0.92,126.0
-culture_buff,Static Baseline,,46,150,105,0.7,60.0
-culture_buff,Random,,46,150,112,0.7467,74.0
+culture_buff,Static Baseline,,46,150,102,0.68,54.0
+culture_buff,Random,,46,150,115,0.7667,80.0
 culture_buff,LinUCB,0.1,46,150,129,0.86,108.0
-culture_buff,LinUCB,0.3,46,150,129,0.86,108.0
+culture_buff,LinUCB,0.3,46,150,125,0.8333,100.0
 culture_buff,LinUCB,0.5,46,150,130,0.8667,110.0
-culture_buff,LinUCB,1.0,46,150,124,0.8267,98.0
+culture_buff,LinUCB,1.0,46,150,129,0.86,108.0
 culture_buff,Oracle,,47,150,128,0.8533,106.0
-culture_buff,Static Baseline,,47,150,100,0.6667,50.0
+culture_buff,Static Baseline,,47,150,106,0.7067,62.0
 culture_buff,Random,,47,150,95,0.6333,40.0
 culture_buff,LinUCB,0.1,47,150,125,0.8333,100.0
-culture_buff,LinUCB,0.3,47,150,116,0.7733,82.0
-culture_buff,LinUCB,0.5,47,150,119,0.7933,88.0
-culture_buff,LinUCB,1.0,47,150,109,0.7267,68.0
+culture_buff,LinUCB,0.3,47,150,120,0.8,90.0
+culture_buff,LinUCB,0.5,47,150,115,0.7667,80.0
+culture_buff,LinUCB,1.0,47,150,111,0.74,72.0
 culture_buff,Oracle,,48,150,134,0.8933,118.0
-culture_buff,Static Baseline,,48,150,109,0.7267,68.0
-culture_buff,Random,,48,150,102,0.68,54.0
+culture_buff,Static Baseline,,48,150,103,0.6867,56.0
+culture_buff,Random,,48,150,116,0.7733,82.0
 culture_buff,LinUCB,0.1,48,150,134,0.8933,118.0
-culture_buff,LinUCB,0.3,48,150,126,0.84,102.0
-culture_buff,LinUCB,0.5,48,150,130,0.8667,110.0
-culture_buff,LinUCB,1.0,48,150,123,0.82,96.0
+culture_buff,LinUCB,0.3,48,150,123,0.82,96.0
+culture_buff,LinUCB,0.5,48,150,127,0.8467,104.0
+culture_buff,LinUCB,1.0,48,150,121,0.8067,92.0
 culture_buff,Oracle,,49,150,130,0.8667,110.0
-culture_buff,Static Baseline,,49,150,96,0.64,42.0
-culture_buff,Random,,49,150,103,0.6867,56.0
+culture_buff,Static Baseline,,49,150,102,0.68,54.0
+culture_buff,Random,,49,150,109,0.7267,68.0
 culture_buff,LinUCB,0.1,49,150,132,0.88,114.0
-culture_buff,LinUCB,0.3,49,150,126,0.84,102.0
+culture_buff,LinUCB,0.3,49,150,125,0.8333,100.0
 culture_buff,LinUCB,0.5,49,150,127,0.8467,104.0
-culture_buff,LinUCB,1.0,49,150,119,0.7933,88.0
+culture_buff,LinUCB,1.0,49,150,123,0.82,96.0
 culture_buff,Oracle,,50,150,134,0.8933,118.0
-culture_buff,Static Baseline,,50,150,94,0.6267,38.0
+culture_buff,Static Baseline,,50,150,106,0.7067,62.0
 culture_buff,Random,,50,150,111,0.74,72.0
 culture_buff,LinUCB,0.1,50,150,129,0.86,108.0
 culture_buff,LinUCB,0.3,50,150,128,0.8533,106.0
-culture_buff,LinUCB,0.5,50,150,122,0.8133,94.0
-culture_buff,LinUCB,1.0,50,150,123,0.82,96.0
+culture_buff,LinUCB,0.5,50,150,123,0.82,96.0
+culture_buff,LinUCB,1.0,50,150,122,0.8133,94.0
 culture_buff,Oracle,,51,150,136,0.9067,122.0
-culture_buff,Static Baseline,,51,150,105,0.7,60.0
+culture_buff,Static Baseline,,51,150,114,0.76,78.0
 culture_buff,Random,,51,150,111,0.74,72.0
 culture_buff,LinUCB,0.1,51,150,122,0.8133,94.0
-culture_buff,LinUCB,0.3,51,150,113,0.7533,76.0
-culture_buff,LinUCB,0.5,51,150,121,0.8067,92.0
-culture_buff,LinUCB,1.0,51,150,122,0.8133,94.0
+culture_buff,LinUCB,0.3,51,150,114,0.76,78.0
+culture_buff,LinUCB,0.5,51,150,113,0.7533,76.0
+culture_buff,LinUCB,1.0,51,150,123,0.82,96.0
 balanced,Oracle,,42,150,120,0.8,90.0
-balanced,Static Baseline,,42,150,104,0.6933,58.0
+balanced,Static Baseline,,42,150,111,0.74,72.0
 balanced,Random,,42,150,109,0.7267,68.0
 balanced,LinUCB,0.1,42,150,122,0.8133,94.0
-balanced,LinUCB,0.3,42,150,116,0.7733,82.0
-balanced,LinUCB,0.5,42,150,121,0.8067,92.0
-balanced,LinUCB,1.0,42,150,121,0.8067,92.0
+balanced,LinUCB,0.3,42,150,122,0.8133,94.0
+balanced,LinUCB,0.5,42,150,113,0.7533,76.0
+balanced,LinUCB,1.0,42,150,112,0.7467,74.0
 balanced,Oracle,,43,150,123,0.82,96.0
-balanced,Static Baseline,,43,150,110,0.7333,70.0
-balanced,Random,,43,150,114,0.76,78.0
-balanced,LinUCB,0.1,43,150,115,0.7667,80.0
+balanced,Static Baseline,,43,150,111,0.74,72.0
+balanced,Random,,43,150,115,0.7667,80.0
+balanced,LinUCB,0.1,43,150,116,0.7733,82.0
 balanced,LinUCB,0.3,43,150,108,0.72,66.0
 balanced,LinUCB,0.5,43,150,107,0.7133,64.0
-balanced,LinUCB,1.0,43,150,113,0.7533,76.0
+balanced,LinUCB,1.0,43,150,109,0.7267,68.0
 balanced,Oracle,,44,150,122,0.8133,94.0
-balanced,Static Baseline,,44,150,105,0.7,60.0
-balanced,Random,,44,150,113,0.7533,76.0
-balanced,LinUCB,0.1,44,150,111,0.74,72.0
-balanced,LinUCB,0.3,44,150,107,0.7133,64.0
-balanced,LinUCB,0.5,44,150,106,0.7067,62.0
-balanced,LinUCB,1.0,44,150,105,0.7,60.0
+balanced,Static Baseline,,44,150,104,0.6933,58.0
+balanced,Random,,44,150,108,0.72,66.0
+balanced,LinUCB,0.1,44,150,109,0.7267,68.0
+balanced,LinUCB,0.3,44,150,105,0.7,60.0
+balanced,LinUCB,0.5,44,150,109,0.7267,68.0
+balanced,LinUCB,1.0,44,150,110,0.7333,70.0
 balanced,Oracle,,45,150,120,0.8,90.0
-balanced,Static Baseline,,45,150,120,0.8,90.0
-balanced,Random,,45,150,107,0.7133,64.0
-balanced,LinUCB,0.1,45,150,112,0.7467,74.0
+balanced,Static Baseline,,45,150,101,0.6733,52.0
+balanced,Random,,45,150,110,0.7333,70.0
+balanced,LinUCB,0.1,45,150,117,0.78,84.0
 balanced,LinUCB,0.3,45,150,115,0.7667,80.0
 balanced,LinUCB,0.5,45,150,115,0.7667,80.0
-balanced,LinUCB,1.0,45,150,112,0.7467,74.0
+balanced,LinUCB,1.0,45,150,115,0.7667,80.0
 balanced,Oracle,,46,150,132,0.88,114.0
-balanced,Static Baseline,,46,150,108,0.72,66.0
-balanced,Random,,46,150,123,0.82,96.0
-balanced,LinUCB,0.1,46,150,123,0.82,96.0
+balanced,Static Baseline,,46,150,100,0.6667,50.0
+balanced,Random,,46,150,118,0.7867,86.0
+balanced,LinUCB,0.1,46,150,132,0.88,114.0
 balanced,LinUCB,0.3,46,150,121,0.8067,92.0
-balanced,LinUCB,0.5,46,150,120,0.8,90.0
-balanced,LinUCB,1.0,46,150,123,0.82,96.0
+balanced,LinUCB,0.5,46,150,109,0.7267,68.0
+balanced,LinUCB,1.0,46,150,121,0.8067,92.0
 balanced,Oracle,,47,150,118,0.7867,86.0
-balanced,Static Baseline,,47,150,106,0.7067,62.0
-balanced,Random,,47,150,107,0.7133,64.0
-balanced,LinUCB,0.1,47,150,98,0.6533,46.0
-balanced,LinUCB,0.3,47,150,104,0.6933,58.0
-balanced,LinUCB,0.5,47,150,106,0.7067,62.0
+balanced,Static Baseline,,47,150,101,0.6733,52.0
+balanced,Random,,47,150,103,0.6867,56.0
+balanced,LinUCB,0.1,47,150,107,0.7133,64.0
+balanced,LinUCB,0.3,47,150,106,0.7067,62.0
+balanced,LinUCB,0.5,47,150,104,0.6933,58.0
 balanced,LinUCB,1.0,47,150,105,0.7,60.0
 balanced,Oracle,,48,150,122,0.8133,94.0
-balanced,Static Baseline,,48,150,118,0.7867,86.0
-balanced,Random,,48,150,112,0.7467,74.0
+balanced,Static Baseline,,48,150,105,0.7,60.0
+balanced,Random,,48,150,111,0.74,72.0
 balanced,LinUCB,0.1,48,150,120,0.8,90.0
-balanced,LinUCB,0.3,48,150,110,0.7333,70.0
-balanced,LinUCB,0.5,48,150,117,0.78,84.0
-balanced,LinUCB,1.0,48,150,112,0.7467,74.0
+balanced,LinUCB,0.3,48,150,118,0.7867,86.0
+balanced,LinUCB,0.5,48,150,116,0.7733,82.0
+balanced,LinUCB,1.0,48,150,116,0.7733,82.0
 balanced,Oracle,,49,150,122,0.8133,94.0
-balanced,Static Baseline,,49,150,112,0.7467,74.0
-balanced,Random,,49,150,111,0.74,72.0
+balanced,Static Baseline,,49,150,106,0.7067,62.0
+balanced,Random,,49,150,104,0.6933,58.0
 balanced,LinUCB,0.1,49,150,113,0.7533,76.0
-balanced,LinUCB,0.3,49,150,115,0.7667,80.0
-balanced,LinUCB,0.5,49,150,114,0.76,78.0
-balanced,LinUCB,1.0,49,150,116,0.7733,82.0
+balanced,LinUCB,0.3,49,150,112,0.7467,74.0
+balanced,LinUCB,0.5,49,150,115,0.7667,80.0
+balanced,LinUCB,1.0,49,150,108,0.72,66.0
 balanced,Oracle,,50,150,124,0.8267,98.0
-balanced,Static Baseline,,50,150,101,0.6733,52.0
-balanced,Random,,50,150,115,0.7667,80.0
-balanced,LinUCB,0.1,50,150,124,0.8267,98.0
-balanced,LinUCB,0.3,50,150,120,0.8,90.0
-balanced,LinUCB,0.5,50,150,114,0.76,78.0
-balanced,LinUCB,1.0,50,150,116,0.7733,82.0
+balanced,Static Baseline,,50,150,110,0.7333,70.0
+balanced,Random,,50,150,117,0.78,84.0
+balanced,LinUCB,0.1,50,150,119,0.7933,88.0
+balanced,LinUCB,0.3,50,150,121,0.8067,92.0
+balanced,LinUCB,0.5,50,150,113,0.7533,76.0
+balanced,LinUCB,1.0,50,150,117,0.78,84.0
 balanced,Oracle,,51,150,119,0.7933,88.0
-balanced,Static Baseline,,51,150,115,0.7667,80.0
-balanced,Random,,51,150,116,0.7733,82.0
-balanced,LinUCB,0.1,51,150,110,0.7333,70.0
-balanced,LinUCB,0.3,51,150,103,0.6867,56.0
-balanced,LinUCB,0.5,51,150,109,0.7267,68.0
-balanced,LinUCB,1.0,51,150,103,0.6867,56.0
+balanced,Static Baseline,,51,150,112,0.7467,74.0
+balanced,Random,,51,150,109,0.7267,68.0
+balanced,LinUCB,0.1,51,150,105,0.7,60.0
+balanced,LinUCB,0.3,51,150,107,0.7133,64.0
+balanced,LinUCB,0.5,51,150,108,0.72,66.0
+balanced,LinUCB,1.0,51,150,108,0.72,66.0

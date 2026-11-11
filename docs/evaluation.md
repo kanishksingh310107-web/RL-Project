@@ -61,12 +61,12 @@ All numbers below were computed by running `python scripts/evaluate.py` across 2
 | Policy | $\alpha$ | Acceptance Rate (Mean $\pm$ Std) | Cumulative Reward (Mean $\pm$ Std) | Gap to Oracle |
 |---|---|---|---|---|
 | **Oracle** (Ceiling) | — | **86.3% $\pm$ 4.1%** | **+108.8 $\pm$ 12.2** | 0.0% |
-| **LinUCB** | 0.1 | **83.0% $\pm$ 6.2%** | **+99.1 $\pm$ 18.4** | -3.3% |
-| **LinUCB** | 0.5 | **80.2% $\pm$ 5.3%** | **+90.6 $\pm$ 15.8** | -6.1% |
-| **LinUCB** | 0.3 | **79.8% $\pm$ 5.4%** | **+89.4 $\pm$ 16.3** | -6.5% |
-| **LinUCB** | 1.0 | **78.6% $\pm$ 4.7%** | **+85.9 $\pm$ 14.0** | -7.7% |
-| **Random** | — | **71.6% $\pm$ 4.4%** | **+64.9 $\pm$ 13.1** | -14.7% |
-| **Static Baseline** | — | **69.9% $\pm$ 5.0%** | **+59.8 $\pm$ 15.0** | -16.4% |
+| **LinUCB** | 0.1 | **83.3% $\pm$ 5.9%** | **+99.9 $\pm$ 17.7** | -3.0% |
+| **LinUCB** | 0.3 | **79.6% $\pm$ 4.9%** | **+88.8 $\pm$ 14.8** | -6.7% |
+| **LinUCB** | 0.5 | **79.4% $\pm$ 5.6%** | **+88.1 $\pm$ 16.8** | -6.9% |
+| **LinUCB** | 1.0 | **78.5% $\pm$ 4.6%** | **+85.5 $\pm$ 13.9** | -7.8% |
+| **Random** | — | **70.8% $\pm$ 5.0%** | **+62.3 $\pm$ 15.0** | -15.5% |
+| **Static Baseline** | — | **68.8% $\pm$ 4.0%** | **+56.3 $\pm$ 12.0** | -17.5% |
 
 *(Full per-seed raw records are persisted in `docs/eval_results.csv`)*
 
