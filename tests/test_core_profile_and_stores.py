@@ -122,3 +122,22 @@ def test_stores_trip_feedback_roundtrip():
     feedbacks = load_trip_feedback("trip_fb_1")
     assert len(feedbacks) == 1
     assert feedbacks[0]["rating"] == 5
+
+
+def test_password_hashing_pbkdf2_and_legacy_compatibility():
+    import hashlib
+    from app.auth import hash_password, verify_password, AUTH_SECRET_KEY
+
+    # 1. PBKDF2 hash verification
+    pwd = "Secr3tPassword!2026"
+    stored_hash, salt = hash_password(pwd)
+    assert stored_hash.startswith("pbkdf2:sha256:100000$")
+    assert verify_password(pwd, stored_hash) is True
+    assert verify_password("WrongPassword!", stored_hash) is False
+
+    # 2. Backward compatibility with legacy SHA-256 hashes
+    legacy_salt = "ab12cd34ef56"
+    legacy_salted = f"{legacy_salt}${pwd}${AUTH_SECRET_KEY}"
+    legacy_hash = f"{legacy_salt}${hashlib.sha256(legacy_salted.encode('utf-8')).hexdigest()}"
+    assert verify_password(pwd, legacy_hash) is True
+    assert verify_password("WrongPassword!", legacy_hash) is False

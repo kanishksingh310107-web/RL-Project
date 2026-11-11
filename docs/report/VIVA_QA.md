@@ -49,22 +49,28 @@ In offline reinforcement learning, evaluating an adaptive policy against live hu
 
 ---
 
-### Q6: Why did the static baseline beat LinUCB in the initial 20-round prototype (80.0% vs 73.3%)?
-**Answer:**
-Through empirical diagnosis, we identified four structural reasons:
-1. **Short Horizon ($T = 20$):** With 7 arms and 24 dimensions, LinUCB must learn 168 parameters. In 20 rounds, each arm receives $< 3$ pulls. LinUCB was still in its cold-start exploration phase and paid an exploration penalty.
-2. **Hard-Coded $\alpha = 0.5$:** A high exploration parameter forced LinUCB to pull uncertain, suboptimal arms rather than exploit early positive rewards.
-3. **Unfair Baseline Advantage:** The static baseline was given the user's ground-truth stated interests and cycled through activities via `b_ranked[(t-1) % len(b_ranked)]`. Over 20 rounds, it almost exclusively sampled from the 8 curated activities matching the user's top interests, giving it an artificial head-start without needing to learn anything.
-4. **Interleaved RNG Streams:** Both algorithms shared a single global `np.random` stream, creating artifactual coupling.
+### Q6: Does LinUCB beat a static baseline when user profiles are accurate?
+**Answer (Honest Viva Answer):**
+**No, when user profiles are accurate, a simple static matcher is as good as LinUCB — the honest result is a statistical tie.**
+- When compared against a realistic, fair baseline (Greedy Top-Match) over 150 rounds:
+  - **Greedy Top-Match:** $84.7\% \pm 5.5\%$ acceptance rate.
+  - **Random within Match:** $85.3\% \pm 5.1\%$ acceptance rate.
+  - **LinUCB ($\alpha = 0.1$):** $83.3\% \pm 5.9\%$ acceptance rate.
+  - **Theoretical Oracle Ceiling:** $86.3\% \pm 4.2\%$.
+- The reason is intuitive: if the profile accurately lists the user's top categories and catalogue items match them well, a static keyword matcher greedily serves what the user likes with zero cold-start exploration cost. LinUCB pays an initial exploration dividend ($\alpha \sqrt{x^T A^{-1} x}$) to discover what the static rule already hardcoded.
+- *Caveat on Handicapped Baselines:* The legacy prototype baseline achieved only 68.8% because it cycled unconditionally through an entire ranked list `(t-1) % len`, which forced it to recommend categories the user disliked. We corrected this to compare against competitive, fair baselines.
 
 ---
 
-### Q7: Under what conditions does LinUCB actually outperform the static baseline?
+### Q7: If a static matcher ties LinUCB on accurate profiles, what is the core justification for using RL / Bandits?
 **Answer:**
-When we extended the benchmark to **150 rounds** across **10 independent seeds** and **3 personas** using separate RNGs:
-- **LinUCB ($\alpha = 0.1$) achieved an 83.3% $\pm$ 5.9% acceptance rate** and **+99.9 cumulative reward**, approaching within 3.0% of the theoretical Oracle upper bound (86.3%).
-- **Static Baseline dropped to 68.8% $\pm$ 4.0%** (cumulative reward: +56.3).
-- **Reason:** Once interaction rounds exceed ~30–35, the static baseline's cycling exhausts the matching activities and is forced to recommend low-preference activities. LinUCB, by contrast, converges on the user's latent preferences and continuously exploits high-reward categories.
+The definitive real-world advantage of Contextual LinUCB is **robustness against noisy, incomplete, outdated, or misstated user profiles**.
+In practical travel planning, users frequently misstate preferences (e.g., saying they want "intense trekking" when they fatigue quickly, or checking "museums" because they feel they should, while actually enjoying street food and cafes).
+- **Scenario B (Mismatched Profile Benchmark):** When we simulated a profile where the stated interest was inverted (matching the persona's least-preferred category):
+  - **Greedy Top-Match collapsed completely to $39.4\% \pm 19.5\%$** acceptance.
+  - **LinUCB maintained $82.2\% \pm 6.1\%$** acceptance.
+  - Paired Student's $t$-test confirmed statistical superiority: $t = +9.85, p < 0.001$.
+- Because LinUCB learns online from actual feedback (`+1.0` accept, `-1.0` reject), it rapidly detects that the stated profile was misleading, dampens the unrewarded arm, and shifts recommendations toward categories the user truly accepts. A rule-based matcher has no learning mechanism and remains trapped recommending unwanted activities.
 
 ---
 
@@ -86,3 +92,33 @@ We resolved this in `extract_user_interests()` by aggregating across all raw ans
 **Answer:**
 - **Hard Constraints (Filters):** Hard constraints represent absolute boundaries that must never be violated (e.g. daily budget cap exceeded, manual destination closure, active travel advisory, or physical mobility avoidances). Hard constraints are implemented as deterministic filters: candidate items that violate a constraint are immediately excluded and added to an `excluded` list with an explicit reason. They are never scored by the model.
 - **Soft Preferences (Scores):** Soft preferences represent trade-offs (e.g. degree of interest match, climate proximity, popularity, past ratings). These are scored continuously ($0.0 \dots 1.0$) and weighted to produce a ranking among feasible candidates.
+
+---
+
+### Q11: How is the Interest Match score mathematically computed?
+**Answer:**
+The interest score in `app/modules/ranking.py` is calculated as a **normalized tag overlap count**, bounded between 0.0 and 1.0:
+$$\text{Score}_{\text{interest}} = \min\left(1.0, \frac{|U_{\text{tags}} \cap D_{\text{tags}}|}{3.0}\right)$$
+where $U_{\text{tags}}$ is the set of user interests derived from `basic['interests']` and questionnaire answers, and $D_{\text{tags}}$ is the destination's tag set.
+- It is **not** a Jaccard index ($|U \cap D| / |U \cup D|$) because penalizing a destination for having additional diverse tags (a large denominator $|U \cup D|$) would unfairly disadvantage rich destinations like Kyoto or Jaipur that offer many varied experiences.
+- Matching 3 relevant user tags achieves the full 1.0 interest match score.
+
+---
+
+### Q12: How are statistical tests computed in the evaluation without relying on heavy external libraries like SciPy?
+**Answer:**
+In `scripts/evaluate.py`, we implement a pure-Python paired Student's $t$-test using standard library `math`:
+1. Calculate differences $d_i = x_{A, i} - x_{B, i}$ across paired runs ($N = 30$).
+2. Compute sample mean $\bar{d}$ and sample variance $s_d^2 = \frac{1}{N-1} \sum (d_i - \bar{d})^2$.
+3. Compute $t$-statistic: $t = \frac{\bar{d}}{s_d / \sqrt{N}}$ with degrees of freedom $\nu = N - 1$.
+4. Evaluate two-tailed $p$-value using the regularized incomplete beta function $I_x(a, b)$:
+   $$p = I_{\frac{\nu}{\nu + t^2}}\left(\frac{\nu}{2}, \frac{1}{2}\right)$$
+   approximated using Lentz's continued fraction method. This allows rigorous, zero-dependency statistical verification that runs instantly in any Python 3 environment.
+
+---
+
+### Q13: How does the system handle security, password hashing, and API error handling?
+**Answer:**
+- **Password Security:** Passwords are hashed using Python's standard `hashlib.pbkdf2_hmac("sha256", password, salt, 100_000)` with a 16-byte cryptographically secure random salt (`secrets.token_hex(16)`), formatted as `pbkdf2:sha256:100000${salt}${hash}`. Verification uses `secrets.compare_digest` to prevent timing attacks, with transparent backward compatibility for legacy hashes.
+- **Production Secret Validation:** In production environments (`APP_ENV=production`), missing `AUTH_SECRET_KEY` halts startup with a `RuntimeError` rather than silently defaulting to a development fallback key.
+- **Geocoding Validation:** If an Indian destination cannot be located during dynamic planning (`/api/places/plan-trip`), the API returns HTTP 404 with an explicit diagnostic message rather than silently defaulting to India's geographical centroid coordinates.

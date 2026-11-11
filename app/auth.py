@@ -10,8 +10,16 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from app.database import get_connection
 
-SECRET_KEY = os.getenv("AUTH_SECRET_KEY", "dev_secret_key_123")
+AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY")
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+if not AUTH_SECRET_KEY:
+    if APP_ENV == "production":
+        raise RuntimeError("AUTH_SECRET_KEY must be set in production environment.")
+    AUTH_SECRET_KEY = "dev_secret_key_123"
+
+SECRET_KEY = AUTH_SECRET_KEY
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+PBKDF2_ITERATIONS = 100_000
 
 def set_google_client_id(client_id: str):
     global GOOGLE_CLIENT_ID
@@ -56,19 +64,36 @@ def verify_google_credential(credential: str) -> Dict[str, Any]:
     except Exception as e:
         raise ValueError(f'Google sign in failed: {str(e)}')
 
-# Password hashing with salt
+# Password hashing with PBKDF2-HMAC-SHA256 (100,000 rounds) and backward compatibility
 def hash_password(password: str, salt: Optional[str] = None) -> Tuple[str, str]:
     if salt is None:
         salt = secrets.token_hex(16)
-    salted = f"{salt}${password}${SECRET_KEY}"
-    pwd_hash = hashlib.sha256(salted.encode('utf-8')).hexdigest()
-    return f"{salt}${pwd_hash}", salt
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        PBKDF2_ITERATIONS
+    ).hex()
+    stored_hash = f"pbkdf2:sha256:{PBKDF2_ITERATIONS}${salt}${derived}"
+    return stored_hash, salt
 
 def verify_password(plain_password: str, stored_hash: str) -> bool:
     try:
-        salt, _ = stored_hash.split('$', 1)
-        expected_hash, _ = hash_password(plain_password, salt)
-        return secrets.compare_digest(stored_hash, expected_hash)
+        if stored_hash.startswith("pbkdf2:sha256:"):
+            _, salt, derived = stored_hash.split("$", 2)
+            expected = hashlib.pbkdf2_hmac(
+                "sha256",
+                plain_password.encode("utf-8"),
+                salt.encode("utf-8"),
+                PBKDF2_ITERATIONS
+            ).hex()
+            return secrets.compare_digest(derived, expected)
+        else:
+            # Backward-compatible legacy format: salt$sha256_hash
+            salt, hash_val = stored_hash.split("$", 1)
+            salted = f"{salt}${plain_password}${AUTH_SECRET_KEY}"
+            expected_hash = hashlib.sha256(salted.encode("utf-8")).hexdigest()
+            return secrets.compare_digest(hash_val, expected_hash)
     except Exception:
         return False
 

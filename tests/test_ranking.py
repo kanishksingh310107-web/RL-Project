@@ -223,10 +223,11 @@ def test_evaluation_experiment_output_shape():
         personas=["nature_enthusiast"],
         seeds=[42, 43],
         alphas=[0.5],
-        rounds=20
+        rounds=20,
+        include_mismatched=False
     )
-    # Expected policies per seed: Oracle, Static Baseline, Random, LinUCB (alpha=0.5) -> 4 * 2 seeds = 8 runs
-    assert len(results) == 8
+    # Expected policies per seed: Oracle, Greedy Top-Match, Random-within-Match, Cycling Baseline, Random, LinUCB -> 6 * 2 seeds = 12 runs
+    assert len(results) == 12
     for r in results:
         assert 0.0 <= r["acceptance_rate"] <= 1.0
         assert r["rounds"] == 20

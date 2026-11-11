@@ -107,3 +107,20 @@ def test_places_service_fallback_offline():
     assert len(res) > 0
     assert any("Goa" in r["city"] for r in res)
     assert all(r["country"] == "India" for r in res)
+
+
+def test_plan_trip_unknown_city_returns_404(client):
+    """Unknown or unlocatable city should return HTTP 404 rather than silent India centroid fallback."""
+    auth = client.post(
+        "/api/auth",
+        json={"provider": "email", "identifier": "unknown_city_test@test.com", "password": "pass123456", "display_name": "Karan"}
+    ).json()
+    uid = auth["user_id"]
+
+    r = client.post("/api/places/plan-trip", json={
+        "user_id": uid,
+        "city_name": "NonExistentAtlantisXYZCity999",
+        "duration_days": 2,
+    })
+    assert r.status_code == 404
+    assert "Could not locate 'NonExistentAtlantisXYZCity999' in India" in r.json()["detail"]

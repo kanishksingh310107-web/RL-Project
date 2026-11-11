@@ -121,7 +121,10 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
             lon = locs[0]["longitude"]
             state = locs[0]["state"]
         else:
-            lat, lon = 20.5937, 78.9629
+            raise HTTPException(
+                status_code=404,
+                detail=f"Could not locate '{clean_city}' in India. Please verify spelling or provide explicit coordinates."
+            )
 
     dest_id = re.sub(r"[^a-z0-9]+", "_", clean_city.lower()).strip("_") + "_india"
     dest_name = f"{clean_city}, {state}" if state and state != "India" else f"{clean_city}, India"

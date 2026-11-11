@@ -1,211 +1,541 @@
-persona,policy,alpha,seed,rounds,accepts,acceptance_rate,cumulative_reward
-nature_enthusiast,Oracle,,42,150,130,0.8667,110.0
-nature_enthusiast,Static Baseline,,42,150,104,0.6933,58.0
-nature_enthusiast,Random,,42,150,93,0.62,36.0
-nature_enthusiast,LinUCB,0.1,42,150,133,0.8867,116.0
-nature_enthusiast,LinUCB,0.3,42,150,130,0.8667,110.0
-nature_enthusiast,LinUCB,0.5,42,150,129,0.86,108.0
-nature_enthusiast,LinUCB,1.0,42,150,127,0.8467,104.0
-nature_enthusiast,Oracle,,43,150,137,0.9133,124.0
-nature_enthusiast,Static Baseline,,43,150,96,0.64,42.0
-nature_enthusiast,Random,,43,150,102,0.68,54.0
-nature_enthusiast,LinUCB,0.1,43,150,123,0.82,96.0
-nature_enthusiast,LinUCB,0.3,43,150,114,0.76,78.0
-nature_enthusiast,LinUCB,0.5,43,150,107,0.7133,64.0
-nature_enthusiast,LinUCB,1.0,43,150,116,0.7733,82.0
-nature_enthusiast,Oracle,,44,150,133,0.8867,116.0
-nature_enthusiast,Static Baseline,,44,150,91,0.6067,32.0
-nature_enthusiast,Random,,44,150,94,0.6267,38.0
-nature_enthusiast,LinUCB,0.1,44,150,128,0.8533,106.0
-nature_enthusiast,LinUCB,0.3,44,150,114,0.76,78.0
-nature_enthusiast,LinUCB,0.5,44,150,117,0.78,84.0
-nature_enthusiast,LinUCB,1.0,44,150,116,0.7733,82.0
-nature_enthusiast,Oracle,,45,150,130,0.8667,110.0
-nature_enthusiast,Static Baseline,,45,150,96,0.64,42.0
-nature_enthusiast,Random,,45,150,96,0.64,42.0
-nature_enthusiast,LinUCB,0.1,45,150,133,0.8867,116.0
-nature_enthusiast,LinUCB,0.3,45,150,126,0.84,102.0
-nature_enthusiast,LinUCB,0.5,45,150,131,0.8733,112.0
-nature_enthusiast,LinUCB,1.0,45,150,123,0.82,96.0
-nature_enthusiast,Oracle,,46,150,138,0.92,126.0
-nature_enthusiast,Static Baseline,,46,150,98,0.6533,46.0
-nature_enthusiast,Random,,46,150,109,0.7267,68.0
-nature_enthusiast,LinUCB,0.1,46,150,135,0.9,120.0
-nature_enthusiast,LinUCB,0.3,46,150,124,0.8267,98.0
-nature_enthusiast,LinUCB,0.5,46,150,132,0.88,114.0
-nature_enthusiast,LinUCB,1.0,46,150,131,0.8733,112.0
-nature_enthusiast,Oracle,,47,150,128,0.8533,106.0
-nature_enthusiast,Static Baseline,,47,150,94,0.6267,38.0
-nature_enthusiast,Random,,47,150,93,0.62,36.0
-nature_enthusiast,LinUCB,0.1,47,150,116,0.7733,82.0
-nature_enthusiast,LinUCB,0.3,47,150,115,0.7667,80.0
-nature_enthusiast,LinUCB,0.5,47,150,111,0.74,72.0
-nature_enthusiast,LinUCB,1.0,47,150,111,0.74,72.0
-nature_enthusiast,Oracle,,48,150,134,0.8933,118.0
-nature_enthusiast,Static Baseline,,48,150,92,0.6133,34.0
-nature_enthusiast,Random,,48,150,102,0.68,54.0
-nature_enthusiast,LinUCB,0.1,48,150,128,0.8533,106.0
-nature_enthusiast,LinUCB,0.3,48,150,122,0.8133,94.0
-nature_enthusiast,LinUCB,0.5,48,150,124,0.8267,98.0
-nature_enthusiast,LinUCB,1.0,48,150,123,0.82,96.0
-nature_enthusiast,Oracle,,49,150,130,0.8667,110.0
-nature_enthusiast,Static Baseline,,49,150,98,0.6533,46.0
-nature_enthusiast,Random,,49,150,92,0.6133,34.0
-nature_enthusiast,LinUCB,0.1,49,150,126,0.84,102.0
-nature_enthusiast,LinUCB,0.3,49,150,123,0.82,96.0
-nature_enthusiast,LinUCB,0.5,49,150,124,0.8267,98.0
-nature_enthusiast,LinUCB,1.0,49,150,116,0.7733,82.0
-nature_enthusiast,Oracle,,50,150,134,0.8933,118.0
-nature_enthusiast,Static Baseline,,50,150,97,0.6467,44.0
-nature_enthusiast,Random,,50,150,104,0.6933,58.0
-nature_enthusiast,LinUCB,0.1,50,150,134,0.8933,118.0
-nature_enthusiast,LinUCB,0.3,50,150,124,0.8267,98.0
-nature_enthusiast,LinUCB,0.5,50,150,125,0.8333,100.0
-nature_enthusiast,LinUCB,1.0,50,150,122,0.8133,94.0
-nature_enthusiast,Oracle,,51,150,136,0.9067,122.0
-nature_enthusiast,Static Baseline,,51,150,101,0.6733,52.0
-nature_enthusiast,Random,,51,150,102,0.68,54.0
-nature_enthusiast,LinUCB,0.1,51,150,131,0.8733,112.0
-nature_enthusiast,LinUCB,0.3,51,150,116,0.7733,82.0
-nature_enthusiast,LinUCB,0.5,51,150,124,0.8267,98.0
-nature_enthusiast,LinUCB,1.0,51,150,117,0.78,84.0
-culture_buff,Oracle,,42,150,130,0.8667,110.0
-culture_buff,Static Baseline,,42,150,109,0.7267,68.0
-culture_buff,Random,,42,150,107,0.7133,64.0
-culture_buff,LinUCB,0.1,42,150,138,0.92,126.0
-culture_buff,LinUCB,0.3,42,150,133,0.8867,116.0
-culture_buff,LinUCB,0.5,42,150,132,0.88,114.0
-culture_buff,LinUCB,1.0,42,150,130,0.8667,110.0
-culture_buff,Oracle,,43,150,137,0.9133,124.0
-culture_buff,Static Baseline,,43,150,108,0.72,66.0
-culture_buff,Random,,43,150,114,0.76,78.0
-culture_buff,LinUCB,0.1,43,150,129,0.86,108.0
-culture_buff,LinUCB,0.3,43,150,119,0.7933,88.0
-culture_buff,LinUCB,0.5,43,150,121,0.8067,92.0
-culture_buff,LinUCB,1.0,43,150,114,0.76,78.0
-culture_buff,Oracle,,44,150,133,0.8867,116.0
-culture_buff,Static Baseline,,44,150,107,0.7133,64.0
-culture_buff,Random,,44,150,107,0.7133,64.0
-culture_buff,LinUCB,0.1,44,150,127,0.8467,104.0
-culture_buff,LinUCB,0.3,44,150,118,0.7867,86.0
-culture_buff,LinUCB,0.5,44,150,123,0.82,96.0
-culture_buff,LinUCB,1.0,44,150,111,0.74,72.0
-culture_buff,Oracle,,45,150,130,0.8667,110.0
-culture_buff,Static Baseline,,45,150,109,0.7267,68.0
-culture_buff,Random,,45,150,109,0.7267,68.0
-culture_buff,LinUCB,0.1,45,150,137,0.9133,124.0
-culture_buff,LinUCB,0.3,45,150,134,0.8933,118.0
-culture_buff,LinUCB,0.5,45,150,128,0.8533,106.0
-culture_buff,LinUCB,1.0,45,150,125,0.8333,100.0
-culture_buff,Oracle,,46,150,138,0.92,126.0
-culture_buff,Static Baseline,,46,150,102,0.68,54.0
-culture_buff,Random,,46,150,115,0.7667,80.0
-culture_buff,LinUCB,0.1,46,150,129,0.86,108.0
-culture_buff,LinUCB,0.3,46,150,125,0.8333,100.0
-culture_buff,LinUCB,0.5,46,150,130,0.8667,110.0
-culture_buff,LinUCB,1.0,46,150,129,0.86,108.0
-culture_buff,Oracle,,47,150,128,0.8533,106.0
-culture_buff,Static Baseline,,47,150,106,0.7067,62.0
-culture_buff,Random,,47,150,95,0.6333,40.0
-culture_buff,LinUCB,0.1,47,150,125,0.8333,100.0
-culture_buff,LinUCB,0.3,47,150,120,0.8,90.0
-culture_buff,LinUCB,0.5,47,150,115,0.7667,80.0
-culture_buff,LinUCB,1.0,47,150,111,0.74,72.0
-culture_buff,Oracle,,48,150,134,0.8933,118.0
-culture_buff,Static Baseline,,48,150,103,0.6867,56.0
-culture_buff,Random,,48,150,116,0.7733,82.0
-culture_buff,LinUCB,0.1,48,150,134,0.8933,118.0
-culture_buff,LinUCB,0.3,48,150,123,0.82,96.0
-culture_buff,LinUCB,0.5,48,150,127,0.8467,104.0
-culture_buff,LinUCB,1.0,48,150,121,0.8067,92.0
-culture_buff,Oracle,,49,150,130,0.8667,110.0
-culture_buff,Static Baseline,,49,150,102,0.68,54.0
-culture_buff,Random,,49,150,109,0.7267,68.0
-culture_buff,LinUCB,0.1,49,150,132,0.88,114.0
-culture_buff,LinUCB,0.3,49,150,125,0.8333,100.0
-culture_buff,LinUCB,0.5,49,150,127,0.8467,104.0
-culture_buff,LinUCB,1.0,49,150,123,0.82,96.0
-culture_buff,Oracle,,50,150,134,0.8933,118.0
-culture_buff,Static Baseline,,50,150,106,0.7067,62.0
-culture_buff,Random,,50,150,111,0.74,72.0
-culture_buff,LinUCB,0.1,50,150,129,0.86,108.0
-culture_buff,LinUCB,0.3,50,150,128,0.8533,106.0
-culture_buff,LinUCB,0.5,50,150,123,0.82,96.0
-culture_buff,LinUCB,1.0,50,150,122,0.8133,94.0
-culture_buff,Oracle,,51,150,136,0.9067,122.0
-culture_buff,Static Baseline,,51,150,114,0.76,78.0
-culture_buff,Random,,51,150,111,0.74,72.0
-culture_buff,LinUCB,0.1,51,150,122,0.8133,94.0
-culture_buff,LinUCB,0.3,51,150,114,0.76,78.0
-culture_buff,LinUCB,0.5,51,150,113,0.7533,76.0
-culture_buff,LinUCB,1.0,51,150,123,0.82,96.0
-balanced,Oracle,,42,150,120,0.8,90.0
-balanced,Static Baseline,,42,150,111,0.74,72.0
-balanced,Random,,42,150,109,0.7267,68.0
-balanced,LinUCB,0.1,42,150,122,0.8133,94.0
-balanced,LinUCB,0.3,42,150,122,0.8133,94.0
-balanced,LinUCB,0.5,42,150,113,0.7533,76.0
-balanced,LinUCB,1.0,42,150,112,0.7467,74.0
-balanced,Oracle,,43,150,123,0.82,96.0
-balanced,Static Baseline,,43,150,111,0.74,72.0
-balanced,Random,,43,150,115,0.7667,80.0
-balanced,LinUCB,0.1,43,150,116,0.7733,82.0
-balanced,LinUCB,0.3,43,150,108,0.72,66.0
-balanced,LinUCB,0.5,43,150,107,0.7133,64.0
-balanced,LinUCB,1.0,43,150,109,0.7267,68.0
-balanced,Oracle,,44,150,122,0.8133,94.0
-balanced,Static Baseline,,44,150,104,0.6933,58.0
-balanced,Random,,44,150,108,0.72,66.0
-balanced,LinUCB,0.1,44,150,109,0.7267,68.0
-balanced,LinUCB,0.3,44,150,105,0.7,60.0
-balanced,LinUCB,0.5,44,150,109,0.7267,68.0
-balanced,LinUCB,1.0,44,150,110,0.7333,70.0
-balanced,Oracle,,45,150,120,0.8,90.0
-balanced,Static Baseline,,45,150,101,0.6733,52.0
-balanced,Random,,45,150,110,0.7333,70.0
-balanced,LinUCB,0.1,45,150,117,0.78,84.0
-balanced,LinUCB,0.3,45,150,115,0.7667,80.0
-balanced,LinUCB,0.5,45,150,115,0.7667,80.0
-balanced,LinUCB,1.0,45,150,115,0.7667,80.0
-balanced,Oracle,,46,150,132,0.88,114.0
-balanced,Static Baseline,,46,150,100,0.6667,50.0
-balanced,Random,,46,150,118,0.7867,86.0
-balanced,LinUCB,0.1,46,150,132,0.88,114.0
-balanced,LinUCB,0.3,46,150,121,0.8067,92.0
-balanced,LinUCB,0.5,46,150,109,0.7267,68.0
-balanced,LinUCB,1.0,46,150,121,0.8067,92.0
-balanced,Oracle,,47,150,118,0.7867,86.0
-balanced,Static Baseline,,47,150,101,0.6733,52.0
-balanced,Random,,47,150,103,0.6867,56.0
-balanced,LinUCB,0.1,47,150,107,0.7133,64.0
-balanced,LinUCB,0.3,47,150,106,0.7067,62.0
-balanced,LinUCB,0.5,47,150,104,0.6933,58.0
-balanced,LinUCB,1.0,47,150,105,0.7,60.0
-balanced,Oracle,,48,150,122,0.8133,94.0
-balanced,Static Baseline,,48,150,105,0.7,60.0
-balanced,Random,,48,150,111,0.74,72.0
-balanced,LinUCB,0.1,48,150,120,0.8,90.0
-balanced,LinUCB,0.3,48,150,118,0.7867,86.0
-balanced,LinUCB,0.5,48,150,116,0.7733,82.0
-balanced,LinUCB,1.0,48,150,116,0.7733,82.0
-balanced,Oracle,,49,150,122,0.8133,94.0
-balanced,Static Baseline,,49,150,106,0.7067,62.0
-balanced,Random,,49,150,104,0.6933,58.0
-balanced,LinUCB,0.1,49,150,113,0.7533,76.0
-balanced,LinUCB,0.3,49,150,112,0.7467,74.0
-balanced,LinUCB,0.5,49,150,115,0.7667,80.0
-balanced,LinUCB,1.0,49,150,108,0.72,66.0
-balanced,Oracle,,50,150,124,0.8267,98.0
-balanced,Static Baseline,,50,150,110,0.7333,70.0
-balanced,Random,,50,150,117,0.78,84.0
-balanced,LinUCB,0.1,50,150,119,0.7933,88.0
-balanced,LinUCB,0.3,50,150,121,0.8067,92.0
-balanced,LinUCB,0.5,50,150,113,0.7533,76.0
-balanced,LinUCB,1.0,50,150,117,0.78,84.0
-balanced,Oracle,,51,150,119,0.7933,88.0
-balanced,Static Baseline,,51,150,112,0.7467,74.0
-balanced,Random,,51,150,109,0.7267,68.0
-balanced,LinUCB,0.1,51,150,105,0.7,60.0
-balanced,LinUCB,0.3,51,150,107,0.7133,64.0
-balanced,LinUCB,0.5,51,150,108,0.72,66.0
-balanced,LinUCB,1.0,51,150,108,0.72,66.0
+scenario,persona,policy,alpha,seed,rounds,accepts,acceptance_rate,cumulative_reward
+accurate,nature_enthusiast,Oracle,,42,150,130,0.8667,110.0
+accurate,nature_enthusiast,Greedy Top-Match,,42,150,137,0.9133,124.0
+accurate,nature_enthusiast,Random-within-Match,,42,150,130,0.8667,110.0
+accurate,nature_enthusiast,Cycling Baseline,,42,150,104,0.6933,58.0
+accurate,nature_enthusiast,Random,,42,150,93,0.62,36.0
+accurate,nature_enthusiast,LinUCB,0.1,42,150,133,0.8867,116.0
+accurate,nature_enthusiast,LinUCB,0.3,42,150,130,0.8667,110.0
+accurate,nature_enthusiast,LinUCB,0.5,42,150,129,0.86,108.0
+accurate,nature_enthusiast,LinUCB,1.0,42,150,127,0.8467,104.0
+accurate,nature_enthusiast,Oracle,,43,150,137,0.9133,124.0
+accurate,nature_enthusiast,Greedy Top-Match,,43,150,127,0.8467,104.0
+accurate,nature_enthusiast,Random-within-Match,,43,150,133,0.8867,116.0
+accurate,nature_enthusiast,Cycling Baseline,,43,150,96,0.64,42.0
+accurate,nature_enthusiast,Random,,43,150,102,0.68,54.0
+accurate,nature_enthusiast,LinUCB,0.1,43,150,123,0.82,96.0
+accurate,nature_enthusiast,LinUCB,0.3,43,150,114,0.76,78.0
+accurate,nature_enthusiast,LinUCB,0.5,43,150,107,0.7133,64.0
+accurate,nature_enthusiast,LinUCB,1.0,43,150,116,0.7733,82.0
+accurate,nature_enthusiast,Oracle,,44,150,133,0.8867,116.0
+accurate,nature_enthusiast,Greedy Top-Match,,44,150,124,0.8267,98.0
+accurate,nature_enthusiast,Random-within-Match,,44,150,127,0.8467,104.0
+accurate,nature_enthusiast,Cycling Baseline,,44,150,91,0.6067,32.0
+accurate,nature_enthusiast,Random,,44,150,94,0.6267,38.0
+accurate,nature_enthusiast,LinUCB,0.1,44,150,128,0.8533,106.0
+accurate,nature_enthusiast,LinUCB,0.3,44,150,114,0.76,78.0
+accurate,nature_enthusiast,LinUCB,0.5,44,150,117,0.78,84.0
+accurate,nature_enthusiast,LinUCB,1.0,44,150,116,0.7733,82.0
+accurate,nature_enthusiast,Oracle,,45,150,130,0.8667,110.0
+accurate,nature_enthusiast,Greedy Top-Match,,45,150,137,0.9133,124.0
+accurate,nature_enthusiast,Random-within-Match,,45,150,127,0.8467,104.0
+accurate,nature_enthusiast,Cycling Baseline,,45,150,96,0.64,42.0
+accurate,nature_enthusiast,Random,,45,150,96,0.64,42.0
+accurate,nature_enthusiast,LinUCB,0.1,45,150,133,0.8867,116.0
+accurate,nature_enthusiast,LinUCB,0.3,45,150,126,0.84,102.0
+accurate,nature_enthusiast,LinUCB,0.5,45,150,131,0.8733,112.0
+accurate,nature_enthusiast,LinUCB,1.0,45,150,123,0.82,96.0
+accurate,nature_enthusiast,Oracle,,46,150,138,0.92,126.0
+accurate,nature_enthusiast,Greedy Top-Match,,46,150,135,0.9,120.0
+accurate,nature_enthusiast,Random-within-Match,,46,150,135,0.9,120.0
+accurate,nature_enthusiast,Cycling Baseline,,46,150,98,0.6533,46.0
+accurate,nature_enthusiast,Random,,46,150,109,0.7267,68.0
+accurate,nature_enthusiast,LinUCB,0.1,46,150,135,0.9,120.0
+accurate,nature_enthusiast,LinUCB,0.3,46,150,124,0.8267,98.0
+accurate,nature_enthusiast,LinUCB,0.5,46,150,132,0.88,114.0
+accurate,nature_enthusiast,LinUCB,1.0,46,150,131,0.8733,112.0
+accurate,nature_enthusiast,Oracle,,47,150,128,0.8533,106.0
+accurate,nature_enthusiast,Greedy Top-Match,,47,150,119,0.7933,88.0
+accurate,nature_enthusiast,Random-within-Match,,47,150,125,0.8333,100.0
+accurate,nature_enthusiast,Cycling Baseline,,47,150,94,0.6267,38.0
+accurate,nature_enthusiast,Random,,47,150,93,0.62,36.0
+accurate,nature_enthusiast,LinUCB,0.1,47,150,116,0.7733,82.0
+accurate,nature_enthusiast,LinUCB,0.3,47,150,115,0.7667,80.0
+accurate,nature_enthusiast,LinUCB,0.5,47,150,111,0.74,72.0
+accurate,nature_enthusiast,LinUCB,1.0,47,150,111,0.74,72.0
+accurate,nature_enthusiast,Oracle,,48,150,134,0.8933,118.0
+accurate,nature_enthusiast,Greedy Top-Match,,48,150,129,0.86,108.0
+accurate,nature_enthusiast,Random-within-Match,,48,150,130,0.8667,110.0
+accurate,nature_enthusiast,Cycling Baseline,,48,150,92,0.6133,34.0
+accurate,nature_enthusiast,Random,,48,150,102,0.68,54.0
+accurate,nature_enthusiast,LinUCB,0.1,48,150,128,0.8533,106.0
+accurate,nature_enthusiast,LinUCB,0.3,48,150,122,0.8133,94.0
+accurate,nature_enthusiast,LinUCB,0.5,48,150,124,0.8267,98.0
+accurate,nature_enthusiast,LinUCB,1.0,48,150,123,0.82,96.0
+accurate,nature_enthusiast,Oracle,,49,150,130,0.8667,110.0
+accurate,nature_enthusiast,Greedy Top-Match,,49,150,128,0.8533,106.0
+accurate,nature_enthusiast,Random-within-Match,,49,150,128,0.8533,106.0
+accurate,nature_enthusiast,Cycling Baseline,,49,150,98,0.6533,46.0
+accurate,nature_enthusiast,Random,,49,150,92,0.6133,34.0
+accurate,nature_enthusiast,LinUCB,0.1,49,150,126,0.84,102.0
+accurate,nature_enthusiast,LinUCB,0.3,49,150,123,0.82,96.0
+accurate,nature_enthusiast,LinUCB,0.5,49,150,124,0.8267,98.0
+accurate,nature_enthusiast,LinUCB,1.0,49,150,116,0.7733,82.0
+accurate,nature_enthusiast,Oracle,,50,150,134,0.8933,118.0
+accurate,nature_enthusiast,Greedy Top-Match,,50,150,131,0.8733,112.0
+accurate,nature_enthusiast,Random-within-Match,,50,150,131,0.8733,112.0
+accurate,nature_enthusiast,Cycling Baseline,,50,150,97,0.6467,44.0
+accurate,nature_enthusiast,Random,,50,150,104,0.6933,58.0
+accurate,nature_enthusiast,LinUCB,0.1,50,150,134,0.8933,118.0
+accurate,nature_enthusiast,LinUCB,0.3,50,150,124,0.8267,98.0
+accurate,nature_enthusiast,LinUCB,0.5,50,150,125,0.8333,100.0
+accurate,nature_enthusiast,LinUCB,1.0,50,150,122,0.8133,94.0
+accurate,nature_enthusiast,Oracle,,51,150,136,0.9067,122.0
+accurate,nature_enthusiast,Greedy Top-Match,,51,150,130,0.8667,110.0
+accurate,nature_enthusiast,Random-within-Match,,51,150,134,0.8933,118.0
+accurate,nature_enthusiast,Cycling Baseline,,51,150,101,0.6733,52.0
+accurate,nature_enthusiast,Random,,51,150,102,0.68,54.0
+accurate,nature_enthusiast,LinUCB,0.1,51,150,131,0.8733,112.0
+accurate,nature_enthusiast,LinUCB,0.3,51,150,116,0.7733,82.0
+accurate,nature_enthusiast,LinUCB,0.5,51,150,124,0.8267,98.0
+accurate,nature_enthusiast,LinUCB,1.0,51,150,117,0.78,84.0
+accurate,culture_buff,Oracle,,42,150,130,0.8667,110.0
+accurate,culture_buff,Greedy Top-Match,,42,150,138,0.92,126.0
+accurate,culture_buff,Random-within-Match,,42,150,130,0.8667,110.0
+accurate,culture_buff,Cycling Baseline,,42,150,109,0.7267,68.0
+accurate,culture_buff,Random,,42,150,107,0.7133,64.0
+accurate,culture_buff,LinUCB,0.1,42,150,138,0.92,126.0
+accurate,culture_buff,LinUCB,0.3,42,150,133,0.8867,116.0
+accurate,culture_buff,LinUCB,0.5,42,150,132,0.88,114.0
+accurate,culture_buff,LinUCB,1.0,42,150,130,0.8667,110.0
+accurate,culture_buff,Oracle,,43,150,137,0.9133,124.0
+accurate,culture_buff,Greedy Top-Match,,43,150,129,0.86,108.0
+accurate,culture_buff,Random-within-Match,,43,150,137,0.9133,124.0
+accurate,culture_buff,Cycling Baseline,,43,150,108,0.72,66.0
+accurate,culture_buff,Random,,43,150,114,0.76,78.0
+accurate,culture_buff,LinUCB,0.1,43,150,129,0.86,108.0
+accurate,culture_buff,LinUCB,0.3,43,150,119,0.7933,88.0
+accurate,culture_buff,LinUCB,0.5,43,150,121,0.8067,92.0
+accurate,culture_buff,LinUCB,1.0,43,150,114,0.76,78.0
+accurate,culture_buff,Oracle,,44,150,133,0.8867,116.0
+accurate,culture_buff,Greedy Top-Match,,44,150,130,0.8667,110.0
+accurate,culture_buff,Random-within-Match,,44,150,133,0.8867,116.0
+accurate,culture_buff,Cycling Baseline,,44,150,107,0.7133,64.0
+accurate,culture_buff,Random,,44,150,107,0.7133,64.0
+accurate,culture_buff,LinUCB,0.1,44,150,127,0.8467,104.0
+accurate,culture_buff,LinUCB,0.3,44,150,118,0.7867,86.0
+accurate,culture_buff,LinUCB,0.5,44,150,123,0.82,96.0
+accurate,culture_buff,LinUCB,1.0,44,150,111,0.74,72.0
+accurate,culture_buff,Oracle,,45,150,130,0.8667,110.0
+accurate,culture_buff,Greedy Top-Match,,45,150,137,0.9133,124.0
+accurate,culture_buff,Random-within-Match,,45,150,130,0.8667,110.0
+accurate,culture_buff,Cycling Baseline,,45,150,109,0.7267,68.0
+accurate,culture_buff,Random,,45,150,109,0.7267,68.0
+accurate,culture_buff,LinUCB,0.1,45,150,137,0.9133,124.0
+accurate,culture_buff,LinUCB,0.3,45,150,134,0.8933,118.0
+accurate,culture_buff,LinUCB,0.5,45,150,128,0.8533,106.0
+accurate,culture_buff,LinUCB,1.0,45,150,125,0.8333,100.0
+accurate,culture_buff,Oracle,,46,150,138,0.92,126.0
+accurate,culture_buff,Greedy Top-Match,,46,150,138,0.92,126.0
+accurate,culture_buff,Random-within-Match,,46,150,138,0.92,126.0
+accurate,culture_buff,Cycling Baseline,,46,150,102,0.68,54.0
+accurate,culture_buff,Random,,46,150,115,0.7667,80.0
+accurate,culture_buff,LinUCB,0.1,46,150,129,0.86,108.0
+accurate,culture_buff,LinUCB,0.3,46,150,125,0.8333,100.0
+accurate,culture_buff,LinUCB,0.5,46,150,130,0.8667,110.0
+accurate,culture_buff,LinUCB,1.0,46,150,129,0.86,108.0
+accurate,culture_buff,Oracle,,47,150,128,0.8533,106.0
+accurate,culture_buff,Greedy Top-Match,,47,150,125,0.8333,100.0
+accurate,culture_buff,Random-within-Match,,47,150,128,0.8533,106.0
+accurate,culture_buff,Cycling Baseline,,47,150,106,0.7067,62.0
+accurate,culture_buff,Random,,47,150,95,0.6333,40.0
+accurate,culture_buff,LinUCB,0.1,47,150,125,0.8333,100.0
+accurate,culture_buff,LinUCB,0.3,47,150,120,0.8,90.0
+accurate,culture_buff,LinUCB,0.5,47,150,115,0.7667,80.0
+accurate,culture_buff,LinUCB,1.0,47,150,111,0.74,72.0
+accurate,culture_buff,Oracle,,48,150,134,0.8933,118.0
+accurate,culture_buff,Greedy Top-Match,,48,150,134,0.8933,118.0
+accurate,culture_buff,Random-within-Match,,48,150,134,0.8933,118.0
+accurate,culture_buff,Cycling Baseline,,48,150,103,0.6867,56.0
+accurate,culture_buff,Random,,48,150,116,0.7733,82.0
+accurate,culture_buff,LinUCB,0.1,48,150,134,0.8933,118.0
+accurate,culture_buff,LinUCB,0.3,48,150,123,0.82,96.0
+accurate,culture_buff,LinUCB,0.5,48,150,127,0.8467,104.0
+accurate,culture_buff,LinUCB,1.0,48,150,121,0.8067,92.0
+accurate,culture_buff,Oracle,,49,150,130,0.8667,110.0
+accurate,culture_buff,Greedy Top-Match,,49,150,132,0.88,114.0
+accurate,culture_buff,Random-within-Match,,49,150,130,0.8667,110.0
+accurate,culture_buff,Cycling Baseline,,49,150,102,0.68,54.0
+accurate,culture_buff,Random,,49,150,109,0.7267,68.0
+accurate,culture_buff,LinUCB,0.1,49,150,132,0.88,114.0
+accurate,culture_buff,LinUCB,0.3,49,150,125,0.8333,100.0
+accurate,culture_buff,LinUCB,0.5,49,150,127,0.8467,104.0
+accurate,culture_buff,LinUCB,1.0,49,150,123,0.82,96.0
+accurate,culture_buff,Oracle,,50,150,134,0.8933,118.0
+accurate,culture_buff,Greedy Top-Match,,50,150,136,0.9067,122.0
+accurate,culture_buff,Random-within-Match,,50,150,134,0.8933,118.0
+accurate,culture_buff,Cycling Baseline,,50,150,106,0.7067,62.0
+accurate,culture_buff,Random,,50,150,111,0.74,72.0
+accurate,culture_buff,LinUCB,0.1,50,150,129,0.86,108.0
+accurate,culture_buff,LinUCB,0.3,50,150,128,0.8533,106.0
+accurate,culture_buff,LinUCB,0.5,50,150,123,0.82,96.0
+accurate,culture_buff,LinUCB,1.0,50,150,122,0.8133,94.0
+accurate,culture_buff,Oracle,,51,150,136,0.9067,122.0
+accurate,culture_buff,Greedy Top-Match,,51,150,134,0.8933,118.0
+accurate,culture_buff,Random-within-Match,,51,150,136,0.9067,122.0
+accurate,culture_buff,Cycling Baseline,,51,150,114,0.76,78.0
+accurate,culture_buff,Random,,51,150,111,0.74,72.0
+accurate,culture_buff,LinUCB,0.1,51,150,122,0.8133,94.0
+accurate,culture_buff,LinUCB,0.3,51,150,114,0.76,78.0
+accurate,culture_buff,LinUCB,0.5,51,150,113,0.7533,76.0
+accurate,culture_buff,LinUCB,1.0,51,150,123,0.82,96.0
+accurate,balanced,Oracle,,42,150,120,0.8,90.0
+accurate,balanced,Greedy Top-Match,,42,150,123,0.82,96.0
+accurate,balanced,Random-within-Match,,42,150,115,0.7667,80.0
+accurate,balanced,Cycling Baseline,,42,150,111,0.74,72.0
+accurate,balanced,Random,,42,150,109,0.7267,68.0
+accurate,balanced,LinUCB,0.1,42,150,122,0.8133,94.0
+accurate,balanced,LinUCB,0.3,42,150,122,0.8133,94.0
+accurate,balanced,LinUCB,0.5,42,150,113,0.7533,76.0
+accurate,balanced,LinUCB,1.0,42,150,112,0.7467,74.0
+accurate,balanced,Oracle,,43,150,123,0.82,96.0
+accurate,balanced,Greedy Top-Match,,43,150,116,0.7733,82.0
+accurate,balanced,Random-within-Match,,43,150,122,0.8133,94.0
+accurate,balanced,Cycling Baseline,,43,150,111,0.74,72.0
+accurate,balanced,Random,,43,150,115,0.7667,80.0
+accurate,balanced,LinUCB,0.1,43,150,116,0.7733,82.0
+accurate,balanced,LinUCB,0.3,43,150,108,0.72,66.0
+accurate,balanced,LinUCB,0.5,43,150,107,0.7133,64.0
+accurate,balanced,LinUCB,1.0,43,150,109,0.7267,68.0
+accurate,balanced,Oracle,,44,150,122,0.8133,94.0
+accurate,balanced,Greedy Top-Match,,44,150,110,0.7333,70.0
+accurate,balanced,Random-within-Match,,44,150,118,0.7867,86.0
+accurate,balanced,Cycling Baseline,,44,150,104,0.6933,58.0
+accurate,balanced,Random,,44,150,108,0.72,66.0
+accurate,balanced,LinUCB,0.1,44,150,109,0.7267,68.0
+accurate,balanced,LinUCB,0.3,44,150,105,0.7,60.0
+accurate,balanced,LinUCB,0.5,44,150,109,0.7267,68.0
+accurate,balanced,LinUCB,1.0,44,150,110,0.7333,70.0
+accurate,balanced,Oracle,,45,150,120,0.8,90.0
+accurate,balanced,Greedy Top-Match,,45,150,118,0.7867,86.0
+accurate,balanced,Random-within-Match,,45,150,115,0.7667,80.0
+accurate,balanced,Cycling Baseline,,45,150,101,0.6733,52.0
+accurate,balanced,Random,,45,150,110,0.7333,70.0
+accurate,balanced,LinUCB,0.1,45,150,117,0.78,84.0
+accurate,balanced,LinUCB,0.3,45,150,115,0.7667,80.0
+accurate,balanced,LinUCB,0.5,45,150,115,0.7667,80.0
+accurate,balanced,LinUCB,1.0,45,150,115,0.7667,80.0
+accurate,balanced,Oracle,,46,150,132,0.88,114.0
+accurate,balanced,Greedy Top-Match,,46,150,130,0.8667,110.0
+accurate,balanced,Random-within-Match,,46,150,129,0.86,108.0
+accurate,balanced,Cycling Baseline,,46,150,100,0.6667,50.0
+accurate,balanced,Random,,46,150,118,0.7867,86.0
+accurate,balanced,LinUCB,0.1,46,150,132,0.88,114.0
+accurate,balanced,LinUCB,0.3,46,150,121,0.8067,92.0
+accurate,balanced,LinUCB,0.5,46,150,109,0.7267,68.0
+accurate,balanced,LinUCB,1.0,46,150,121,0.8067,92.0
+accurate,balanced,Oracle,,47,150,118,0.7867,86.0
+accurate,balanced,Greedy Top-Match,,47,150,110,0.7333,70.0
+accurate,balanced,Random-within-Match,,47,150,114,0.76,78.0
+accurate,balanced,Cycling Baseline,,47,150,101,0.6733,52.0
+accurate,balanced,Random,,47,150,103,0.6867,56.0
+accurate,balanced,LinUCB,0.1,47,150,107,0.7133,64.0
+accurate,balanced,LinUCB,0.3,47,150,106,0.7067,62.0
+accurate,balanced,LinUCB,0.5,47,150,104,0.6933,58.0
+accurate,balanced,LinUCB,1.0,47,150,105,0.7,60.0
+accurate,balanced,Oracle,,48,150,122,0.8133,94.0
+accurate,balanced,Greedy Top-Match,,48,150,121,0.8067,92.0
+accurate,balanced,Random-within-Match,,48,150,120,0.8,90.0
+accurate,balanced,Cycling Baseline,,48,150,105,0.7,60.0
+accurate,balanced,Random,,48,150,111,0.74,72.0
+accurate,balanced,LinUCB,0.1,48,150,120,0.8,90.0
+accurate,balanced,LinUCB,0.3,48,150,118,0.7867,86.0
+accurate,balanced,LinUCB,0.5,48,150,116,0.7733,82.0
+accurate,balanced,LinUCB,1.0,48,150,116,0.7733,82.0
+accurate,balanced,Oracle,,49,150,122,0.8133,94.0
+accurate,balanced,Greedy Top-Match,,49,150,118,0.7867,86.0
+accurate,balanced,Random-within-Match,,49,150,119,0.7933,88.0
+accurate,balanced,Cycling Baseline,,49,150,106,0.7067,62.0
+accurate,balanced,Random,,49,150,104,0.6933,58.0
+accurate,balanced,LinUCB,0.1,49,150,113,0.7533,76.0
+accurate,balanced,LinUCB,0.3,49,150,112,0.7467,74.0
+accurate,balanced,LinUCB,0.5,49,150,115,0.7667,80.0
+accurate,balanced,LinUCB,1.0,49,150,108,0.72,66.0
+accurate,balanced,Oracle,,50,150,124,0.8267,98.0
+accurate,balanced,Greedy Top-Match,,50,150,122,0.8133,94.0
+accurate,balanced,Random-within-Match,,50,150,123,0.82,96.0
+accurate,balanced,Cycling Baseline,,50,150,110,0.7333,70.0
+accurate,balanced,Random,,50,150,117,0.78,84.0
+accurate,balanced,LinUCB,0.1,50,150,119,0.7933,88.0
+accurate,balanced,LinUCB,0.3,50,150,121,0.8067,92.0
+accurate,balanced,LinUCB,0.5,50,150,113,0.7533,76.0
+accurate,balanced,LinUCB,1.0,50,150,117,0.78,84.0
+accurate,balanced,Oracle,,51,150,119,0.7933,88.0
+accurate,balanced,Greedy Top-Match,,51,150,113,0.7533,76.0
+accurate,balanced,Random-within-Match,,51,150,118,0.7867,86.0
+accurate,balanced,Cycling Baseline,,51,150,112,0.7467,74.0
+accurate,balanced,Random,,51,150,109,0.7267,68.0
+accurate,balanced,LinUCB,0.1,51,150,105,0.7,60.0
+accurate,balanced,LinUCB,0.3,51,150,107,0.7133,64.0
+accurate,balanced,LinUCB,0.5,51,150,108,0.72,66.0
+accurate,balanced,LinUCB,1.0,51,150,108,0.72,66.0
+mismatched,nature_enthusiast,Oracle,,42,150,130,0.8667,110.0
+mismatched,nature_enthusiast,Greedy Top-Match,,42,150,36,0.24,-78.0
+mismatched,nature_enthusiast,Random-within-Match,,42,150,39,0.26,-72.0
+mismatched,nature_enthusiast,Cycling Baseline,,42,150,97,0.6467,44.0
+mismatched,nature_enthusiast,Random,,42,150,93,0.62,36.0
+mismatched,nature_enthusiast,LinUCB,0.1,42,150,133,0.8867,116.0
+mismatched,nature_enthusiast,LinUCB,0.3,42,150,127,0.8467,104.0
+mismatched,nature_enthusiast,LinUCB,0.5,42,150,128,0.8533,106.0
+mismatched,nature_enthusiast,LinUCB,1.0,42,150,128,0.8533,106.0
+mismatched,nature_enthusiast,Oracle,,43,150,137,0.9133,124.0
+mismatched,nature_enthusiast,Greedy Top-Match,,43,150,31,0.2067,-88.0
+mismatched,nature_enthusiast,Random-within-Match,,43,150,38,0.2533,-74.0
+mismatched,nature_enthusiast,Cycling Baseline,,43,150,95,0.6333,40.0
+mismatched,nature_enthusiast,Random,,43,150,102,0.68,54.0
+mismatched,nature_enthusiast,LinUCB,0.1,43,150,108,0.72,66.0
+mismatched,nature_enthusiast,LinUCB,0.3,43,150,124,0.8267,98.0
+mismatched,nature_enthusiast,LinUCB,0.5,43,150,104,0.6933,58.0
+mismatched,nature_enthusiast,LinUCB,1.0,43,150,112,0.7467,74.0
+mismatched,nature_enthusiast,Oracle,,44,150,133,0.8867,116.0
+mismatched,nature_enthusiast,Greedy Top-Match,,44,150,36,0.24,-78.0
+mismatched,nature_enthusiast,Random-within-Match,,44,150,38,0.2533,-74.0
+mismatched,nature_enthusiast,Cycling Baseline,,44,150,89,0.5933,28.0
+mismatched,nature_enthusiast,Random,,44,150,94,0.6267,38.0
+mismatched,nature_enthusiast,LinUCB,0.1,44,150,125,0.8333,100.0
+mismatched,nature_enthusiast,LinUCB,0.3,44,150,118,0.7867,86.0
+mismatched,nature_enthusiast,LinUCB,0.5,44,150,113,0.7533,76.0
+mismatched,nature_enthusiast,LinUCB,1.0,44,150,109,0.7267,68.0
+mismatched,nature_enthusiast,Oracle,,45,150,130,0.8667,110.0
+mismatched,nature_enthusiast,Greedy Top-Match,,45,150,37,0.2467,-76.0
+mismatched,nature_enthusiast,Random-within-Match,,45,150,38,0.2533,-74.0
+mismatched,nature_enthusiast,Cycling Baseline,,45,150,90,0.6,30.0
+mismatched,nature_enthusiast,Random,,45,150,96,0.64,42.0
+mismatched,nature_enthusiast,LinUCB,0.1,45,150,133,0.8867,116.0
+mismatched,nature_enthusiast,LinUCB,0.3,45,150,129,0.86,108.0
+mismatched,nature_enthusiast,LinUCB,0.5,45,150,128,0.8533,106.0
+mismatched,nature_enthusiast,LinUCB,1.0,45,150,120,0.8,90.0
+mismatched,nature_enthusiast,Oracle,,46,150,138,0.92,126.0
+mismatched,nature_enthusiast,Greedy Top-Match,,46,150,38,0.2533,-74.0
+mismatched,nature_enthusiast,Random-within-Match,,46,150,43,0.2867,-64.0
+mismatched,nature_enthusiast,Cycling Baseline,,46,150,98,0.6533,46.0
+mismatched,nature_enthusiast,Random,,46,150,109,0.7267,68.0
+mismatched,nature_enthusiast,LinUCB,0.1,46,150,132,0.88,114.0
+mismatched,nature_enthusiast,LinUCB,0.3,46,150,132,0.88,114.0
+mismatched,nature_enthusiast,LinUCB,0.5,46,150,132,0.88,114.0
+mismatched,nature_enthusiast,LinUCB,1.0,46,150,129,0.86,108.0
+mismatched,nature_enthusiast,Oracle,,47,150,128,0.8533,106.0
+mismatched,nature_enthusiast,Greedy Top-Match,,47,150,27,0.18,-96.0
+mismatched,nature_enthusiast,Random-within-Match,,47,150,25,0.1667,-100.0
+mismatched,nature_enthusiast,Cycling Baseline,,47,150,86,0.5733,22.0
+mismatched,nature_enthusiast,Random,,47,150,93,0.62,36.0
+mismatched,nature_enthusiast,LinUCB,0.1,47,150,116,0.7733,82.0
+mismatched,nature_enthusiast,LinUCB,0.3,47,150,114,0.76,78.0
+mismatched,nature_enthusiast,LinUCB,0.5,47,150,117,0.78,84.0
+mismatched,nature_enthusiast,LinUCB,1.0,47,150,105,0.7,60.0
+mismatched,nature_enthusiast,Oracle,,48,150,134,0.8933,118.0
+mismatched,nature_enthusiast,Greedy Top-Match,,48,150,37,0.2467,-76.0
+mismatched,nature_enthusiast,Random-within-Match,,48,150,38,0.2533,-74.0
+mismatched,nature_enthusiast,Cycling Baseline,,48,150,97,0.6467,44.0
+mismatched,nature_enthusiast,Random,,48,150,102,0.68,54.0
+mismatched,nature_enthusiast,LinUCB,0.1,48,150,128,0.8533,106.0
+mismatched,nature_enthusiast,LinUCB,0.3,48,150,126,0.84,102.0
+mismatched,nature_enthusiast,LinUCB,0.5,48,150,116,0.7733,82.0
+mismatched,nature_enthusiast,LinUCB,1.0,48,150,125,0.8333,100.0
+mismatched,nature_enthusiast,Oracle,,49,150,130,0.8667,110.0
+mismatched,nature_enthusiast,Greedy Top-Match,,49,150,40,0.2667,-70.0
+mismatched,nature_enthusiast,Random-within-Match,,49,150,37,0.2467,-76.0
+mismatched,nature_enthusiast,Cycling Baseline,,49,150,94,0.6267,38.0
+mismatched,nature_enthusiast,Random,,49,150,92,0.6133,34.0
+mismatched,nature_enthusiast,LinUCB,0.1,49,150,119,0.7933,88.0
+mismatched,nature_enthusiast,LinUCB,0.3,49,150,127,0.8467,104.0
+mismatched,nature_enthusiast,LinUCB,0.5,49,150,128,0.8533,106.0
+mismatched,nature_enthusiast,LinUCB,1.0,49,150,125,0.8333,100.0
+mismatched,nature_enthusiast,Oracle,,50,150,134,0.8933,118.0
+mismatched,nature_enthusiast,Greedy Top-Match,,50,150,45,0.3,-60.0
+mismatched,nature_enthusiast,Random-within-Match,,50,150,43,0.2867,-64.0
+mismatched,nature_enthusiast,Cycling Baseline,,50,150,100,0.6667,50.0
+mismatched,nature_enthusiast,Random,,50,150,104,0.6933,58.0
+mismatched,nature_enthusiast,LinUCB,0.1,50,150,119,0.7933,88.0
+mismatched,nature_enthusiast,LinUCB,0.3,50,150,129,0.86,108.0
+mismatched,nature_enthusiast,LinUCB,0.5,50,150,118,0.7867,86.0
+mismatched,nature_enthusiast,LinUCB,1.0,50,150,125,0.8333,100.0
+mismatched,nature_enthusiast,Oracle,,51,150,136,0.9067,122.0
+mismatched,nature_enthusiast,Greedy Top-Match,,51,150,39,0.26,-72.0
+mismatched,nature_enthusiast,Random-within-Match,,51,150,34,0.2267,-82.0
+mismatched,nature_enthusiast,Cycling Baseline,,51,150,101,0.6733,52.0
+mismatched,nature_enthusiast,Random,,51,150,102,0.68,54.0
+mismatched,nature_enthusiast,LinUCB,0.1,51,150,128,0.8533,106.0
+mismatched,nature_enthusiast,LinUCB,0.3,51,150,127,0.8467,104.0
+mismatched,nature_enthusiast,LinUCB,0.5,51,150,103,0.6867,56.0
+mismatched,nature_enthusiast,LinUCB,1.0,51,150,119,0.7933,88.0
+mismatched,culture_buff,Oracle,,42,150,130,0.8667,110.0
+mismatched,culture_buff,Greedy Top-Match,,42,150,39,0.26,-72.0
+mismatched,culture_buff,Random-within-Match,,42,150,43,0.2867,-64.0
+mismatched,culture_buff,Cycling Baseline,,42,150,107,0.7133,64.0
+mismatched,culture_buff,Random,,42,150,107,0.7133,64.0
+mismatched,culture_buff,LinUCB,0.1,42,150,137,0.9133,124.0
+mismatched,culture_buff,LinUCB,0.3,42,150,130,0.8667,110.0
+mismatched,culture_buff,LinUCB,0.5,42,150,128,0.8533,106.0
+mismatched,culture_buff,LinUCB,1.0,42,150,128,0.8533,106.0
+mismatched,culture_buff,Oracle,,43,150,137,0.9133,124.0
+mismatched,culture_buff,Greedy Top-Match,,43,150,33,0.22,-84.0
+mismatched,culture_buff,Random-within-Match,,43,150,42,0.28,-66.0
+mismatched,culture_buff,Cycling Baseline,,43,150,111,0.74,72.0
+mismatched,culture_buff,Random,,43,150,114,0.76,78.0
+mismatched,culture_buff,LinUCB,0.1,43,150,128,0.8533,106.0
+mismatched,culture_buff,LinUCB,0.3,43,150,114,0.76,78.0
+mismatched,culture_buff,LinUCB,0.5,43,150,120,0.8,90.0
+mismatched,culture_buff,LinUCB,1.0,43,150,114,0.76,78.0
+mismatched,culture_buff,Oracle,,44,150,133,0.8867,116.0
+mismatched,culture_buff,Greedy Top-Match,,44,150,40,0.2667,-70.0
+mismatched,culture_buff,Random-within-Match,,44,150,43,0.2867,-64.0
+mismatched,culture_buff,Cycling Baseline,,44,150,104,0.6933,58.0
+mismatched,culture_buff,Random,,44,150,107,0.7133,64.0
+mismatched,culture_buff,LinUCB,0.1,44,150,129,0.86,108.0
+mismatched,culture_buff,LinUCB,0.3,44,150,125,0.8333,100.0
+mismatched,culture_buff,LinUCB,0.5,44,150,125,0.8333,100.0
+mismatched,culture_buff,LinUCB,1.0,44,150,123,0.82,96.0
+mismatched,culture_buff,Oracle,,45,150,130,0.8667,110.0
+mismatched,culture_buff,Greedy Top-Match,,45,150,40,0.2667,-70.0
+mismatched,culture_buff,Random-within-Match,,45,150,41,0.2733,-68.0
+mismatched,culture_buff,Cycling Baseline,,45,150,107,0.7133,64.0
+mismatched,culture_buff,Random,,45,150,109,0.7267,68.0
+mismatched,culture_buff,LinUCB,0.1,45,150,136,0.9067,122.0
+mismatched,culture_buff,LinUCB,0.3,45,150,134,0.8933,118.0
+mismatched,culture_buff,LinUCB,0.5,45,150,128,0.8533,106.0
+mismatched,culture_buff,LinUCB,1.0,45,150,128,0.8533,106.0
+mismatched,culture_buff,Oracle,,46,150,138,0.92,126.0
+mismatched,culture_buff,Greedy Top-Match,,46,150,45,0.3,-60.0
+mismatched,culture_buff,Random-within-Match,,46,150,50,0.3333,-50.0
+mismatched,culture_buff,Cycling Baseline,,46,150,104,0.6933,58.0
+mismatched,culture_buff,Random,,46,150,115,0.7667,80.0
+mismatched,culture_buff,LinUCB,0.1,46,150,132,0.88,114.0
+mismatched,culture_buff,LinUCB,0.3,46,150,131,0.8733,112.0
+mismatched,culture_buff,LinUCB,0.5,46,150,128,0.8533,106.0
+mismatched,culture_buff,LinUCB,1.0,46,150,129,0.86,108.0
+mismatched,culture_buff,Oracle,,47,150,128,0.8533,106.0
+mismatched,culture_buff,Greedy Top-Match,,47,150,32,0.2133,-86.0
+mismatched,culture_buff,Random-within-Match,,47,150,32,0.2133,-86.0
+mismatched,culture_buff,Cycling Baseline,,47,150,102,0.68,54.0
+mismatched,culture_buff,Random,,47,150,95,0.6333,40.0
+mismatched,culture_buff,LinUCB,0.1,47,150,121,0.8067,92.0
+mismatched,culture_buff,LinUCB,0.3,47,150,116,0.7733,82.0
+mismatched,culture_buff,LinUCB,0.5,47,150,114,0.76,78.0
+mismatched,culture_buff,LinUCB,1.0,47,150,116,0.7733,82.0
+mismatched,culture_buff,Oracle,,48,150,134,0.8933,118.0
+mismatched,culture_buff,Greedy Top-Match,,48,150,40,0.2667,-70.0
+mismatched,culture_buff,Random-within-Match,,48,150,41,0.2733,-68.0
+mismatched,culture_buff,Cycling Baseline,,48,150,102,0.68,54.0
+mismatched,culture_buff,Random,,48,150,116,0.7733,82.0
+mismatched,culture_buff,LinUCB,0.1,48,150,133,0.8867,116.0
+mismatched,culture_buff,LinUCB,0.3,48,150,126,0.84,102.0
+mismatched,culture_buff,LinUCB,0.5,48,150,128,0.8533,106.0
+mismatched,culture_buff,LinUCB,1.0,48,150,124,0.8267,98.0
+mismatched,culture_buff,Oracle,,49,150,130,0.8667,110.0
+mismatched,culture_buff,Greedy Top-Match,,49,150,44,0.2933,-62.0
+mismatched,culture_buff,Random-within-Match,,49,150,42,0.28,-66.0
+mismatched,culture_buff,Cycling Baseline,,49,150,106,0.7067,62.0
+mismatched,culture_buff,Random,,49,150,109,0.7267,68.0
+mismatched,culture_buff,LinUCB,0.1,49,150,131,0.8733,112.0
+mismatched,culture_buff,LinUCB,0.3,49,150,128,0.8533,106.0
+mismatched,culture_buff,LinUCB,0.5,49,150,126,0.84,102.0
+mismatched,culture_buff,LinUCB,1.0,49,150,122,0.8133,94.0
+mismatched,culture_buff,Oracle,,50,150,134,0.8933,118.0
+mismatched,culture_buff,Greedy Top-Match,,50,150,52,0.3467,-46.0
+mismatched,culture_buff,Random-within-Match,,50,150,49,0.3267,-52.0
+mismatched,culture_buff,Cycling Baseline,,50,150,102,0.68,54.0
+mismatched,culture_buff,Random,,50,150,111,0.74,72.0
+mismatched,culture_buff,LinUCB,0.1,50,150,129,0.86,108.0
+mismatched,culture_buff,LinUCB,0.3,50,150,127,0.8467,104.0
+mismatched,culture_buff,LinUCB,0.5,50,150,127,0.8467,104.0
+mismatched,culture_buff,LinUCB,1.0,50,150,117,0.78,84.0
+mismatched,culture_buff,Oracle,,51,150,136,0.9067,122.0
+mismatched,culture_buff,Greedy Top-Match,,51,150,45,0.3,-60.0
+mismatched,culture_buff,Random-within-Match,,51,150,43,0.2867,-64.0
+mismatched,culture_buff,Cycling Baseline,,51,150,106,0.7067,62.0
+mismatched,culture_buff,Random,,51,150,111,0.74,72.0
+mismatched,culture_buff,LinUCB,0.1,51,150,134,0.8933,118.0
+mismatched,culture_buff,LinUCB,0.3,51,150,126,0.84,102.0
+mismatched,culture_buff,LinUCB,0.5,51,150,117,0.78,84.0
+mismatched,culture_buff,LinUCB,1.0,51,150,120,0.8,90.0
+mismatched,balanced,Oracle,,42,150,120,0.8,90.0
+mismatched,balanced,Greedy Top-Match,,42,150,100,0.6667,50.0
+mismatched,balanced,Random-within-Match,,42,150,95,0.6333,40.0
+mismatched,balanced,Cycling Baseline,,42,150,108,0.72,66.0
+mismatched,balanced,Random,,42,150,109,0.7267,68.0
+mismatched,balanced,LinUCB,0.1,42,150,121,0.8067,92.0
+mismatched,balanced,LinUCB,0.3,42,150,122,0.8133,94.0
+mismatched,balanced,LinUCB,0.5,42,150,121,0.8067,92.0
+mismatched,balanced,LinUCB,1.0,42,150,115,0.7667,80.0
+mismatched,balanced,Oracle,,43,150,123,0.82,96.0
+mismatched,balanced,Greedy Top-Match,,43,150,96,0.64,42.0
+mismatched,balanced,Random-within-Match,,43,150,102,0.68,54.0
+mismatched,balanced,Cycling Baseline,,43,150,116,0.7733,82.0
+mismatched,balanced,Random,,43,150,115,0.7667,80.0
+mismatched,balanced,LinUCB,0.1,43,150,114,0.76,78.0
+mismatched,balanced,LinUCB,0.3,43,150,110,0.7333,70.0
+mismatched,balanced,LinUCB,0.5,43,150,109,0.7267,68.0
+mismatched,balanced,LinUCB,1.0,43,150,108,0.72,66.0
+mismatched,balanced,Oracle,,44,150,122,0.8133,94.0
+mismatched,balanced,Greedy Top-Match,,44,150,91,0.6067,32.0
+mismatched,balanced,Random-within-Match,,44,150,96,0.64,42.0
+mismatched,balanced,Cycling Baseline,,44,150,100,0.6667,50.0
+mismatched,balanced,Random,,44,150,108,0.72,66.0
+mismatched,balanced,LinUCB,0.1,44,150,104,0.6933,58.0
+mismatched,balanced,LinUCB,0.3,44,150,104,0.6933,58.0
+mismatched,balanced,LinUCB,0.5,44,150,102,0.68,54.0
+mismatched,balanced,LinUCB,1.0,44,150,105,0.7,60.0
+mismatched,balanced,Oracle,,45,150,120,0.8,90.0
+mismatched,balanced,Greedy Top-Match,,45,150,99,0.66,48.0
+mismatched,balanced,Random-within-Match,,45,150,98,0.6533,46.0
+mismatched,balanced,Cycling Baseline,,45,150,101,0.6733,52.0
+mismatched,balanced,Random,,45,150,110,0.7333,70.0
+mismatched,balanced,LinUCB,0.1,45,150,114,0.76,78.0
+mismatched,balanced,LinUCB,0.3,45,150,115,0.7667,80.0
+mismatched,balanced,LinUCB,0.5,45,150,111,0.74,72.0
+mismatched,balanced,LinUCB,1.0,45,150,118,0.7867,86.0
+mismatched,balanced,Oracle,,46,150,132,0.88,114.0
+mismatched,balanced,Greedy Top-Match,,46,150,108,0.72,66.0
+mismatched,balanced,Random-within-Match,,46,150,109,0.7267,68.0
+mismatched,balanced,Cycling Baseline,,46,150,111,0.74,72.0
+mismatched,balanced,Random,,46,150,118,0.7867,86.0
+mismatched,balanced,LinUCB,0.1,46,150,128,0.8533,106.0
+mismatched,balanced,LinUCB,0.3,46,150,127,0.8467,104.0
+mismatched,balanced,LinUCB,0.5,46,150,125,0.8333,100.0
+mismatched,balanced,LinUCB,1.0,46,150,119,0.7933,88.0
+mismatched,balanced,Oracle,,47,150,118,0.7867,86.0
+mismatched,balanced,Greedy Top-Match,,47,150,88,0.5867,26.0
+mismatched,balanced,Random-within-Match,,47,150,94,0.6267,38.0
+mismatched,balanced,Cycling Baseline,,47,150,98,0.6533,46.0
+mismatched,balanced,Random,,47,150,103,0.6867,56.0
+mismatched,balanced,LinUCB,0.1,47,150,108,0.72,66.0
+mismatched,balanced,LinUCB,0.3,47,150,107,0.7133,64.0
+mismatched,balanced,LinUCB,0.5,47,150,107,0.7133,64.0
+mismatched,balanced,LinUCB,1.0,47,150,104,0.6933,58.0
+mismatched,balanced,Oracle,,48,150,122,0.8133,94.0
+mismatched,balanced,Greedy Top-Match,,48,150,100,0.6667,50.0
+mismatched,balanced,Random-within-Match,,48,150,103,0.6867,56.0
+mismatched,balanced,Cycling Baseline,,48,150,99,0.66,48.0
+mismatched,balanced,Random,,48,150,111,0.74,72.0
+mismatched,balanced,LinUCB,0.1,48,150,118,0.7867,86.0
+mismatched,balanced,LinUCB,0.3,48,150,116,0.7733,82.0
+mismatched,balanced,LinUCB,0.5,48,150,121,0.8067,92.0
+mismatched,balanced,LinUCB,1.0,48,150,114,0.76,78.0
+mismatched,balanced,Oracle,,49,150,122,0.8133,94.0
+mismatched,balanced,Greedy Top-Match,,49,150,98,0.6533,46.0
+mismatched,balanced,Random-within-Match,,49,150,93,0.62,36.0
+mismatched,balanced,Cycling Baseline,,49,150,105,0.7,60.0
+mismatched,balanced,Random,,49,150,104,0.6933,58.0
+mismatched,balanced,LinUCB,0.1,49,150,114,0.76,78.0
+mismatched,balanced,LinUCB,0.3,49,150,112,0.7467,74.0
+mismatched,balanced,LinUCB,0.5,49,150,114,0.76,78.0
+mismatched,balanced,LinUCB,1.0,49,150,107,0.7133,64.0
+mismatched,balanced,Oracle,,50,150,124,0.8267,98.0
+mismatched,balanced,Greedy Top-Match,,50,150,110,0.7333,70.0
+mismatched,balanced,Random-within-Match,,50,150,105,0.7,60.0
+mismatched,balanced,Cycling Baseline,,50,150,109,0.7267,68.0
+mismatched,balanced,Random,,50,150,117,0.78,84.0
+mismatched,balanced,LinUCB,0.1,50,150,117,0.78,84.0
+mismatched,balanced,LinUCB,0.3,50,150,117,0.78,84.0
+mismatched,balanced,LinUCB,0.5,50,150,117,0.78,84.0
+mismatched,balanced,LinUCB,1.0,50,150,112,0.7467,74.0
+mismatched,balanced,Oracle,,51,150,119,0.7933,88.0
+mismatched,balanced,Greedy Top-Match,,51,150,105,0.7,60.0
+mismatched,balanced,Random-within-Match,,51,150,105,0.7,60.0
+mismatched,balanced,Cycling Baseline,,51,150,103,0.6867,56.0
+mismatched,balanced,Random,,51,150,109,0.7267,68.0
+mismatched,balanced,LinUCB,0.1,51,150,111,0.74,72.0
+mismatched,balanced,LinUCB,0.3,51,150,108,0.72,66.0
+mismatched,balanced,LinUCB,0.5,51,150,112,0.7467,74.0
+mismatched,balanced,LinUCB,1.0,51,150,104,0.6933,58.0
