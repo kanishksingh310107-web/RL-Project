@@ -1,0 +1,41 @@
+{
+  "city": "Manali",
+  "category_type": "hill_town",
+  "fixture_type": "synthetic test fixture",
+  "lat": 32.2432,
+  "lon": 77.1892,
+  "places": [
+    {
+      "id": "manali_solang_valley_synth",
+      "name": "Solang Valley Adventures",
+      "category": "adventure",
+      "lat": 32.3166,
+      "lon": 77.1575,
+      "neighbourhood": "Solang",
+      "typical_duration_minutes": 180,
+      "cost_amount": 500.0,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    },
+    {
+      "id": "manali_hidimba_temple_synth",
+      "name": "Hidimba Devi Temple",
+      "category": "culture_history",
+      "lat": 32.2483,
+      "lon": 77.1804,
+      "neighbourhood": "Dhungri",
+      "typical_duration_minutes": 60,
+      "cost_amount": null,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    }
+  ]
+}

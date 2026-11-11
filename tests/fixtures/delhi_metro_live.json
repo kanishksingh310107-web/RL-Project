@@ -1,0 +1,342 @@
+{
+  "city": "Delhi",
+  "category_type": "metro",
+  "fixture_type": "recorded live fixture",
+  "recorded_at": "2026-11-11T07:48:08.702355+00:00",
+  "geocoding": {
+    "name": "Delhi\u2013Meerut RRTS",
+    "lat": 28.9866677,
+    "lon": 77.6989669,
+    "formatted": "Delhi\u2013Meerut RRTS, Chapel Street, Meerut - 250001, UP, India",
+    "city": "Meerut",
+    "provenance": {
+      "source": "geoapify",
+      "fetched_at": "2026-11-11T07:48:05.032060+00:00",
+      "is_live": true,
+      "is_estimate": false,
+      "notes": "Powered by Geoapify | \u00a9 OpenStreetMap contributors"
+    }
+  },
+  "places": [
+    {
+      "id": "geo_5116bebed6a56d534059311ddf837cfd3c40f00103f9017fa0edee020000009203134368616e6472617368656b68617220417a6164",
+      "name": "Chandrashekhar Azad",
+      "category": "culture_history",
+      "destination_id": null,
+      "city": null,
+      "lat": 28.9901812,
+      "lon": 77.713247,
+      "address": "Chandrashekhar Azad, Western Kutchery Road, Shiv Lok, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": "Shiv Lok",
+      "opening_hours": null,
+      "opening_days": null,
+      "typical_duration_minutes": null,
+      "rating": null,
+      "price_level": null,
+      "cost_amount": null,
+      "cuisine": null,
+      "diet_tags": null,
+      "phone": null,
+      "website": null,
+      "photo_url": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:05.570299+00:00",
+        "is_live": true,
+        "is_estimate": false,
+        "notes": "Powered by Geoapify | \u00a9 OpenStreetMap contributors"
+      }
+    },
+    {
+      "id": "geo_5126b5f785d66d53405960981b17d9fd3c40f00102f90126d33b490000000092031b4368617564686172792043686172616e2053696e6768205061726b",
+      "name": "Chaudhary Charan Singh Park",
+      "category": "nature_outdoors",
+      "destination_id": null,
+      "city": null,
+      "lat": 28.9915996,
+      "lon": 77.7162001,
+      "address": "Chaudhary Charan Singh Park, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "opening_hours": null,
+      "opening_days": null,
+      "typical_duration_minutes": null,
+      "rating": null,
+      "price_level": null,
+      "cost_amount": null,
+      "cuisine": null,
+      "diet_tags": null,
+      "phone": null,
+      "website": null,
+      "photo_url": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:06.158594+00:00",
+        "is_live": true,
+        "is_estimate": false,
+        "notes": "Powered by Geoapify | \u00a9 OpenStreetMap contributors"
+      }
+    },
+    {
+      "id": "geo_5189c8fa17d26e534059740d8eed10f63c40f00103f901ce9bca030100000092031149636520437265616d205061726c6f7572",
+      "name": "Ice Cream Parlour",
+      "category": "food_dining",
+      "destination_id": null,
+      "city": null,
+      "lat": 28.9611958,
+      "lon": 77.7315731,
+      "address": "Ice Cream Parlour, Nai Sadak, Shastri Nagar, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": "Shastri Nagar",
+      "opening_hours": null,
+      "opening_days": null,
+      "typical_duration_minutes": null,
+      "rating": null,
+      "price_level": null,
+      "cost_amount": null,
+      "cuisine": null,
+      "diet_tags": null,
+      "phone": null,
+      "website": null,
+      "photo_url": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:06.766061+00:00",
+        "is_live": true,
+        "is_estimate": false,
+        "notes": "Powered by Geoapify | \u00a9 OpenStreetMap contributors"
+      }
+    },
+    {
+      "id": "geo_51e95f92ca146e534059aed7f4a0a0f83c40f00103f901f6b71b550200000092031fe0a4a6e0a4bfe0a4b2e0a58de0a4b2e0a58020e0a4a2e0a4bee0a4ace0a4be",
+      "name": "\u0926\u093f\u0932\u094d\u0932\u0940 \u0922\u093e\u092c\u093e",
+      "category": "food_dining",
+      "destination_id": null,
+      "city": null,
+      "lat": 28.971201,
+      "lon": 77.720019,
+      "address": "Dilli Dhaba, Garh Road, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "opening_hours": null,
+      "opening_days": null,
+      "typical_duration_minutes": null,
+      "rating": null,
+      "price_level": null,
+      "cost_amount": null,
+      "cuisine": null,
+      "diet_tags": null,
+      "phone": null,
+      "website": null,
+      "photo_url": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:06.766061+00:00",
+        "is_live": true,
+        "is_estimate": false,
+        "notes": "Powered by Geoapify | \u00a9 OpenStreetMap contributors"
+      }
+    },
+    {
+      "id": "geo_515db8bdee3e6e5340595b9544f641f83c40f00103f901ca8115320300000092031b536875646468205368616b61686172692042686f6a616e616c6179",
+      "name": "Shuddh Shakahari Bhojanalay",
+      "category": "food_dining",
+      "destination_id": null,
+      "city": null,
+      "lat": 28.9697565,
+      "lon": 77.7225911,
+      "address": "Shuddh Shakahari Bhojanalay, Garh Road, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "opening_hours": null,
+      "opening_days": null,
+      "typical_duration_minutes": null,
+      "rating": null,
+      "price_level": null,
+      "cost_amount": null,
+      "cuisine": null,
+      "diet_tags": null,
+      "phone": null,
+      "website": null,
+      "photo_url": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:06.766061+00:00",
+        "is_live": true,
+        "is_estimate": false,
+        "notes": "Powered by Geoapify | \u00a9 OpenStreetMap contributors"
+      }
+    }
+  ],
+  "accommodations": [
+    {
+      "stay_id": "stay_geo_51ad9e3825c56e534059ff243e7782f73c40f00103f9018cae04df0200000092031053616d726174205265736964656e6379",
+      "trip_id": "default_trip",
+      "name": "Samrat Residency",
+      "stay_type": "mid_range",
+      "lat": 28.9668345,
+      "lon": 77.7307828,
+      "address": "Samrat Residency, Garh Road, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "stars": null,
+      "estimated_nightly_budget": null,
+      "external_search_url": "https://www.google.com/travel/hotels?q=Samrat%20Residency%20hotels",
+      "phone": null,
+      "website": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:07.220074+00:00",
+        "is_live": true,
+        "is_estimate": true,
+        "notes": "hotel options without prices; search link opens external site"
+      }
+    },
+    {
+      "stay_id": "stay_geo_51564ed603c16e534059aa494b40a7f73c40f00103f90190ae04df0200000092030a526564204f7263686964",
+      "trip_id": "default_trip",
+      "name": "Red Orchid",
+      "stay_type": "mid_range",
+      "lat": 28.9673958,
+      "lon": 77.7305307,
+      "address": "Red Orchid, Garh Road, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "stars": null,
+      "estimated_nightly_budget": null,
+      "external_search_url": "https://www.google.com/travel/hotels?q=Red%20Orchid%20hotels",
+      "phone": null,
+      "website": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:07.220074+00:00",
+        "is_live": true,
+        "is_estimate": true,
+        "notes": "hotel options without prices; search link opens external site"
+      }
+    },
+    {
+      "stay_id": "stay_geo_5199fb3fe2326e5340593db665c059f83c40f00103f9014e1c163203000000920310416d616e20477565737420486f757365",
+      "trip_id": "default_trip",
+      "name": "Aman Guest House",
+      "stay_type": "mid_range",
+      "lat": 28.9701195,
+      "lon": 77.7218557,
+      "address": "Aman Guest House, Garh Road, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "stars": null,
+      "estimated_nightly_budget": null,
+      "external_search_url": "https://www.google.com/travel/hotels?q=Aman%20Guest%20House%20hotels",
+      "phone": null,
+      "website": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:07.220074+00:00",
+        "is_live": true,
+        "is_estimate": true,
+        "notes": "hotel options without prices; search link opens external site"
+      }
+    },
+    {
+      "stay_id": "stay_geo_51d0ca074e476e534059f888981249f83c40f00103f901e870153203000000920312486f74656c204772616e742044656c757865",
+      "trip_id": "default_trip",
+      "name": "Hotel Grant Deluxe",
+      "stay_type": "mid_range",
+      "lat": 28.969865,
+      "lon": 77.7231021,
+      "address": "Hotel Grant Deluxe, Garh Road, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "stars": null,
+      "estimated_nightly_budget": null,
+      "external_search_url": "https://www.google.com/travel/hotels?q=Hotel%20Grant%20Deluxe%20hotels",
+      "phone": null,
+      "website": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:07.220074+00:00",
+        "is_live": true,
+        "is_estimate": true,
+        "notes": "hotel options without prices; search link opens external site"
+      }
+    },
+    {
+      "stay_id": "stay_geo_51598638d6456e5340592d149ff133f83c40f00103f901ce4f15320300000092030e4161736872617961205374617973",
+      "trip_id": "default_trip",
+      "name": "Aashraya Stays",
+      "stay_type": "mid_range",
+      "lat": 28.9695426,
+      "lon": 77.7230125,
+      "address": "Aashraya Stays, Garh Road, Meerut - 250001, Uttar Pradesh, India",
+      "neighbourhood": null,
+      "stars": null,
+      "estimated_nightly_budget": null,
+      "external_search_url": "https://www.google.com/travel/hotels?q=Aashraya%20Stays%20hotels",
+      "phone": null,
+      "website": null,
+      "provenance": {
+        "source": "geoapify",
+        "fetched_at": "2026-11-11T07:48:07.220074+00:00",
+        "is_live": true,
+        "is_estimate": true,
+        "notes": "hotel options without prices; search link opens external site"
+      }
+    }
+  ],
+  "weather_forecast": {
+    "latitude": 28.9866677,
+    "longitude": 77.6989669,
+    "daily_forecast": [
+      {
+        "date": "2026-11-11",
+        "condition": "Mainly clear",
+        "weather_code": 1,
+        "temp_max_c": 27.1,
+        "temp_min_c": 15.8,
+        "rain_sum_mm": 0.0,
+        "rain_probability_pct": 0,
+        "windspeed_kmh": 8.3,
+        "sunrise": "2026-11-11T06:39",
+        "sunset": "2026-11-11T17:26"
+      },
+      {
+        "date": "2026-11-12",
+        "condition": "Overcast",
+        "weather_code": 3,
+        "temp_max_c": 27.6,
+        "temp_min_c": 17.0,
+        "rain_sum_mm": 0.0,
+        "rain_probability_pct": 0,
+        "windspeed_kmh": 9.3,
+        "sunrise": "2026-11-12T06:39",
+        "sunset": "2026-11-12T17:26"
+      },
+      {
+        "date": "2026-11-13",
+        "condition": "Overcast",
+        "weather_code": 3,
+        "temp_max_c": 28.0,
+        "temp_min_c": 17.7,
+        "rain_sum_mm": 0.0,
+        "rain_probability_pct": 0,
+        "windspeed_kmh": 7.0,
+        "sunrise": "2026-11-13T06:40",
+        "sunset": "2026-11-13T17:25"
+      }
+    ],
+    "provenance": {
+      "source": "open-meteo",
+      "fetched_at": "2026-11-11T07:48:07.947700+00:00",
+      "is_live": true,
+      "is_estimate": false,
+      "notes": "Weather data by Open-Meteo.com (CC BY 4.0)"
+    }
+  },
+  "historical_climate": {
+    "month": 11,
+    "mean_temp_c": 19.5,
+    "total_rain_mm": 7.1,
+    "season_score": 0.98,
+    "is_comfortable": true,
+    "provenance": {
+      "source": "open-meteo-archive",
+      "fetched_at": "2026-11-11T07:48:08.690521+00:00",
+      "is_live": true,
+      "is_estimate": false,
+      "notes": "Weather data by Open-Meteo.com (CC BY 4.0)"
+    }
+  }
+}

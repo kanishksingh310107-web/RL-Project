@@ -1,0 +1,41 @@
+{
+  "city": "Jaipur",
+  "category_type": "tourist_town",
+  "fixture_type": "synthetic test fixture",
+  "lat": 26.9124,
+  "lon": 75.7873,
+  "places": [
+    {
+      "id": "jaipur_amber_palace_synth",
+      "name": "Amber Palace Fort",
+      "category": "culture_history",
+      "lat": 26.9855,
+      "lon": 75.8513,
+      "neighbourhood": "Amer",
+      "typical_duration_minutes": 150,
+      "cost_amount": 100.0,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    },
+    {
+      "id": "jaipur_johari_bazaar_synth",
+      "name": "Johari Bazaar Handicrafts",
+      "category": "shopping_local",
+      "lat": 26.9196,
+      "lon": 75.8242,
+      "neighbourhood": "Pink City",
+      "typical_duration_minutes": 75,
+      "cost_amount": null,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    }
+  ]
+}

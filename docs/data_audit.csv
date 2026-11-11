@@ -1,0 +1,41 @@
+city,city_type,category,places_sampled,pct_opening_hours,pct_cuisine,pct_diet_tags,pct_rating,pct_price_or_cost,pct_website,pct_phone
+Delhi,metro,culture_history,1,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Delhi,metro,nature_outdoors,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Delhi,metro,food_dining,8,0.0,0.0,0.0,0.0,0.0,0.0,12.5
+Delhi,metro,adventure,1,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Delhi,metro,relaxation,6,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Delhi,metro,shopping_local,10,10.0,0.0,0.0,0.0,0.0,0.0,0.0
+Delhi,metro,scenic,3,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Delhi,metro,accommodation,10,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Jaipur,tourist_town,culture_history,7,14.3,0.0,0.0,0.0,0.0,0.0,0.0
+Jaipur,tourist_town,nature_outdoors,6,16.7,0.0,0.0,0.0,0.0,0.0,0.0
+Jaipur,tourist_town,food_dining,7,14.3,0.0,0.0,0.0,0.0,0.0,0.0
+Jaipur,tourist_town,adventure,6,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Jaipur,tourist_town,relaxation,6,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Jaipur,tourist_town,shopping_local,10,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Jaipur,tourist_town,scenic,9,22.2,0.0,0.0,0.0,0.0,0.0,0.0
+Jaipur,tourist_town,accommodation,10,0.0,0.0,0.0,0.0,0.0,0.0,20.0
+Manali,hill_town,culture_history,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Manali,hill_town,nature_outdoors,1,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Manali,hill_town,food_dining,1,100.0,0.0,0.0,0.0,0.0,0.0,0.0
+Manali,hill_town,adventure,8,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Manali,hill_town,relaxation,6,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Manali,hill_town,shopping_local,3,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Manali,hill_town,scenic,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Manali,hill_town,accommodation,10,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Hampi,small_town,culture_history,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Hampi,small_town,nature_outdoors,1,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Hampi,small_town,food_dining,1,100.0,0.0,0.0,0.0,0.0,0.0,0.0
+Hampi,small_town,adventure,8,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Hampi,small_town,relaxation,6,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Hampi,small_town,shopping_local,3,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+Hampi,small_town,scenic,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+Hampi,small_town,accommodation,10,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+South Goa,coastal,culture_history,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+South Goa,coastal,nature_outdoors,1,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+South Goa,coastal,food_dining,1,100.0,0.0,0.0,0.0,0.0,0.0,0.0
+South Goa,coastal,adventure,8,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+South Goa,coastal,relaxation,6,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+South Goa,coastal,shopping_local,3,0.0,0.0,0.0,0.0,100.0,0.0,0.0
+South Goa,coastal,scenic,2,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+South Goa,coastal,accommodation,10,0.0,0.0,0.0,0.0,100.0,0.0,0.0

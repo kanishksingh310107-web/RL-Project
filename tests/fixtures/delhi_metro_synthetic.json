@@ -1,0 +1,41 @@
+{
+  "city": "Delhi",
+  "category_type": "metro",
+  "fixture_type": "synthetic test fixture",
+  "lat": 28.6139,
+  "lon": 77.2090,
+  "places": [
+    {
+      "id": "delhi_red_fort_synth",
+      "name": "Red Fort",
+      "category": "culture_history",
+      "lat": 28.6562,
+      "lon": 77.2410,
+      "neighbourhood": "Old Delhi",
+      "typical_duration_minutes": 120,
+      "cost_amount": 50.0,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    },
+    {
+      "id": "delhi_lodhi_gardens_synth",
+      "name": "Lodhi Gardens",
+      "category": "nature_outdoors",
+      "lat": 28.5931,
+      "lon": 77.2197,
+      "neighbourhood": "Lodhi Estate",
+      "typical_duration_minutes": 90,
+      "cost_amount": null,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    }
+  ]
+}

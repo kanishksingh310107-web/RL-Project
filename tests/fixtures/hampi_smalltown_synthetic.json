@@ -1,0 +1,41 @@
+{
+  "city": "Hampi",
+  "category_type": "small_town",
+  "fixture_type": "synthetic test fixture",
+  "lat": 15.3350,
+  "lon": 76.4600,
+  "places": [
+    {
+      "id": "hampi_virupaksha_temple_synth",
+      "name": "Virupaksha Temple",
+      "category": "culture_history",
+      "lat": 15.3353,
+      "lon": 76.4597,
+      "neighbourhood": "Hampi Bazaar",
+      "typical_duration_minutes": 90,
+      "cost_amount": 25.0,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    },
+    {
+      "id": "hampi_matanga_hill_synth",
+      "name": "Matanga Hill Sunrise",
+      "category": "scenic",
+      "lat": 15.3315,
+      "lon": 76.4678,
+      "neighbourhood": "Matanga",
+      "typical_duration_minutes": 75,
+      "cost_amount": null,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    }
+  ]
+}

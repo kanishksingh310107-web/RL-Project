@@ -1,0 +1,41 @@
+{
+  "city": "South Goa",
+  "category_type": "coastal",
+  "fixture_type": "synthetic test fixture",
+  "lat": 15.2993,
+  "lon": 74.1240,
+  "places": [
+    {
+      "id": "goa_palolem_beach_synth",
+      "name": "Palolem Beach Serenity",
+      "category": "relaxation",
+      "lat": 15.0100,
+      "lon": 74.0232,
+      "neighbourhood": "Canacona",
+      "typical_duration_minutes": 120,
+      "cost_amount": null,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    },
+    {
+      "id": "goa_cabo_de_rama_synth",
+      "name": "Cabo de Rama Fort Viewpoint",
+      "category": "scenic",
+      "lat": 15.0903,
+      "lon": 73.9219,
+      "neighbourhood": "Cabo de Rama",
+      "typical_duration_minutes": 60,
+      "cost_amount": null,
+      "provenance": {
+        "source": "synthetic_test_fixture",
+        "is_live": false,
+        "is_estimate": true,
+        "notes": "synthetic test fixture"
+      }
+    }
+  ]
+}
