@@ -10,6 +10,11 @@ from fastapi import APIRouter, HTTPException, Query
 from app.database import get_connection
 from app.modules.common import get_user_context
 from app.recommender import DESTINATIONS
+from app.core.assumptions import (
+    RANKING_DEFAULT_WEIGHTS,
+    INR_TO_USD_RATE,
+)
+from app.core.profile import load_profile
 
 MODULE = {
     "id": "ranking",
@@ -21,14 +26,7 @@ MODULE = {
 router = APIRouter(prefix="/api/ranking", tags=["ranking"])
 
 # Default scoring weights (Assumed baseline, sum = 1.0)
-DEFAULT_WEIGHTS: Dict[str, float] = {
-    "interest": 0.25,
-    "season": 0.20,
-    "popularity": 0.15,
-    "feasibility": 0.15,
-    "live": 0.10,
-    "feedback": 0.15
-}
+DEFAULT_WEIGHTS: Dict[str, float] = dict(RANKING_DEFAULT_WEIGHTS)
 
 # Vocabulary mapping: user answers -> catalogue destination tags
 GOAL_MAPPING: Dict[str, str] = {
@@ -52,7 +50,7 @@ GOAL_MAPPING: Dict[str, str] = {
     "cafes": "cafes",
     "hidden_gems": "nature",
     "nightlife": "nightlife",
-    "scenic_landscapes": "nature"
+    "scenic_landscapes": "nature",
 }
 
 # Month names to integers 1..12
@@ -68,7 +66,7 @@ MONTH_MAP: Dict[str, int] = {
     "sep": 9, "sept": 9, "september": 9,
     "oct": 10, "october": 10,
     "nov": 11, "november": 11,
-    "dec": 12, "december": 12
+    "dec": 12, "december": 12,
 }
 
 STRICT_MONTH_REGEX = re.compile(
@@ -78,7 +76,7 @@ STRICT_MONTH_REGEX = re.compile(
 
 
 def init_tables(conn):
-    """Initialise module-specific tables (none required, placeholder for CONTRACT compliance)."""
+    """Initialise module-specific tables (ranking_audit_log for CONTRACT compliance)."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS ranking_audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,10 +88,35 @@ def init_tables(conn):
 
 
 def parse_cost_range(cost_str: str) -> Optional[tuple[int, int]]:
-    """Extract low and high daily USD cost using regex."""
-    m = re.search(r"\$(\d+)\s*-\s*\$?(\d+)", cost_str)
+    """Extract low and high daily USD cost using regex, handling $, ₹, and comma separators."""
+    if not cost_str:
+        return None
+
+    is_inr = "₹" in cost_str or "rs" in cost_str.lower()
+    # Match range e.g. "$100 - $200" or "₹2,500 - ₹4,500"
+    m = re.search(r"[\$₹Rs\.]*\s*([\d,]+)\s*-\s*[\$₹Rs\.]*\s*([\d,]+)", cost_str, re.IGNORECASE)
     if m:
-        return int(m.group(1)), int(m.group(2))
+        try:
+            low = int(m.group(1).replace(",", ""))
+            high = int(m.group(2).replace(",", ""))
+            if is_inr:
+                low = int(round(low * INR_TO_USD_RATE))
+                high = int(round(high * INR_TO_USD_RATE))
+            return low, high
+        except ValueError:
+            return None
+
+    # Single number fallback
+    m_single = re.search(r"[\$₹]\s*([\d,]+)", cost_str)
+    if m_single:
+        try:
+            val = int(m_single.group(1).replace(",", ""))
+            if is_inr:
+                val = int(round(val * INR_TO_USD_RATE))
+            return val, val
+        except ValueError:
+            return None
+
     return None
 
 
@@ -151,34 +174,54 @@ def calculate_season_score(best_seasons: List[str], target_month: int) -> float:
         return 0.0
 
 
-def calculate_popularity_score(dest: Dict[str, Any]) -> float:
-    """Static popularity estimate based on crowd level and is_trending flag."""
+def calculate_popularity_score(dest: Dict[str, Any], crowd_tolerance: Any = "moderate") -> float:
+    """Popularity score incorporating crowd level, trending flag, and user crowd tolerance."""
     crowd = dest.get("crowd_level", "moderate").lower()
-    base = 0.7
-    if crowd == "low":
-        base = 0.4
-    elif crowd == "high":
-        base = 0.9
+    
+    if isinstance(crowd_tolerance, (int, float)):
+        if crowd_tolerance < 0.35:
+            ct = "low"
+        elif crowd_tolerance > 0.65:
+            ct = "high"
+        else:
+            ct = "moderate"
+    else:
+        ct = str(crowd_tolerance or "moderate").lower()
+
+    if ct == "low":
+        # Dislikes crowds: low crowd is preferred
+        base = 0.9 if crowd == "low" else (0.6 if crowd == "moderate" else 0.3)
+    elif ct == "high":
+        # Enjoys crowds / bustling destinations
+        base = 0.95 if crowd == "high" else (0.7 if crowd == "moderate" else 0.4)
+    else:
+        # Default / moderate
+        base = 0.4 if crowd == "low" else (0.7 if crowd == "moderate" else 0.9)
 
     if dest.get("is_trending", False):
-        return min(1.0, base + 0.1)
-    return base
+        return min(1.0, round(base + 0.1, 2))
+    return round(base, 2)
 
 
 def calculate_feasibility_score(
     dest: Dict[str, Any],
     budget_cap: Optional[float],
-    basic_profile: Optional[Dict[str, Any]]
+    profile: Optional[Dict[str, Any]]
 ) -> tuple[float, str]:
-    """Feasibility = average of budget part and companions part."""
+    """Feasibility = composite of budget match, companion match, and pace match."""
     # 1. Budget part
     cost_range = parse_cost_range(dest.get("estimated_cost", ""))
     if budget_cap is not None and cost_range:
-        _, high = cost_range
-        budget_score = 1.0 if high <= budget_cap else 0.5
-        budget_reason = f"Budget cap ${budget_cap:.0f}: high end ${high} -> {budget_score}"
-    elif basic_profile:
-        user_tier = str(basic_profile.get("budget_tier", "balanced")).lower()
+        low, high = cost_range
+        if high <= budget_cap:
+            budget_score = 1.0
+        elif low <= budget_cap:
+            budget_score = 0.65
+        else:
+            budget_score = 0.3
+        budget_reason = f"Budget cap ${budget_cap:.0f}: est ${low}-${high} -> {budget_score}"
+    elif profile:
+        user_tier = str(profile.get("budget_tier", "balanced")).lower()
         dest_tier = str(dest.get("budget_tier", "balanced")).lower()
 
         tier_order = {"budget": 1, "balanced": 2, "luxury": 3}
@@ -198,7 +241,7 @@ def calculate_feasibility_score(
         budget_reason = "No budget cap or profile -> neutral 0.5"
 
     # 2. Companions part
-    user_comp = str(basic_profile.get("companions", "")).lower() if basic_profile else ""
+    user_comp = str(profile.get("companions", "")).lower() if profile else ""
     if user_comp == "solo":
         user_comp = "alone"
 
@@ -214,12 +257,23 @@ def calculate_feasibility_score(
         comp_score = 0.5
         comp_reason = "Companions unspecified -> neutral 0.5"
 
-    score = round((budget_score + comp_score) / 2.0, 2)
+    # 3. Pace / style match
+    user_pace = str(profile.get("pace", "balanced")).lower() if profile else "balanced"
+    dest_style = str(dest.get("style", "balanced")).lower()
+    if (user_pace == "packed" and dest_style in ["active", "fast"]) or \
+       (user_pace == "relaxed" and dest_style in ["relaxed", "slow"]) or \
+       (user_pace == "balanced"):
+        pace_score = 1.0
+    else:
+        pace_score = 0.6
+
+    score = round((budget_score * 0.5) + (comp_score * 0.3) + (pace_score * 0.2), 2)
     return score, f"{budget_reason}; {comp_reason}"
 
 
 def get_user_feedback_score(user_id: str, dest_id: str, dest_name: str) -> tuple[float, str]:
-    """Feedback: shortlisted = 1.0; past trip rating = (r-1)/4; else neutral 0.5."""
+    """Feedback: shortlisted = 1.0; core_trip_feedback or past trip rating = (r-1)/4; else neutral 0.5."""
+    # 1. Shortlist check
     with get_connection() as conn:
         shortlisted = conn.execute(
             "SELECT 1 FROM shortlisted_destinations WHERE user_id = ? AND destination_id = ?",
@@ -228,6 +282,27 @@ def get_user_feedback_score(user_id: str, dest_id: str, dest_name: str) -> tuple
         if shortlisted:
             return 1.0, "Shortlisted by user"
 
+    # 2. Check core_trip_feedback
+    try:
+        from app.core.stores import load_trip_feedback
+        with get_connection() as conn:
+            user_trips = conn.execute(
+                "SELECT id FROM trips WHERE user_id = ? AND (LOWER(destination_id) = ? OR LOWER(destination_name) = ?)",
+                (user_id, dest_id.lower(), dest_name.lower())
+            ).fetchall()
+            for t in user_trips:
+                feedbacks = load_trip_feedback(t["id"])
+                if feedbacks:
+                    ratings = [f.get("rating") for f in feedbacks if f.get("rating") is not None]
+                    if ratings:
+                        avg_r = sum(ratings) / len(ratings)
+                        val = max(0.0, min(1.0, (avg_r - 1.0) / 4.0))
+                        return round(val, 2), f"Post-trip feedback rating {avg_r:.1f}/5 -> {val:.2f}"
+    except Exception:
+        pass
+
+    # 3. Check legacy past_trips table
+    with get_connection() as conn:
         past = conn.execute(
             "SELECT rating FROM past_trips WHERE user_id = ? AND (LOWER(destination) = ? OR LOWER(destination) = ?)",
             (user_id, dest_id.lower(), dest_name.lower())
@@ -235,28 +310,27 @@ def get_user_feedback_score(user_id: str, dest_id: str, dest_name: str) -> tuple
         if past and past["rating"] is not None:
             r = float(past["rating"])
             val = max(0.0, min(1.0, (r - 1.0) / 4.0))
-            return val, f"Past trip rating {r:.1f}/5 -> {val:.2f}"
+            return round(val, 2), f"Past trip rating {r:.1f}/5 -> {val:.2f}"
 
     return 0.5, "No shortlist or past trip feedback - neutral placeholder"
 
 
-def extract_user_interests(basic_profile: Optional[Dict[str, Any]]) -> Set[str]:
-    """Read user interests from basic['interests'], raw_answers_json['travel_goals'], and place_interests."""
-    if not basic_profile:
+def extract_user_interests(profile: Optional[Dict[str, Any]]) -> Set[str]:
+    """Read user interests from normalized profile interests and raw answers."""
+    if not profile:
         return set()
 
     interests = set()
 
-    # 1. basic['interests']
-    raw_interests = basic_profile.get("interests", [])
+    raw_interests = profile.get("interests", [])
     if isinstance(raw_interests, list):
         for item in raw_interests:
             interests.add(str(item).lower())
     elif isinstance(raw_interests, str) and raw_interests:
         interests.add(raw_interests.lower())
 
-    # 2. raw_answers_json
-    raw_answers = basic_profile.get("raw_answers_json", {})
+    # Raw questionnaire answers if present
+    raw_answers = profile.get("raw_answers", {}) or profile.get("raw_answers_json", {})
     if isinstance(raw_answers, dict):
         for goal in raw_answers.get("travel_goals", []):
             interests.add(str(goal).lower())
@@ -271,6 +345,67 @@ def extract_user_interests(basic_profile: Optional[Dict[str, Any]]) -> Set[str]:
             normalized.add(GOAL_MAPPING[item])
 
     return normalized
+
+
+# Static routes MUST be registered before dynamic routes like /{user_id}
+@router.get("/india/search")
+def search_india_destination(
+    q: str = Query(..., description="Indian city or destination query"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Target month 1-12")
+):
+    """Search any Indian place/city and return live climate seasonality and tourist infrastructure density."""
+    from app.providers.geo import geocode_india, get_places_by_category
+    from app.providers.weather import get_seasonality_score, get_historical_climate
+    from app.providers.guard import reset_request_counter
+
+    if not q or not q.strip():
+        raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
+
+    reset_request_counter()
+    geo = geocode_india(q.strip())
+    if not geo:
+        raise HTTPException(status_code=404, detail=f"Could not find coordinates for Indian destination '{q}'")
+
+    lat, lon = geo["lat"], geo["lon"]
+    target_month = month or datetime.date.today().month
+
+    # Seasonality from Open-Meteo historical climate
+    season_score = get_seasonality_score(lat, lon, target_month)
+    climate_data = get_historical_climate(lat, lon, target_month)
+
+    # Tourist infrastructure & density proxy from Geoapify
+    reset_request_counter()
+    attractions = get_places_by_category(lat, lon, "culture_history", limit=5)
+    nature = get_places_by_category(lat, lon, "nature_outdoors", limit=5)
+    dining = get_places_by_category(lat, lon, "food_dining", limit=5)
+
+    total_pois = len(attractions) + len(nature) + len(dining)
+    density_score = min(1.0, round(total_pois / 12.0, 2))
+
+    return {
+        "query": q.strip(),
+        "geocoding": geo,
+        "target_month": target_month,
+        "season_score": round(season_score, 2),
+        "climate_summary": {
+            "mean_temp_c": climate_data.get("mean_temp_c"),
+            "rainfall_mm": climate_data.get("total_rain_mm") or climate_data.get("rainfall_mm"),
+            "is_comfortable": climate_data.get("is_comfortable", True),
+        },
+        "popularity_proxy": {
+            "density_score": density_score,
+            "nearby_attractions_count": len(attractions),
+            "nearby_nature_count": len(nature),
+            "nearby_dining_count": len(dining),
+            "total_sampled_pois": total_pois,
+            "note": "Infrastructure density proxy derived from Geoapify nearby points of interest"
+        },
+        "provenance": {
+            "geocoding": "Powered by Geoapify | © OpenStreetMap contributors",
+            "climate": "Weather data by Open-Meteo.com (CC BY 4.0)",
+            "is_live": True
+        }
+    }
 
 
 @router.get("/{user_id}")
@@ -288,9 +423,9 @@ def get_rankings(
     closed: Optional[str] = Query(None, description="Comma-separated destination IDs that are closed"),
     advisory: Optional[str] = Query(None, description="Comma-separated destination IDs under travel advisory")
 ):
-    """Rank destinations with 6 components and strict constraint filtering."""
+    """Rank destinations with 6 components, deep personalization, and strict constraint filtering."""
     # 1. Date validation
-    if date:
+    if isinstance(date, str) and date:
         try:
             target_dt = datetime.datetime.strptime(date, "%Y-%m-%d").date()
             target_month = target_dt.month
@@ -311,10 +446,10 @@ def get_rankings(
         "feedback": w_feedback
     }
     for k, val in overrides.items():
-        if val is not None:
+        if isinstance(val, (int, float)):
             if val < 0:
                 raise HTTPException(status_code=400, detail=f"Weight for '{k}' cannot be negative")
-            weights[k] = val
+            weights[k] = float(val)
 
     total_weight = sum(weights.values())
     if total_weight <= 0:
@@ -323,14 +458,22 @@ def get_rankings(
     normalized_weights = {k: v / total_weight for k, v in weights.items()}
 
     # 3. Parse hard constraint flags
-    closed_ids = {c.strip() for c in closed.split(",")} if closed else set()
-    advisory_ids = {a.strip() for a in advisory.split(",")} if advisory else set()
+    closed_ids = {c.strip() for c in closed.split(",")} if isinstance(closed, str) and closed else set()
+    advisory_ids = {a.strip() for a in advisory.split(",")} if isinstance(advisory, str) and advisory else set()
+    budget_val = budget if isinstance(budget, (int, float)) else None
+    limit_val = limit if isinstance(limit, int) else 5
 
-    # 4. Fetch user context
-    ctx = get_user_context(user_id)
-    basic_profile = ctx.get("basic")
-    has_profile = basic_profile is not None
-    user_tags = extract_user_interests(basic_profile)
+    # 4. Fetch unified user profile using core profile loader
+    profile = load_profile(user_id)
+    # Check if a non-empty user actually exists in the database
+    with get_connection() as conn:
+        user_row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        has_profile = user_row is not None and bool(profile.get("interests") or profile.get("raw_answers"))
+
+    user_tags = extract_user_interests(profile)
+    user_avoidances = profile.get("avoidances", [])
+    user_crowd_tol = profile.get("crowd_tolerance", "moderate")
+    user_preferred_climate = profile.get("preferred_climate", "")
 
     # 5. Filter and score destinations
     ranked_items = []
@@ -358,15 +501,24 @@ def get_rankings(
             })
             continue
 
-        # Filter C: Budget cap (low end of daily cost > cap)
+        # Filter C: Explicit destination avoidance
+        if dest_id in user_avoidances or any(a.lower() in dest_name.lower() for a in user_avoidances if len(a) > 3):
+            excluded_items.append({
+                "id": dest_id,
+                "name": dest_name,
+                "reason": "Destination in user stated avoidances"
+            })
+            continue
+
+        # Filter D: Budget cap (low end of daily cost > cap)
         cost_range = parse_cost_range(dest.get("estimated_cost", ""))
-        if budget is not None and cost_range:
+        if budget_val is not None and cost_range:
             low_cost, high_cost = cost_range
-            if low_cost > budget:
+            if low_cost > budget_val:
                 excluded_items.append({
                     "id": dest_id,
                     "name": dest_name,
-                    "reason": f"Low end of daily cost (${low_cost}) exceeds budget cap (${budget:.0f}/day)"
+                    "reason": f"Low end of daily cost (${low_cost}) exceeds budget cap (${budget_val:.0f}/day)"
                 })
                 continue
 
@@ -386,23 +538,36 @@ def get_rankings(
             val_interest = 0.5
             note_interest = "No profile - neutral interest placeholder"
 
-        # 2. Season Suitability
-        val_season = calculate_season_score(dest.get("best_seasons", []), target_month)
+        # 2. Season Suitability (with optional climate preference match)
+        base_season = calculate_season_score(dest.get("best_seasons", []), target_month)
         note_season = f"Target month {target_month} vs seasons: {', '.join(dest.get('best_seasons', []))}"
+        dest_climates = [str(c).lower() for c in dest.get("preferred_climate", [])]
+        if user_preferred_climate and user_preferred_climate.lower() in dest_climates:
+            val_season = min(1.0, round(base_season + 0.1, 2))
+            note_season += f" (matches preferred climate '{user_preferred_climate}')"
+        else:
+            val_season = base_season
 
-        # 3. Popularity (Static catalogue estimate)
-        val_popularity = calculate_popularity_score(dest)
-        note_popularity = f"Static estimate (crowd: {dest.get('crowd_level')}, trending: {dest.get('is_trending')})"
+        # 3. Popularity (Factoring in crowd level + user crowd tolerance)
+        val_popularity = calculate_popularity_score(dest, user_crowd_tol)
+        note_popularity = f"Crowd: {dest.get('crowd_level')}, user tolerance: {user_crowd_tol}"
 
         # 4. Feasibility
-        val_feasibility, note_feasibility = calculate_feasibility_score(dest, budget, basic_profile)
+        val_feasibility, note_feasibility = calculate_feasibility_score(dest, budget_val, profile if has_profile else None)
 
-        # 5. Live Conditions (No live feed)
+        # 5. Live Conditions (No live weather disruption feed, neutral placeholder)
         val_live = 0.5
         note_live = "no live feed - neutral placeholder"
 
         # 6. Past Feedback
         val_feedback, note_feedback = get_user_feedback_score(user_id, dest_id, dest_name)
+
+        # Apply soft avoidance penalties if applicable
+        avoidance_penalty = 0.0
+        avoidance_notes = []
+        if "avoid_crowds" in user_avoidances and dest.get("crowd_level") == "high":
+            avoidance_penalty += 0.15
+            avoidance_notes.append("crowd avoidance penalty -0.15")
 
         # Calculate breakdown contributions (points)
         components = {
@@ -427,6 +592,10 @@ def get_rankings(
                 "note": comp_note
             }
 
+        # Deduct soft avoidance penalty if any
+        if avoidance_penalty > 0:
+            total_points = max(0.0, total_points - (avoidance_penalty * 100.0))
+
         total_score = round(total_points, 2)
 
         item_data = {
@@ -442,6 +611,9 @@ def get_rankings(
             "total_score": total_score,
             "breakdown": breakdown
         }
+        if avoidance_notes:
+            item_data["avoidance_warning"] = "; ".join(avoidance_notes)
+
         ranked_items.append(item_data)
 
     # Sort items for 4 specialized lists + overall ranking
@@ -451,31 +623,31 @@ def get_rankings(
         [it for it in ranked_items if it["is_trending"]],
         key=lambda x: (x["breakdown"]["popularity"]["value"], x["total_score"]),
         reverse=True
-    )[:limit]
+    )[:limit_val]
 
     best_this_season = sorted(
         ranked_items,
         key=lambda x: (x["breakdown"]["season"]["value"], x["total_score"]),
         reverse=True
-    )[:limit]
+    )[:limit_val]
 
     best_for_you = sorted(
         ranked_items,
         key=lambda x: (x["breakdown"]["interest"]["value"], x["total_score"]),
         reverse=True
-    )[:limit]
+    )[:limit_val]
 
     best_feasible = sorted(
         ranked_items,
         key=lambda x: (x["breakdown"]["feasibility"]["value"], x["total_score"]),
         reverse=True
-    )[:limit]
+    )[:limit_val]
 
     return {
         "user_id": user_id,
         "has_profile": has_profile,
         "date": target_dt.isoformat(),
-        "budget_cap": budget,
+        "budget_cap": budget_val,
         "weights": {k: round(v, 4) for k, v in normalized_weights.items()},
         "weights_note": "ASSUMPTIONS - weights are subjective defaults, overrideable via query params",
         "data_freshness": {

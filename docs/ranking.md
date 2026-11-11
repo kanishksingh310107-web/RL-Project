@@ -13,13 +13,15 @@ The Ranking Module delivers transparent, explainable destination recommendations
 
 Key features:
 1. **6-Component Transparent Scoring:** Combines Interest Match (25%), Season Suitability (20%), Catalogue Popularity (15%), Feasibility (15%), Live Conditions (10%), and User Feedback (15%).
-2. **Hard Constraint Filtering:** Hard constraints (budget caps, temporary closures, travel advisories) are treated as absolute filters rather than scoring penalties. Excluded destinations appear in no ranked lists and include clear exclusion rationales.
-3. **Four Specialized Output Views:** In addition to the unified overall ranking, provides four distinct ranked views:
+2. **Deep Personalization:** Integrates full user profile from `app.core.profile.load_profile`, accounting for stated avoidances, crowd tolerance, preferred climate, and past trip feedback (`core_trip_feedback`).
+3. **Live India Destination Search (`GET /api/ranking/india/search`):** Real-time geocoding via Geoapify, Open-Meteo historical climate season scoring, and POI density proxy.
+4. **Hard Constraint Filtering:** Hard constraints (budget caps, temporary closures, travel advisories, stated destination avoidances) are treated as absolute filters rather than scoring penalties. Excluded destinations appear in no ranked lists and include clear exclusion rationales.
+5. **Four Specialized Output Views:** In addition to the unified overall ranking, provides four distinct ranked views:
    - **Trending Now:** High-demand destinations based on catalogue trend flags.
    - **Best This Season:** Destinations whose optimal seasons align with the requested travel date.
    - **Best For You:** Destinations maximizing overlap with the user's questionnaire goals and tags.
    - **Best Feasible:** Destinations offering the smoothest budget tier and companion fit.
-4. **Interactive Explainability:** Every ranked item returns a full point breakdown showing raw value, normalized weight, exact score contribution, and human-readable explanation notes.
+6. **Interactive Explainability:** Every ranked item returns a full point breakdown showing raw value, normalized weight, exact score contribution, and human-readable explanation notes.
 
 ---
 
@@ -90,6 +92,11 @@ Ran via `pytest tests/test_ranking.py -v`:
 | Contribution Sum | Any ranked item | Sum of contributions == `total_score` | `sum(contributions) == total_score` across all 16 items | ✅ Pass |
 | Specialized Lists | `limit=3` | 4 lists returned, each length $\le 3$; trending has `is_trending=true` | Returned 4 lists with $\le 3$ items, trending filtered | ✅ Pass |
 | Input Validation (400) | Invalid date `2026/11/02` or negative weight | HTTP 400 Bad Request | HTTP 400 with descriptive detail message | ✅ Pass |
+| Live India Search | `GET /api/ranking/india/search?q=Jaipur&month=11` | 200 OK, coordinates, climate score, POI proxy, Geoapify attribution | Lat 26.9124, season_score 0.88, density_score present | ✅ Pass |
+| India Search Errors | Empty query or unknown location | 400 Bad Request / 404 Not Found | 400 for empty q; 404 for unknown location | ✅ Pass |
+| INR Cost Parsing | `₹2,500 - ₹4,500 / day · Budget` | Parsed to USD using `INR_TO_USD_RATE` (30 - 54 USD) | low=30, high=54 USD | ✅ Pass |
+| Avoidance Exclusion | User avoids `swiss_alps` | Destination placed in `excluded` with stated reason | swiss_alps excluded with `"in user stated avoidances"` | ✅ Pass |
+| Crowd Avoidance Note | User avoids crowds on high crowd destination | Score penalized and warning note attached | Penalty applied, `"avoidance_warning"` attached | ✅ Pass |
 
 ---
 

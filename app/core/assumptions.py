@@ -146,6 +146,10 @@ RANKING_DEFAULT_WEIGHTS: Dict[str, float] = {
     "feedback": RANKING_WEIGHT_FEEDBACK,
 }
 
+# Currency conversion
+# team assumption, not measured: approximate INR to USD conversion rate for budget estimation
+INR_TO_USD_RATE: float = 0.012
+
 # External API guard rails
 # team assumption, not measured: Geoapify free tier daily credit guard limit
 GEOAPIFY_DAILY_CREDIT_LIMIT: int = 2500

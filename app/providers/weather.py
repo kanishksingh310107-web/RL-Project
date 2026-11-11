@@ -228,3 +228,9 @@ def get_historical_climate(lat: float, lon: float, month: int) -> Dict[str, Any]
     }
     set_cached(cache_key, fallback, TTL_PLACES_SECONDS)
     return fallback
+
+
+def get_seasonality_score(lat: float, lon: float, month: int) -> float:
+    """Convenience helper returning the numeric season score in [0.0, 1.0] from historical climate."""
+    climate = get_historical_climate(lat, lon, month)
+    return float(climate.get("season_score", 0.5))

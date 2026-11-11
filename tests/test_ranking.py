@@ -233,3 +233,97 @@ def test_evaluation_experiment_output_shape():
         assert -20.0 <= r["cumulative_reward"] <= 20.0
         assert len(r["window_acceptance"]) == 2  # 20 rounds / 10-round window = 2 windows
 
+
+def test_india_search_success(client, monkeypatch):
+    """GET /api/ranking/india/search returns live coordinates, climate score, and density proxy."""
+    monkeypatch.setattr(
+        "app.providers.geo.geocode_india",
+        lambda q: {"name": "Jaipur", "lat": 26.9124, "lon": 75.7873, "formatted": "Jaipur, Rajasthan, India"}
+    )
+    monkeypatch.setattr(
+        "app.providers.weather.get_seasonality_score",
+        lambda lat, lon, month: 0.88
+    )
+    monkeypatch.setattr(
+        "app.providers.weather.get_historical_climate",
+        lambda lat, lon, month: {"mean_temp_c": 21.5, "rainfall_mm": 5.0, "comfort_category": "pleasant"}
+    )
+    from app.core.schemas import Place, Provenance
+    dummy_place = Place(
+        id="p1", name="Hawa Mahal", category="culture_history", lat=26.92, lon=75.82,
+        provenance=Provenance(source="geoapify", is_live=True)
+    )
+    monkeypatch.setattr(
+        "app.providers.geo.get_places_by_category",
+        lambda lat, lon, cat, limit=5: [dummy_place]
+    )
+
+    r = client.get("/api/ranking/india/search?q=Jaipur&month=11")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["query"] == "Jaipur"
+    assert data["geocoding"]["lat"] == 26.9124
+    assert data["season_score"] == 0.88
+    assert data["climate_summary"]["mean_temp_c"] == 21.5
+    assert data["climate_summary"]["rainfall_mm"] == 5.0
+    assert "is_comfortable" in data["climate_summary"]
+    assert "density_score" in data["popularity_proxy"]
+    assert "Geoapify" in data["provenance"]["geocoding"]
+    assert "Open-Meteo" in data["provenance"]["climate"]
+
+
+def test_india_search_validation_and_404(client, monkeypatch):
+    """Validation errors: empty query returns 400; unresolvable location returns 404."""
+    r_empty = client.get("/api/ranking/india/search?q=")
+    assert r_empty.status_code == 400
+
+    monkeypatch.setattr("app.providers.geo.geocode_india", lambda q: None)
+    r_not_found = client.get("/api/ranking/india/search?q=NonExistentTown12345")
+    assert r_not_found.status_code == 404
+
+
+def test_inr_cost_parsing():
+    """Verify parse_cost_range handles Indian Rupee (₹) ranges with commas."""
+    low, high = parse_cost_range("₹2,500 - ₹4,500 / day · Budget")
+    assert low is not None and high is not None
+    # 2500 * 0.012 = 30 USD, 4500 * 0.012 = 54 USD
+    assert low == 30
+    assert high == 54
+
+    # Standard USD range still works
+    low_usd, high_usd = parse_cost_range("$100 - $200")
+    assert low_usd == 100
+    assert high_usd == 200
+
+
+def test_avoidance_filter_excludes_destination(client, demo_user, monkeypatch):
+    """User profile avoidance of a specific place must place it in the excluded list with a reason."""
+    from app.core.profile import load_profile
+    base_profile = load_profile(demo_user)
+    base_profile["avoidances"] = ["swiss_alps"]
+    monkeypatch.setattr("app.modules.ranking.load_profile", lambda uid: base_profile)
+
+    r = client.get(f"/api/ranking/{demo_user}")
+    assert r.status_code == 200
+    data = r.json()
+    excluded_ids = {x["id"]: x["reason"] for x in data["excluded"]}
+    assert "swiss_alps" in excluded_ids
+    assert "avoidances" in excluded_ids["swiss_alps"].lower()
+
+
+def test_avoid_crowds_penalizes_high_crowd_destination(client, demo_user, monkeypatch):
+    """User avoidance 'avoid_crowds' must add a crowd penalty note on high-crowd destinations."""
+    from app.core.profile import load_profile
+    base_profile = load_profile(demo_user)
+    base_profile["avoidances"] = ["avoid_crowds"]
+    monkeypatch.setattr("app.modules.ranking.load_profile", lambda uid: base_profile)
+
+    r = client.get(f"/api/ranking/{demo_user}")
+    assert r.status_code == 200
+    data = r.json()
+    high_crowd_items = [x for x in data["overall_ranking"] if x["crowd_level"] == "high"]
+    if high_crowd_items:
+        assert "avoidance_warning" in high_crowd_items[0]
+        assert "crowd" in high_crowd_items[0]["avoidance_warning"].lower()
+
+
