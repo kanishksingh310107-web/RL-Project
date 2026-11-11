@@ -1,37 +1,66 @@
-# Team contract (read before touching anything)
+# Team Contract & Architecture Specification
 
-## Branches and ownership
-| Person | Branch | You own ONLY these files |
-|---|---|---|
-| A – Pre-trip prep | `feat/prep` | `app/modules/prep.py`, `static/modules/prep.js`, `tests/test_prep.py`, `docs/prep.md` |
-| B – Live trip + post-trip | `feat/live` | `app/modules/live.py`, `static/modules/live.js`, `tests/test_live.py`, `docs/live.md` |
-| C – Ranking + evaluation + report/PPT | `feat/ranking-eval` | `app/modules/ranking.py`, `static/modules/ranking.js`, `tests/test_ranking.py`, `scripts/evaluate.py`, `docs/ranking.md`, `docs/evaluation.md`, `docs/report/*`, `ATTRIBUTION.md`, `README.md` |
+**Project:** RL-Based Proactive Travel Guide  
+**Architecture:** 3-layer decoupled multi-developer split (FastAPI + SQLite + Vanilla JS + Contextual LinUCB).
 
-Because file sets do not overlap, `git merge` of the three branches into `main` should have **zero conflicts**.
+---
 
-## Rules
-1. Do not edit shared files: `app/api.py`, `app/database.py`, `app/models.py`, `app/rl_planner.py`, `app/recommender.py`, `app/itinerary_generator.py`, `static/app.js`, `static/index.html`, `main.py`. Import from them (read-only) instead. If you find a real bug in one, message the group and C makes the fix on `main` once.
-2. Your tables are created in your module's `init_tables(conn)`, prefixed with your id (`prep_*`, `live_*`, `ranking_*`).
-3. Pydantic request models live inside your module file.
-4. Use the helpers in `app/modules/common.py` (`get_trip`, `get_user_context`, `get_itinerary`).
-5. Tests use the `client`, `demo_user`, `demo_trip` fixtures (`tests/conftest.py`, temp DB). Run: `python -m pytest tests -q`.
-6. Every number you show in the UI or docs must come from code you ran. No invented data, no invented API results. If an external API is used, it must have an offline fallback clearly labelled "offline estimate".
-7. Disclose AI help: add a short section in your `docs/<id>.md`: "AI assistance and external libraries/APIs used".
-8. Do not print/claim a feature is done in docs unless a test covers it.
-9. Commit small, push often: `git pull --rebase origin main` before pushing.
-10. Docs file format (C compiles these into the PPT/report): sections *What it does*, *How it works (method)*, *Files*, *Test table* (case / input / expected / actual / pass), *Limitations*, *Screenshots to take*, *AI assistance*.
+## 1. File Ownership Matrix
 
-## Time plan (deadline: 3 Nov)
-- T+0 to T+3h: working backend endpoint + one passing test.
-- T+3h to T+5h: UI tab + docs file.
-- T+5h: push, tell C. C merges all three into `main`, runs `python -m pytest tests -q` and `python run_tests.py`, takes screenshots, finalises PPT.
-- Stop adding features at T+5h. Polish and screenshots only.
+Strict boundary enforcement: **Nobody edits another teammate's files.**
 
-## Merge procedure (C does this)
+| Teammate | Focus Area | Exclusive File Ownership |
+| :--- | :--- | :--- |
+| **Person C** (You) | **Foundation, Ranking, Providers, Eval & Reporting** | `app/core/*`<br>`app/providers/*`<br>`app/modules/ranking.py`<br>`static/modules/ranking.js`<br>`scripts/*`<br>`tests/fixtures/*`<br>`tests/test_core*.py`<br>`tests/test_providers*.py`<br>`tests/test_ranking*.py`<br>`docs/team/*`<br>`docs/ranking.md`<br>`docs/evaluation.md`<br>`docs/data_audit.*`<br>`docs/report/*`<br>`ATTRIBUTION.md`<br>`README.md`<br>`STATUS.md`<br>`docs/STATUS.md`<br>`CONTRACT.md`<br>`docs/CONTRACT.md`<br>`run_tests.py`<br>`.env.example`<br>`.gitignore`<br>`requirements*.txt` |
+| **Person A** | **Plan Engine & Time Budgeting** | `app/modules/plan.py`<br>`app/planning/*`<br>`static/modules/plan.js`<br>`tests/test_plan*.py`<br>`docs/plan.md` |
+| **Person B** | **Stay, Prep, Live & Post-Trip Feedback** | `app/modules/stay.py`<br>`app/modules/prep.py`<br>`app/modules/live.py`<br>`static/modules/stay.js`<br>`static/modules/prep.js`<br>`static/modules/live.js`<br>`tests/test_stay*.py`<br>`tests/test_prep*.py`<br>`tests/test_live*.py`<br>`docs/stay.md`<br>`docs/prep.md`<br>`docs/live.md` |
+
+Shared files (`app/api.py`, `app/database.py`, `static/app.js`, `static/index.html`, etc.) are touched ONLY in Phase 0 initialization or via an explicit mutual Change Request.
+
+---
+
+## 2. Shared Data Stores & Contracts
+
+All communication between Person A, Person B, and Person C occurs strictly through database tables managed in `app/core/stores.py` using Pydantic models defined in `app/core/schemas.py`:
+
 ```
-git checkout main && git pull
-git merge --no-ff feat/prep
-git merge --no-ff feat/live
-git merge --no-ff feat/ranking-eval
-python -m pytest tests -q && python run_tests.py
+                 +-------------------+
+                 |    Person C       |
+                 | (Core & Provider) |
+                 +---------+---------+
+                           |
+       +-------------------+-------------------+
+       |                                       |
+       v (Writes preferences/plans)            v (Writes stays/feedback)
++-----------------------+              +-----------------------+
+|  core_trip_prefs      |              |  core_stays           |
+|  core_plans           |              |  core_trip_feedback   |
+|  (Owned by Person A)  |              |  (Owned by Person B)  |
++-----------+-----------+              +-----------+-----------+
+            |                                      |
+            +------------------+-------------------+
+                               |
+                               v
+                     +-------------------+
+                     | Reads across all  |
+                     | (Person C Ranking |
+                     | & Evaluation)     |
+                     +-------------------+
 ```
+
+- **`core_place_cache`**: Caches geocoding, reverse geocoding, and venue lookups with 7-day TTL.
+- **`core_api_usage`**: Tracks daily provider credit usage with hard cutoff at 2,500 calls/day.
+- **`core_trip_prefs`**: Trip configuration and timing written by Person A (`TripPrefs`).
+- **`core_plans`**: Multi-day generated itineraries with time-budgeted blocks written by Person A (`TripPlan`).
+- **`core_stays`**: Hotel / neighborhood stay anchors written by Person B (`Stay`). Person A reads `core_stays` to anchor daily start/end locations.
+- **`core_trip_feedback`**: Post-trip ratings (1–5) and category notes written by Person B. Person C reads feedback to personalize destination and activity rankings.
+
+---
+
+## 3. Ground Rules & Invariants
+
+1. **Strict Key Gate:** External keys must only be loaded via `app/core/config.py` from `.env`. Run `python scripts/check_keys.py` to verify key presence. Never print, commit, or send keys in client frontend requests.
+2. **Offline Resilience:** All provider functions in `app/providers/` must fail over cleanly to cached data or local seed catalogs (`app/activity_data.py`) whenever network or keys are absent.
+3. **No Synthetic/Invented Data in Production:** All numbers must be measured or tagged with provenance (`source`, `fetched_at`, `is_live`, `is_estimate`). Unknown numeric quantities must be `None`, never fake `0.0`.
+4. **All Constants in Centralized Assumptions:** Speeds, durations, weights, thresholds, and circuity factors reside exclusively in `app/core/assumptions.py`.
+5. **Non-overlapping Test Suites:** Every test suite must run using temporary databases (`tests/conftest.py` fixtures or isolated `tempfile.TemporaryDirectory()`). Tests must NEVER make live external HTTP calls.

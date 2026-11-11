@@ -2,13 +2,17 @@
 import pytest
 from fastapi.testclient import TestClient
 
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
+@pytest.fixture(autouse=True)
+def isolate_test_db(tmp_path, monkeypatch):
     import app.database as database
-    monkeypatch.setattr(database, "DB_PATH", tmp_path / "test.db")
+    test_db = tmp_path / "test.db"
+    monkeypatch.setattr(database, "DB_PATH", test_db)
+    database.init_db()
+
+@pytest.fixture()
+def client():
     from main import app
     from app.modules import init_module_tables
-    database.init_db()
     init_module_tables()
     return TestClient(app)
 

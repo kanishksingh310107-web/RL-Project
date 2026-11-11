@@ -10,8 +10,12 @@ from app.questionnaire import QUESTIONS as BASE_QUESTIONS
 
 def run_tests():
     print("Running tests...")
+    import tempfile
+    from pathlib import Path
     import app.database as database
-    database.DB_PATH = database.DB_PATH.parent / "test.db"
+    global _TEMP_DIR
+    _TEMP_DIR = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+    database.DB_PATH = Path(_TEMP_DIR.name) / "test.db"
     init_db()  # TestClient(app) does not fire the startup hook, so create tables explicitly
     client = TestClient(app)
 

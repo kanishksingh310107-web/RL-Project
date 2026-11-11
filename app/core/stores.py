@@ -13,15 +13,8 @@ from typing import Optional, Dict, Any, List
 from app.database import get_connection
 from app.core.schemas import TripPrefs, TripPlan, Stay
 
-_TABLES_INITIALIZED = False
-
-
 def ensure_core_tables(conn: sqlite3.Connection) -> None:
     """Lazily create core store tables if they do not exist."""
-    global _TABLES_INITIALIZED
-    if _TABLES_INITIALIZED:
-        return
-
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS core_place_cache (
