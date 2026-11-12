@@ -42,6 +42,773 @@ VALID_CONDITIONS = {
 }
 MAX_ALERTS_PER_DAY = 3
 
+# Person C: canonical runtime API. The original /api/live interfaces below are
+# retained for existing clients; runtime-enrolled trips use the guarded flow.
+import hashlib
+import html
+import re
+import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import timezone
+from typing import Literal, Annotated
+import httpx
+from fastapi import Body, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
+from pydantic import ConfigDict, StrictInt, StrictStr, ValidationError, field_validator, model_validator
+from starlette.middleware.base import BaseHTTPMiddleware
+
+C_RATING_KEYS = {'scenery','food','safety','value_for_money','crowds','accessibility','stay_quality','overall'}
+C_MUTATION_CAPABILITY = ContextVar('c_runtime_mutation', default=None)
+CScore = Annotated[StrictInt, Field(ge=1, le=5)]
+
+
+def c_error(status_code, message, code='STATE_CONFLICT', field=None):
+    raise HTTPException(status_code, detail={'detail':message,'code':code,'field':field})
+
+
+def c_error_response(exc):
+    detail = exc.detail if isinstance(exc.detail, dict) else {
+        'detail':str(exc.detail),'code':'REQUEST_ERROR','field':None}
+    return JSONResponse(detail,status_code=exc.status_code)
+
+
+class CRoute(APIRoute):
+    def get_route_handler(self):
+        original = super().get_route_handler()
+        async def guarded(request):
+            try:
+                return await original(request)
+            except RequestValidationError as exc:
+                item = exc.errors()[0]
+                field = '.'.join(str(v) for v in item['loc'] if v not in ('body','query','path')) or None
+                if field is None:
+                    message=item['msg'].lower()
+                    field=next((key for key in ('trip_type','would_revisit','liked','disliked','replacement_activity_id') if key in message),None)
+                    if field is None and ('rate ' in message or 'rating' in message): field='ratings'
+                return JSONResponse({'detail':item['msg'].removeprefix('Value error, '),
+                    'code':'INVALID_INPUT','field':field},status_code=422)
+            except HTTPException as exc:
+                return c_error_response(exc)
+            except sqlite3.Error:
+                return JSONResponse({'detail':'The trip could not be saved. Please retry; your entries have been kept.',
+                    'code':'DATABASE_UNAVAILABLE','field':None},status_code=503)
+        return guarded
+
+
+runtime_router = APIRouter(prefix='/api/trips',tags=['C runtime'],route_class=CRoute)
+
+
+class CActor(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    user_id: Optional[StrictStr] = Field(None,min_length=1,max_length=100)
+
+    @field_validator('user_id',mode='before')
+    @classmethod
+    def clean_identity(cls,value):
+        return value.strip() if isinstance(value,str) else value
+
+    @field_validator('*',mode='before')
+    @classmethod
+    def clean_identifiers(cls,value,info):
+        if info.field_name in ('target_activity_id','replacement_activity_id','token') and isinstance(value,str):
+            return value.strip()
+        return value
+
+
+def c_clean_text(value):
+    if not isinstance(value,str):
+        return value
+    # Plain text storage and escaped rendering; SQL always uses bound parameters.
+    value = re.sub(r'<[^>]*>','',html.unescape(value))
+    return ''.join(c for c in value if c in '\n\t' or ord(c)>=32).strip()
+
+
+class CReview(CActor):
+    ratings: Dict[str,CScore]
+    action: Literal['keep','enhance','change']
+    notes: StrictStr = Field('',max_length=1000)
+
+    @field_validator('notes',mode='before')
+    @classmethod
+    def clean_note(cls,value):
+        return c_clean_text(value)
+
+    @field_validator('ratings')
+    @classmethod
+    def valid_keys(cls,value):
+        if set(value)-C_RATING_KEYS:
+            raise ValueError('Use only the shared rating keys: '+', '.join(sorted(C_RATING_KEYS)))
+        return value
+
+
+class CEndActivity(CActor):
+    outcome: Literal['completed','early_ended','skipped','not_done'] = 'completed'
+
+
+class CEndDay(CActor):
+    dispositions: Dict[str,Literal['skipped','not_done']] = Field(default_factory=dict)
+
+
+class CPreview(CActor):
+    target_activity_id: StrictStr = Field(min_length=1,max_length=200)
+    operation: Literal['swap','remove']
+    replacement_activity_id: Optional[StrictStr] = Field(None,min_length=1,max_length=200)
+
+    @model_validator(mode='after')
+    def replacement_required(self):
+        if self.operation=='swap' and not self.replacement_activity_id:
+            raise ValueError('Select a replacement activity before previewing a swap.')
+        if self.operation=='remove' and self.replacement_activity_id is not None:
+            raise ValueError('A remove operation cannot contain a replacement.')
+        return self
+
+
+class CConfirm(CActor):
+    token: StrictStr = Field(min_length=1,max_length=100)
+
+
+class CPlaceRating(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    activity_id: StrictStr = Field(min_length=1,max_length=200)
+    ratings: Dict[str,CScore]
+
+    @field_validator('activity_id',mode='before')
+    @classmethod
+    def clean_id(cls,value):
+        return value.strip() if isinstance(value,str) else value
+
+    @field_validator('ratings')
+    @classmethod
+    def valid_keys(cls,value):
+        if not value or set(value)-C_RATING_KEYS:
+            raise ValueError('Per-place ratings must use shared parameter keys.')
+        return value
+
+
+class CPostFeedback(CActor):
+    draft: bool = Field(False,strict=True)
+    ratings: Dict[str,CScore] = Field(default_factory=dict)
+    trip_type: Optional[Literal['solo','couple','friends','family']] = None
+    would_revisit: Optional[Literal['yes','no','maybe']] = None
+    liked: Optional[StrictStr] = Field(None,max_length=2000)
+    disliked: Optional[StrictStr] = Field(None,max_length=2000)
+    notes: StrictStr = Field('',max_length=2000)
+    per_place_ratings: List[CPlaceRating] = Field(default_factory=list,max_length=200)
+
+    @field_validator('trip_type','would_revisit',mode='before')
+    @classmethod
+    def clean_enum(cls,value):
+        return value.strip().lower() if isinstance(value,str) else value
+
+    @field_validator('liked','disliked','notes',mode='before')
+    @classmethod
+    def clean_text(cls,value):
+        return c_clean_text(value)
+
+    @model_validator(mode='after')
+    def valid_submission(self):
+        if set(self.ratings)-C_RATING_KEYS:
+            raise ValueError('Ratings contain an unknown shared parameter.')
+        if not self.draft:
+            if set(self.ratings)!=C_RATING_KEYS:
+                raise ValueError('Rate overall and every shared trip parameter before submitting.')
+            for key in ('trip_type','would_revisit','liked','disliked'):
+                if not getattr(self,key):
+                    raise ValueError(f'{key} is required before submitting. Save a draft to resume later.')
+        ids = [row.activity_id for row in self.per_place_ratings]
+        if len(ids)!=len(set(ids)):
+            raise ValueError('Provide only one review per itinerary occurrence.')
+        return self
+
+
+def c_actor(request,payload=None):
+    values = request.query_params.getlist('user_id')
+    if len(values)>1:
+        c_error(422,'Provide one user_id.','INVALID_INPUT','user_id')
+    query = values[0].strip() if values else None
+    body = payload.user_id if payload else None
+    if query and body and query!=body:
+        c_error(422,'The user_id in the query and body must match.','INVALID_INPUT','user_id')
+    actor = body or query
+    if not actor or len(actor)>100:
+        c_error(422,'A non-empty user_id is required.','INVALID_INPUT','user_id')
+    return actor
+
+
+@contextmanager
+def c_transaction(trip_id,actor):
+    with get_connection() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        trip = conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone()
+        if not trip:
+            c_error(404,'Trip not found.','TRIP_NOT_FOUND')
+        if trip['user_id']!=actor:
+            c_error(403,'This trip belongs to another user.','NOT_OWNER')
+        conn.execute('INSERT OR IGNORE INTO trip_runtime(trip_id) VALUES(?)',(trip_id,))
+        runtime=c_runtime(conn,trip_id)
+        if runtime['operation_in_flight'] and runtime['operation_started_at']:
+            started=datetime.fromisoformat(runtime['operation_started_at'])
+            if (datetime.now(timezone.utc)-started).total_seconds()>60:
+                # Recover a request interrupted by a process restart. Any old
+                # preview is revalidated against the current itinerary on retry.
+                conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL WHERE trip_id=?',(trip_id,))
+        runtime=c_runtime(conn,trip_id)
+        if runtime['status']=='completed' and not runtime['operation_in_flight']:
+            saved=conn.execute('SELECT submitted_at,delivery_started_at FROM post_trip_feedback WHERE trip_id=?',(trip_id,)).fetchone()
+            if saved and saved['delivery_started_at'] and not saved['submitted_at']:
+                delivered=conn.execute('SELECT submitted_at FROM live_postrip WHERE trip_id=?',(trip_id,)).fetchone()
+                if delivered:
+                    # Learning committed immediately before a connection/process
+                    # failure: reconcile completion, never send the ratings twice.
+                    conn.execute('UPDATE post_trip_feedback SET submitted_at=? WHERE trip_id=?',(delivered['submitted_at'],trip_id))
+        yield conn,dict(trip)
+
+
+def c_runtime(conn,trip_id):
+    return dict(conn.execute('SELECT * FROM trip_runtime WHERE trip_id=?',(trip_id,)).fetchone())
+
+
+def c_schedule(conn,trip_id):
+    return [dict(row) for row in conn.execute('''SELECT ia.* FROM itinerary_activities ia
+        JOIN itineraries i ON i.id=ia.itinerary_id WHERE i.trip_id=? AND ia.status!='rejected'
+        ORDER BY ia.day_number,ia.order_index,ia.id''',(trip_id,))]
+
+
+def c_slot(conn,trip_id,activity_id):
+    schedule = c_schedule(conn,trip_id)
+    exact = next((s for s in schedule if s['id']==activity_id),None)
+    if exact:
+        return exact
+    matches = [s for s in schedule if s['activity_id']==activity_id]
+    if len(matches)==1:
+        return matches[0]
+    if matches:
+        c_error(422,'This place occurs more than once. Use its itinerary occurrence ID.','AMBIGUOUS_ACTIVITY','activity_id')
+    c_error(404,'Activity not found in this trip.','ACTIVITY_NOT_FOUND','activity_id')
+
+
+def c_applicable(slot):
+    keys = {'overall','safety','value_for_money','crowds','accessibility'}
+    category = slot.get('category','')
+    if category=='food_dining': keys.add('food')
+    elif category in ('stay','accommodation'): keys.add('stay_quality')
+    else: keys.add('scenery')
+    return sorted(keys)
+
+
+def c_run(conn,trip_id,slot_id):
+    row = conn.execute('SELECT * FROM activity_runs WHERE trip_id=? AND itinerary_activity_id=?',(trip_id,slot_id)).fetchone()
+    return dict(row) if row else None
+
+
+def c_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def c_require_live(runtime):
+    if runtime['status']!='live':
+        c_error(409,'This action requires a live trip. Finalize and start it first.','NOT_LIVE')
+    if runtime['operation_in_flight']:
+        c_error(409,'An itinerary update is already in progress. Please wait.','UPDATE_IN_PROGRESS')
+
+
+class CDisruption(CActor):
+    condition_type: Literal['heavy_rain','extreme_heat','closure','traffic_delay','strike','fatigue','unexpected_crowding']
+    day_number: Annotated[StrictInt,Field(ge=1)]
+    severity: Literal['low','moderate','high'] = 'moderate'
+    description: Optional[StrictStr] = Field(None,max_length=1000)
+    target_activity_id: Optional[StrictStr] = Field(None,min_length=1,max_length=200)
+
+    @field_validator('description',mode='before')
+    @classmethod
+    def clean_description(cls,value): return c_clean_text(value)
+
+
+def c_start_slot(conn,trip_id,slot):
+    if c_run(conn,trip_id,slot['id']):
+        c_error(409,'This activity has already been started or marked not done.','ALREADY_STARTED')
+    stamp = c_now()
+    trip=dict(conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone())
+    context=get_user_context(trip['user_id'])
+    profile=dict(context.get('basic') or {},**(context.get('detailed') or {}))
+    vector=extract_context_vector(profile,trip,slot['day_number'],trip['duration_days'],slot['time_slot'],
+        dict(slot,cost_amount=slot.get('cost_estimate') or 0)).tolist()
+    conn.execute('''INSERT INTO activity_runs(id,trip_id,activity_id,itinerary_activity_id,day_number,started_at,context_json)
+        VALUES(?,?,?,?,?,?,?)''',(str(uuid.uuid4()),trip_id,slot['activity_id'],slot['id'],slot['day_number'],stamp,json.dumps(vector)))
+    conn.execute('UPDATE trip_runtime SET current_activity_id=?,version=version+1 WHERE trip_id=?',(slot['id'],trip_id))
+
+
+def c_pending_review(conn,trip_id):
+    row = conn.execute('SELECT * FROM activity_runs WHERE trip_id=? AND ended_at IS NOT NULL AND action IS NULL ORDER BY ended_at LIMIT 1',(trip_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def c_advance(conn,trip_id):
+    runtime = c_runtime(conn,trip_id)
+    if runtime['day_ended'] or runtime['current_activity_id'] or c_pending_review(conn,trip_id):
+        return
+    slots = [s for s in c_schedule(conn,trip_id) if s['day_number']==runtime['current_day'] and not c_run(conn,trip_id,s['id'])]
+    if slots:
+        c_start_slot(conn,trip_id,slots[0])
+
+
+def c_fingerprint(conn,trip_id):
+    return hashlib.sha256(json.dumps([(s['id'],s['activity_id'],s['day_number'],s['order_index']) for s in c_schedule(conn,trip_id)]).encode()).hexdigest()
+
+
+def c_snapshot(conn,trip):
+    tid = trip['id']
+    runtime = c_runtime(conn,tid)
+    schedule = c_schedule(conn,tid)
+    runs = [dict(r) for r in conn.execute('SELECT * FROM activity_runs WHERE trip_id=? ORDER BY day_number,started_at,id',(tid,))]
+    by_slot = {r['itinerary_activity_id']:r for r in runs}
+    today = [s for s in schedule if s['day_number']==runtime['current_day']]
+    for slot in schedule:
+        slot['catalogue_activity_id'] = slot['activity_id']
+        slot['activity_id'] = slot['id']
+        slot['applicable_rating_keys'] = c_applicable(slot)
+        slot['run'] = by_slot.get(slot['id'])
+    current = next((s for s in schedule if s['id']==runtime['current_activity_id']),None)
+    pending = c_pending_review(conn,tid)
+    review = next((s for s in schedule if pending and s['id']==pending['itinerary_activity_id']),None)
+    feedback = conn.execute('SELECT * FROM post_trip_feedback WHERE trip_id=?',(tid,)).fetchone()
+    feedback = dict(feedback) if feedback else None
+    for row in runs:
+        row['ratings'] = json.loads(row['ratings_json'] or '{}')
+    if feedback:
+        feedback['ratings'] = json.loads(feedback['ratings_json'])
+        feedback['per_place_ratings'] = json.loads(feedback['per_place_ratings_json'])
+    if runtime['status']=='completed': phase='completed'
+    elif runtime['day_ended']: phase='day_summary'
+    elif review: phase='activity_review'
+    elif runtime['pending_decision_json']: phase='itinerary_decision'
+    elif current: phase='activity'
+    else: phase='awaiting_day_end' if runtime['status']=='live' else runtime['status']
+    last_today = bool(current and today and current['id']==today[-1]['id'])
+    label = ('End trip' if runtime['current_day']==trip['duration_days'] else 'End day') if last_today else 'End activity'
+    return {'trip_id':tid,'status':runtime['status'],'runtime':runtime,'phase':phase,
+        'current_activity':current,'pending_review':review,'today':today,'schedule':schedule,'runs':runs,
+        'total_days':trip['duration_days'],'end_activity_label':label,
+        'pending_decision':json.loads(runtime['pending_decision_json']) if runtime['pending_decision_json'] else None,
+        'preview':json.loads(runtime['preview_json']) if runtime['preview_json'] else None,
+        'post_feedback':feedback,'feedback_required':runtime['status']=='completed' and not (feedback and feedback['submitted_at']),
+        'closed_out':bool(feedback and feedback['submitted_at']), 'rating_keys':sorted(C_RATING_KEYS)}
+
+
+@runtime_router.get('/{trip_id}/runtime')
+def c_get_runtime(trip_id: str,request: Request):
+    with c_transaction(trip_id,c_actor(request)) as (conn,trip):
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/finalize')
+def c_finalize(trip_id: str,request: Request,payload: CActor = Body(default=CActor())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        runtime = c_runtime(conn,trip_id)
+        if runtime['status']!='draft': c_error(409,'Only a draft itinerary can be finalized.','NOT_DRAFT')
+        if not c_schedule(conn,trip_id): c_error(409,'Add at least one activity before finalizing.','EMPTY_ITINERARY')
+        conn.execute("UPDATE trip_runtime SET status='finalized',version=version+1 WHERE trip_id=?",(trip_id,))
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/unfinalize')
+def c_unfinalize(trip_id: str,request: Request,payload: CActor = Body(default=CActor())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        if c_runtime(conn,trip_id)['status']!='finalized': c_error(409,'Only a finalized trip that has not started can be reopened.','NOT_FINALIZED')
+        conn.execute("UPDATE trip_runtime SET status='draft',version=version+1 WHERE trip_id=?",(trip_id,))
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/start')
+def c_start(trip_id: str,request: Request,payload: CActor = Body(default=CActor())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        if c_runtime(conn,trip_id)['status']!='finalized': c_error(409,'Finalize the itinerary before starting; a trip can start only once.','NOT_FINALIZED')
+        if not c_schedule(conn,trip_id): c_error(409,'The itinerary has no activities. Reopen it and add activities.','EMPTY_ITINERARY')
+        conn.execute("UPDATE trip_runtime SET status='live',started_at=?,current_day=1,day_ended=0,version=version+1 WHERE trip_id=?",(c_now(),trip_id))
+        c_advance(conn,trip_id)
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/activities/{activity_id}/start')
+def c_activity_start(trip_id: str,activity_id: str,request: Request,payload: CActor = Body(default=CActor())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        slot = c_slot(conn,trip_id,activity_id)
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        if c_run(conn,trip_id,slot['id']): c_error(409,'This activity has already been started or marked not done.','ALREADY_STARTED')
+        if runtime['current_activity_id'] or c_pending_review(conn,trip_id) or runtime['pending_decision_json'] or runtime['day_ended']:
+            c_error(409,'Finish the current activity, review or day transition first.','OUT_OF_ORDER')
+        upcoming = [s for s in c_schedule(conn,trip_id) if s['day_number']==runtime['current_day'] and not c_run(conn,trip_id,s['id'])]
+        if not upcoming or upcoming[0]['id']!=slot['id']: c_error(409,'Start activities in order on the current day.','OUT_OF_ORDER')
+        c_start_slot(conn,trip_id,slot)
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/activities/{activity_id}/end')
+def c_activity_end(trip_id: str,activity_id: str,request: Request,payload: CEndActivity = Body(default=CEndActivity())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        slot = c_slot(conn,trip_id,activity_id)
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        run = c_run(conn,trip_id,slot['id'])
+        if not run or not run['started_at']: c_error(409,'This activity has not started.','NOT_STARTED')
+        if run['ended_at'] or runtime['current_activity_id']!=slot['id']: c_error(409,'This activity has already ended or is not current.','NOT_CURRENT')
+        conn.execute('UPDATE activity_runs SET ended_at=?,outcome=? WHERE id=?',(c_now(),payload.outcome,run['id']))
+        conn.execute('UPDATE trip_runtime SET current_activity_id=NULL,version=version+1 WHERE trip_id=?',(trip_id,))
+        return c_snapshot(conn,trip)
+
+
+class CAtomicConnection:
+    """Keep existing policy persistence helpers inside the review transaction."""
+    def __init__(self,conn): self.conn=conn
+    def __getattr__(self,name): return getattr(self.conn,name)
+    def commit(self): pass
+
+
+def c_learn_review(conn,trip,slot,run,ratings):
+    if not ratings: return
+    atomic = CAtomicConnection(conn)
+    context = json.loads(run['context_json']) if run['context_json'] else _preserve_or_get_activity_context(
+        atomic,slot['itinerary_id'],slot['activity_id'],trip['user_id'],trip,slot)
+    policy = load_user_policy(conn,trip['user_id'])
+    arm = slot['category'] if slot['category'] in CANONICAL_ARMS else 'culture_history'
+    reward = (sum(ratings.values())/len(ratings)-3)/2
+    policy.update(arm,np.array(context,dtype=float),reward)
+    save_user_policy(atomic,policy)
+    conn.execute('UPDATE activity_runs SET context_json=?,learning_applied=1 WHERE id=?',(json.dumps(context),run['id']))
+
+
+@runtime_router.post('/{trip_id}/activities/{activity_id}/review')
+def c_activity_review(trip_id: str,activity_id: str,request: Request,payload: CReview):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        slot = c_slot(conn,trip_id,activity_id)
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        run = c_run(conn,trip_id,slot['id'])
+        pending = c_pending_review(conn,trip_id)
+        if not run or not run['ended_at']: c_error(409,'End the activity before reviewing it.','NOT_ENDED')
+        if run['action']: c_error(409,'This activity review has already been saved.','ALREADY_REVIEWED')
+        if not pending or pending['id']!=run['id']: c_error(409,'Review the most recently ended activity first.','OUT_OF_ORDER')
+        applicable = set(c_applicable(slot))
+        if set(payload.ratings)-applicable: c_error(422,'These rating parameters do not apply to this activity.','INVALID_RATINGS','ratings')
+        if run['outcome'] in ('completed','early_ended') and set(payload.ratings)!=applicable:
+            c_error(422,'Rate every applicable activity parameter.','MISSING_RATINGS','ratings')
+        conn.execute('UPDATE activity_runs SET ratings_json=?,notes=?,action=? WHERE id=?',
+            (json.dumps(payload.ratings),payload.notes,payload.action,run['id']))
+        c_learn_review(conn,trip,slot,run,payload.ratings)
+        if payload.action=='keep':
+            c_advance(conn,trip_id)
+        else:
+            decision = {'action':payload.action,'run_id':run['id']}
+            conn.execute('UPDATE trip_runtime SET pending_decision_json=?,version=version+1 WHERE trip_id=?',(json.dumps(decision),trip_id))
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/continue')
+def c_continue(trip_id: str,request: Request,payload: CActor = Body(default=CActor())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        if not runtime['pending_decision_json']: c_error(409,'There is no pending itinerary decision.','NO_DECISION')
+        conn.execute('UPDATE trip_runtime SET pending_decision_json=NULL,preview_json=NULL,version=version+1 WHERE trip_id=?',(trip_id,))
+        c_advance(conn,trip_id)
+        return c_snapshot(conn,trip)
+
+
+def c_check_day(trip,day):
+    if day<1 or day>trip['duration_days']: c_error(404,'Day not found in this trip.','DAY_NOT_FOUND','day')
+
+
+@runtime_router.post('/{trip_id}/days/{day}/end')
+def c_end_day(trip_id: str,day: int,request: Request,payload: CEndDay = Body(default=CEndDay())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        c_check_day(trip,day)
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        if day!=runtime['current_day'] or runtime['day_ended']: c_error(409,'End only the current open day.','OUT_OF_ORDER')
+        if c_pending_review(conn,trip_id) or runtime['pending_decision_json']:
+            c_error(409,'Save the pending activity review and itinerary decision first.','REVIEW_REQUIRED')
+        slots = [s for s in c_schedule(conn,trip_id) if s['day_number']==day]
+        unfinished = [s for s in slots if not c_run(conn,trip_id,s['id']) or not c_run(conn,trip_id,s['id'])['ended_at']]
+        valid_ids = {s['id'] for s in unfinished}
+        if set(payload.dispositions)-valid_ids: c_error(404,'A marked activity is not unfinished on this day.','ACTIVITY_NOT_FOUND','dispositions')
+        if valid_ids!=set(payload.dispositions): c_error(409,'Unfinished activities remain. Explicitly mark each skipped or not done.','UNFINISHED_ACTIVITIES','dispositions')
+        for slot in unfinished:
+            run = c_run(conn,trip_id,slot['id'])
+            if run:
+                conn.execute("UPDATE activity_runs SET ended_at=?,outcome=?,action='keep',ratings_json='{}' WHERE id=?",(c_now(),payload.dispositions[slot['id']],run['id']))
+            else:
+                conn.execute('''INSERT INTO activity_runs(id,trip_id,activity_id,itinerary_activity_id,day_number,ended_at,ratings_json,action,outcome)
+                    VALUES(?,?,?,?,?,?,'{}','keep',?)''',(str(uuid.uuid4()),trip_id,slot['activity_id'],slot['id'],day,c_now(),payload.dispositions[slot['id']]))
+        conn.execute('UPDATE trip_runtime SET day_ended=1,current_activity_id=NULL,version=version+1 WHERE trip_id=?',(trip_id,))
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/days/{day}/start')
+def c_start_day(trip_id: str,day: int,request: Request,payload: CActor = Body(default=CActor())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        c_check_day(trip,day)
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        if not runtime['day_ended'] or day!=runtime['current_day']+1:
+            c_error(409,'Finish the current day, then start the immediately following day.','OUT_OF_ORDER')
+        conn.execute('UPDATE trip_runtime SET current_day=?,day_ended=0,version=version+1 WHERE trip_id=?',(day,trip_id))
+        c_advance(conn,trip_id)
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/end')
+def c_end_trip(trip_id: str,request: Request,payload: CActor = Body(default=CActor())):
+    with c_transaction(trip_id,c_actor(request,payload)) as (conn,trip):
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        if runtime['current_day']!=trip['duration_days'] or not runtime['day_ended']:
+            c_error(409,'Finish and end every trip day before ending the trip.','UNFINISHED_TRIP')
+        if runtime['pending_decision_json'] or c_pending_review(conn,trip_id): c_error(409,'Save the pending review first.','REVIEW_REQUIRED')
+        conn.execute("UPDATE trip_runtime SET status='completed',ended_at=?,version=version+1 WHERE trip_id=?",(c_now(),trip_id))
+        conn.execute('''INSERT INTO live_trip_state(trip_id,user_id,is_started,is_completed,current_day,completed_at)
+            VALUES(?,?,1,1,?,?) ON CONFLICT(trip_id) DO UPDATE SET is_completed=1,completed_at=excluded.completed_at''',
+            (trip_id,trip['user_id'],trip['duration_days'],c_now()))
+        return c_snapshot(conn,trip)
+
+
+async def c_call_existing(request,method,path,payload=None):
+    """Cross-owner itinerary interaction is exclusively through existing APIs."""
+    token = C_MUTATION_CAPABILITY.set(request.path_params.get('trip_id'))
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=request.app),base_url='http://internal') as client:
+            response = await client.request(method,path,json=payload,timeout=20)
+        if response.status_code>=400:
+            c_error(503,'The existing recommendation/feedback service could not complete the request. Your trip state is unchanged; please retry.',
+                    'DOWNSTREAM_UNAVAILABLE')
+        return response.json()
+    except HTTPException:
+        raise
+    except Exception:
+        c_error(503,'The recommendation service is unavailable. Your entries have been kept. Please retry.','DOWNSTREAM_UNAVAILABLE')
+    finally:
+        C_MUTATION_CAPABILITY.reset(token)
+
+
+def c_upcoming(conn,trip_id,slot):
+    runtime = c_runtime(conn,trip_id)
+    c_require_live(runtime)
+    if not runtime['pending_decision_json']: c_error(409,'Choose enhance or change in an activity review first.','NO_DECISION')
+    if slot['day_number']<runtime['current_day'] or c_run(conn,trip_id,slot['id']):
+        c_error(409,'Only upcoming activities can be changed.','NOT_UPCOMING')
+
+
+@runtime_router.get('/{trip_id}/suggestions')
+async def c_suggestions(trip_id: str,request: Request):
+    actor = c_actor(request)
+    with c_transaction(trip_id,actor) as (conn,trip):
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        if not runtime['pending_decision_json']: c_error(409,'Choose enhance or change in an activity review first.','NO_DECISION')
+        upcoming = [s for s in c_schedule(conn,trip_id) if s['day_number']>=runtime['current_day'] and not c_run(conn,trip_id,s['id'])]
+        if not upcoming: return {'targets':[],'alternatives':[],'message':'No upcoming activities remain. You can leave the itinerary as it is.'}
+        requested=request.query_params.get('activity_id')
+        target=c_slot(conn,trip_id,requested) if requested else upcoming[0]
+        c_upcoming(conn,trip_id,target)
+    data = await c_call_existing(request,'GET',f"/api/live/{trip_id}/replan?user_id={actor}&activity_id={target['activity_id']}")
+    return {'targets':[{'activity_id':s['id'],'title':s['title'],'day':s['day_number']} for s in upcoming],
+            'target_activity_id':target['id'],'alternatives':data.get('alternatives',[])}
+
+
+@runtime_router.post('/{trip_id}/adjustments/preview')
+async def c_preview(trip_id: str,request: Request,payload: CPreview):
+    actor = c_actor(request,payload)
+    with c_transaction(trip_id,actor) as (conn,trip):
+        slot = c_slot(conn,trip_id,payload.target_activity_id)
+        c_upcoming(conn,trip_id,slot)
+        if payload.operation=='remove' and json.loads(c_runtime(conn,trip_id)['pending_decision_json'])['action']!='change':
+            c_error(422,'Choose change in the activity review to remove upcoming activities.','INVALID_OPERATION','operation')
+        fingerprint = c_fingerprint(conn,trip_id)
+        affected = [s for s in c_schedule(conn,trip_id) if s['activity_id']==slot['activity_id']] if payload.operation=='remove' else [slot]
+        for s in affected: c_upcoming(conn,trip_id,s)
+        if payload.operation=='swap':
+            if not conn.execute('SELECT id FROM destination_activities WHERE id=?',(payload.replacement_activity_id,)).fetchone():
+                c_error(404,'Replacement activity not found.','ACTIVITY_NOT_FOUND','replacement_activity_id')
+    if payload.operation=='swap':
+        data = await c_call_existing(request,'GET',f"/api/live/{trip_id}/replan?user_id={actor}&activity_id={slot['activity_id']}")
+        alternative = next((a for a in data.get('alternatives',[]) if a['id']==payload.replacement_activity_id),None)
+        if not alternative: c_error(422,'Choose one of the recommended alternatives for this activity.','INVALID_REPLACEMENT','replacement_activity_id')
+        title = alternative['name']
+    else:
+        title = f"Remove {slot['title']} ({len(affected)} upcoming occurrence(s))"
+    preview = {'token':uuid.uuid4().hex,'fingerprint':fingerprint,'operation':payload.operation,
+        'target_activity_id':slot['id'],'catalogue_activity_id':slot['activity_id'],
+        'replacement_activity_id':payload.replacement_activity_id,'title':title,'affected_count':len(affected)}
+    with c_transaction(trip_id,actor) as (conn,trip):
+        c_upcoming(conn,trip_id,c_slot(conn,trip_id,slot['id']))
+        if c_fingerprint(conn,trip_id)!=fingerprint: c_error(409,'The itinerary changed. Request a fresh preview.','STALE_PREVIEW')
+        conn.execute('UPDATE trip_runtime SET preview_json=? WHERE trip_id=?',(json.dumps(preview),trip_id))
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/adjustments/confirm')
+async def c_confirm(trip_id: str,request: Request,payload: CConfirm):
+    actor = c_actor(request,payload)
+    with c_transaction(trip_id,actor) as (conn,trip):
+        runtime = c_runtime(conn,trip_id)
+        c_require_live(runtime)
+        if runtime['last_confirmation_token']==payload.token:
+            return c_snapshot(conn,trip)
+        preview = json.loads(runtime['preview_json']) if runtime['preview_json'] else None
+        if not preview or preview['token']!=payload.token: c_error(409,'Request a preview before confirming this change.','NO_PREVIEW')
+        slot = c_slot(conn,trip_id,preview['target_activity_id'])
+        c_upcoming(conn,trip_id,slot)
+        if c_fingerprint(conn,trip_id)!=preview['fingerprint']: c_error(409,'The itinerary changed. Request a fresh preview.','STALE_PREVIEW')
+        conn.execute('UPDATE trip_runtime SET operation_in_flight=1,operation_started_at=? WHERE trip_id=?',(c_now(),trip_id))
+    try:
+        if preview['operation']=='swap':
+            await c_call_existing(request,'POST',f'/api/live/{trip_id}/replan',{
+                'user_id':actor,'activity_id':preview['catalogue_activity_id'],
+                'itinerary_activity_id':preview['target_activity_id'],'replacement_activity_id':preview['replacement_activity_id'],
+                'reason':'Confirmed activity review improvement','is_trip_specific':True})
+        else:
+            await c_call_existing(request,'DELETE',f"/api/trip-actions/{trip_id}/activity/{preview['catalogue_activity_id']}?user_id={actor}")
+    except Exception as exc:
+        with get_connection() as conn:
+            conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL WHERE trip_id=?',(trip_id,))
+        if isinstance(exc,HTTPException): raise
+        c_error(503,'The itinerary update failed. Your preview has been kept; retry or leave the itinerary as it is.','DOWNSTREAM_UNAVAILABLE')
+    with c_transaction(trip_id,actor) as (conn,trip):
+        conn.execute('''UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL,pending_decision_json=NULL,preview_json=NULL,
+            last_confirmation_token=?,version=version+1 WHERE trip_id=?''',(payload.token,trip_id))
+        c_advance(conn,trip_id)
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/post-feedback')
+async def c_post_feedback(trip_id: str,request: Request,payload: CPostFeedback):
+    actor = c_actor(request,payload)
+    with c_transaction(trip_id,actor) as (conn,trip):
+        runtime = c_runtime(conn,trip_id)
+        if runtime['status']!='completed': c_error(409,'End the trip before filling out post-trip feedback.','TRIP_NOT_COMPLETED')
+        existing = conn.execute('SELECT * FROM post_trip_feedback WHERE trip_id=?',(trip_id,)).fetchone()
+        if existing and existing['submitted_at']: return c_snapshot(conn,trip)
+        if runtime['operation_in_flight']: c_error(409,'Feedback submission is already in progress.','SUBMISSION_IN_PROGRESS')
+        already_delivered = bool(conn.execute('SELECT id FROM live_postrip WHERE trip_id=?',(trip_id,)).fetchone())
+        if already_delivered and not (existing and existing['delivery_started_at']):
+            c_error(409,'Feedback was already submitted through the previous trip interface. A second learning submission is not allowed.','ALREADY_SUBMITTED')
+        places=[]
+        for item in payload.per_place_ratings:
+            slot = c_slot(conn,trip_id,item.activity_id)
+            if set(item.ratings)-set(c_applicable(slot)): c_error(422,'A per-place rating parameter does not apply to that activity.','INVALID_RATINGS','per_place_ratings')
+            places.append({'activity_id':slot['id'],'catalogue_activity_id':slot['activity_id'],'ratings':item.ratings})
+        conn.execute('''INSERT INTO post_trip_feedback(trip_id,user_id,ratings_json,trip_type,would_revisit,liked,disliked,notes,per_place_ratings_json)
+            VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(trip_id) DO UPDATE SET ratings_json=excluded.ratings_json,trip_type=excluded.trip_type,
+            would_revisit=excluded.would_revisit,liked=excluded.liked,disliked=excluded.disliked,notes=excluded.notes,per_place_ratings_json=excluded.per_place_ratings_json''',
+            (trip_id,actor,json.dumps(payload.ratings),payload.trip_type,payload.would_revisit,payload.liked or '',payload.disliked or '',payload.notes,json.dumps(places)))
+        if payload.draft: return c_snapshot(conn,trip)
+        conn.execute('UPDATE post_trip_feedback SET delivery_started_at=? WHERE trip_id=?',(c_now(),trip_id))
+        conn.execute('UPDATE trip_runtime SET operation_in_flight=1,operation_started_at=? WHERE trip_id=?',(c_now(),trip_id))
+    try:
+        if not already_delivered:
+            # Existing endpoint supplies core feedback used by ranking and applies
+            # optional per-place evaluations to the same LinUCB learner.
+            legacy_places = {}
+            for place in places:
+                scores = place['ratings']
+                legacy_places[place['catalogue_activity_id']] = {'activity_id':place['catalogue_activity_id'],
+                    'rating':round(sum(scores.values())/len(scores)),'comments':payload.notes}
+            await c_call_existing(request,'POST',f'/api/live/{trip_id}/postrip',{
+                'user_id':actor,'overall_satisfaction':payload.ratings['overall'],
+                'enjoyed_most':payload.liked,'disliked':payload.disliked,'comments':payload.notes,
+                'activity_ratings':list(legacy_places.values())})
+    except Exception as exc:
+        with get_connection() as conn:
+            conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL WHERE trip_id=?',(trip_id,))
+        if isinstance(exc,HTTPException): raise
+        c_error(503,'Feedback could not be submitted. Your saved draft has been kept; please retry.','DOWNSTREAM_UNAVAILABLE')
+    with c_transaction(trip_id,actor) as (conn,trip):
+        conn.execute('UPDATE post_trip_feedback SET submitted_at=? WHERE trip_id=?',(c_now(),trip_id))
+        conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL,version=version+1 WHERE trip_id=?',(trip_id,))
+        return c_snapshot(conn,trip)
+
+
+class CRuntimeGuard(BaseHTTPMiddleware):
+    """Lock existing editing entry points without changing B's implementation."""
+    async def dispatch(self,request,call_next):
+        if request.method not in ('POST','PUT','PATCH','DELETE'):
+            return await call_next(request)
+        path = request.url.path
+        trip_id = None
+        category = None
+        patterns = [
+            (r'^/api/trip-actions/([^/]+)/(.+)$','edit'),
+            (r'^/api/itinerary/generate/([^/]+)$','edit'),
+            (r'^/api/plan/generate/([^/]+)$','edit'),
+            (r'^/api/plan/([^/]+)(?:/.*)?$','edit'),
+            (r'^/api/stay/([^/]+)/(?:select|replan|hotel-first-preview)$','edit'),
+            (r'^/api/trips/([^/]+)$','edit'),
+            (r'^/api/live/([^/]+)/(?:activity/[^/]+/status|complete|postrip|replan|simulate|alerts/.*)$','live'),
+        ]
+        for pattern,kind in patterns:
+            match=re.match(pattern,path)
+            if match:
+                trip_id,category=match[1],kind
+                break
+        body = None
+        if path.startswith('/api/itinerary/feedback/') or path=='/api/itinerary/regenerate':
+            try:
+                body=await request.json()
+                with get_connection() as conn:
+                    row=conn.execute('SELECT trip_id FROM itineraries WHERE id=?',(body.get('itinerary_id'),)).fetchone()
+                if row: trip_id,category=row[0],'edit'
+            except (ValueError,AttributeError,sqlite3.Error):
+                return await call_next(request)
+        if not trip_id:
+            return await call_next(request)
+        try:
+            with get_connection() as conn:
+                row=conn.execute('SELECT * FROM trip_runtime WHERE trip_id=?',(trip_id,)).fetchone()
+                runtime=dict(row) if row else None
+            if not runtime: return await call_next(request)
+            if C_MUTATION_CAPABILITY.get()==trip_id: return await call_next(request)
+            # Old finalize/start controls participate once a trip is enrolled.
+            if path==f'/api/trip-actions/{trip_id}/finalize':
+                return JSONResponse(c_finalize(trip_id,request,CActor()))
+            if path==f'/api/trip-actions/{trip_id}/start':
+                return JSONResponse(c_start(trip_id,request,CActor()))
+            if category=='edit' and runtime['status']!='draft':
+                c_error(409,'The itinerary is locked. Reopen a finalized trip before editing, or use a confirmed live-trip adjustment.','ITINERARY_LOCKED')
+            if category=='live':
+                if runtime['status']!='live': c_error(409,'This action requires a live trip.','NOT_LIVE')
+                if path.endswith('/simulate'):
+                    try:
+                        body=await request.json()
+                        payload=CDisruption.model_validate(body)
+                    except (ValueError,ValidationError):
+                        c_error(422,'Choose a valid disruption, severity and integer day number.','INVALID_INPUT','condition_type')
+                    with get_connection() as conn:
+                        trip=conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone()
+                        if trip['user_id']!=c_actor(request,payload): c_error(403,'This trip belongs to another user.','NOT_OWNER')
+                        c_check_day(dict(trip),payload.day_number)
+                        if payload.day_number!=runtime['current_day']: c_error(409,'Simulate disruptions for the current day only.','OUT_OF_ORDER')
+                        if payload.target_activity_id:
+                            c_slot(conn,trip_id,payload.target_activity_id)
+                    return await call_next(request)
+                if '/alerts/' in path:
+                    return await call_next(request)
+                c_error(409,'Use the current activity review and runtime controls for this trip.','USE_RUNTIME_FLOW')
+        except HTTPException as exc:
+            return c_error_response(exc)
+        except sqlite3.OperationalError as exc:
+            if 'no such table: trip_runtime' in str(exc): return await call_next(request)
+            return JSONResponse({'detail':'Trip storage is temporarily unavailable. Please retry.','code':'DATABASE_UNAVAILABLE','field':None},status_code=503)
+        return await call_next(request)
+
+
+def include_c_router(app):
+    """C-owned router registration, error boundary and cross-route editing guard."""
+    app.include_router(runtime_router)
+    app.add_middleware(CRuntimeGuard)
+
 
 # ---------------------------------------------------------------------------
 # Pydantic Schemas
@@ -64,6 +831,7 @@ class SimulateConditionRequest(BaseModel):
 
 class ReplanExecuteRequest(BaseModel):
     activity_id: str
+    itinerary_activity_id: Optional[str] = None
     replacement_activity_id: str
     reason: str = "Condition disruption"
     is_trip_specific: bool = True
@@ -232,6 +1000,8 @@ def init_tables(conn: sqlite3.Connection):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_live_alerts_trip ON live_alerts(trip_id, day_number)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_live_act_feedback_trip ON live_activity_feedback(trip_id)")
     conn.commit()
+    from app.db_migrations_c import migrate_c
+    migrate_c(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -824,8 +1594,8 @@ def execute_replan(trip_id: str, req: ReplanExecuteRequest):
         cursor.execute("""
             SELECT id, day_number, time_slot, order_index, cost_estimate
             FROM itinerary_activities
-            WHERE itinerary_id = ? AND activity_id = ?
-        """, (itin["id"], req.activity_id))
+            WHERE itinerary_id = ? AND activity_id = ? AND (? IS NULL OR id = ?)
+        """, (itin["id"], req.activity_id, req.itinerary_activity_id, req.itinerary_activity_id))
         target_row = cursor.fetchone()
         if not target_row:
             raise HTTPException(status_code=404, detail="Activity to replace not found in itinerary")
@@ -841,17 +1611,20 @@ def execute_replan(trip_id: str, req: ReplanExecuteRequest):
         from app.core.cost_model import activity_fee_inr
         new_cost = activity_fee_inr(rep_act)
 
-        # 1. Feedback for old activity (marked modified, trip-specific to preserve permanent policy)
-        process_activity_feedback(
-            conn=conn,
-            user_id=trip["user_id"],
-            trip_id=trip_id,
-            itinerary_id=itin["id"],
-            activity_id=req.activity_id,
-            action_type="modify",
-            rejection_reason=req.reason,
-            is_trip_specific=req.is_trip_specific
-        )
+        # Runtime reviews have already supplied feedback. Avoid changing the
+        # status of other occurrences of the same place through the legacy
+        # catalogue-ID feedback helper; keep legacy behaviour for old callers.
+        if req.itinerary_activity_id is None:
+            process_activity_feedback(
+                conn=conn,
+                user_id=trip["user_id"],
+                trip_id=trip_id,
+                itinerary_id=itin["id"],
+                activity_id=req.activity_id,
+                action_type="modify",
+                rejection_reason=req.reason,
+                is_trip_specific=req.is_trip_specific
+            )
 
         # 2. Update ONLY the target activity row
         cursor.execute("""
@@ -1198,6 +1971,17 @@ def get_learning_summary(user_id: str, caller_user_id: Optional[str] = Query(Non
             ORDER BY laf.submitted_at DESC
         """, (user_id,))
         feedback_rows = cursor.fetchall()
+        # C: include exact per-occurrence shared-parameter reviews in the
+        # existing learning summary without requiring any history-table writes.
+        c_rows = cursor.execute("""SELECT ar.ratings_json,ar.ended_at,da.category FROM activity_runs ar
+            JOIN trips t ON t.id=ar.trip_id LEFT JOIN destination_activities da ON da.id=ar.activity_id
+            WHERE t.user_id=? AND ar.learning_applied=1""",(user_id,)).fetchall()
+        for review in c_rows:
+            scores=json.loads(review['ratings_json'] or '{}')
+            if scores:
+                mean=sum(scores.values())/len(scores)
+                feedback_rows.append((review['category'] or 'culture_history',mean,(mean-3)/2,mean>=4,review['ended_at']))
+
 
         arm_stats: Dict[str, Dict[str, Any]] = {}
         for arm in CANONICAL_ARMS:

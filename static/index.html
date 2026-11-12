@@ -520,6 +520,8 @@
 
         <!-- Unified Trip Workspace (Pre-Trip, Live Trip, Post-Trip) -->
         <div id="itineraryDisplayContainer" class="hidden space-y-5">
+          <!-- C: finalized/live lifecycle controls; rendered by live_trip.js. -->
+          <div id="cTripLifecycle" class="rounded-xl border border-slate-200 bg-white p-3 text-xs"></div>
           <div class="flex gap-2"><button type="button" onclick="editSelectedTrip()" class="px-3 py-1 border rounded-lg text-xs">Edit trip</button><button type="button" onclick="deleteSelectedTrip()" class="px-3 py-1 border rounded-lg text-xs text-rose-600">Delete trip</button></div>
           <div id="tripCostBreakdown" class="p-3 border rounded-xl text-xs space-y-2"></div>
           <!-- Active trip banner -->
@@ -1650,5 +1652,8 @@
   <script src="/static/modules/stay.js"></script>
   <script src="/static/modules/prep.js"></script>
   <script src="/static/modules/live.js"></script>
+  <!-- C: persisted activity flow and resumable post-trip feedback. -->
+  <script src="/static/modules/live_trip.js"></script>
+  <script src="/static/modules/post_trip.js"></script>
 </body>
 </html>
