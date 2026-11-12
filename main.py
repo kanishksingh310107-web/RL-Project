@@ -37,6 +37,39 @@ def startup():
 def home():
     return FileResponse(STATIC_DIR / "index.html")
 
+def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return False
+        except OSError:
+            return True
+
+
 if __name__ == "__main__":
-    print("Running on http://localhost:8000")
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+    import sys
+
+    port = 8000
+    for idx, arg in enumerate(sys.argv[:-1]):
+        if arg in ("--port", "-p"):
+            try:
+                port = int(sys.argv[idx + 1])
+            except ValueError:
+                pass
+    if "PORT" in os.environ:
+        try:
+            port = int(os.environ["PORT"])
+        except ValueError:
+            pass
+
+    if is_port_in_use(port):
+        for candidate in [8080, 8081, 8082, 5000, 8888]:
+            if not is_port_in_use(candidate):
+                print(f"[Notice] Port {port} is occupied by another process. Automatically switching to http://localhost:{candidate}")
+                port = candidate
+                break
+
+    print(f"Running on http://localhost:{port}")
+    uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True)
