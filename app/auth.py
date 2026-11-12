@@ -2,6 +2,7 @@
 import uuid
 import secrets
 import hashlib
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -46,6 +47,7 @@ def verify_google_credential(credential: str) -> Dict[str, Any]:
         result = authenticate_or_register(
             provider='google',
             identifier=sub,
+            email=email,
             display_name=name,
             avatar_url=picture,
         )
@@ -94,17 +96,29 @@ def authenticate_or_register(
     display_name: Optional[str] = None,
     avatar_url: Optional[str] = None,
     mode: Optional[str] = None,
+    email: Optional[str] = None,
+    username: Optional[str] = None,
 ) -> Dict[str, Any]:
-    clean_identifier = identifier.strip().lower()
+    clean_identifier = identifier.strip().casefold()
     with get_connection() as conn:
         cursor = conn.cursor()
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+        except Exception:
+            pass
+        user_columns = {r[1] for r in cursor.execute("PRAGMA table_info(users)").fetchall()}
         if provider == "google":
-            cursor.execute(
-                "SELECT * FROM users WHERE (auth_provider = ? AND google_sub = ?) OR identifier = ?",
-                (provider, clean_identifier, clean_identifier)
-            )
+            clauses = ["google_sub = ?", "(auth_provider='google' AND identifier = ?)"]
+            params = [clean_identifier, clean_identifier]
+            if "email_normalized" in user_columns and email:
+                clauses.append("email_normalized = ?")
+                params.append(email.strip().casefold())
+            cursor.execute("SELECT * FROM users WHERE " + " OR ".join(clauses), tuple(params))
         else:
-            cursor.execute("SELECT * FROM users WHERE identifier = ?", (clean_identifier,))
+            if "identifier_normalized" in user_columns:
+                cursor.execute("SELECT * FROM users WHERE identifier_normalized = ? OR lower(identifier) = ?", (clean_identifier, clean_identifier))
+            else:
+                cursor.execute("SELECT * FROM users WHERE lower(identifier) = ?", (clean_identifier,))
         existing_user = cursor.fetchone()
         if existing_user:
             if provider == "email":
@@ -114,6 +128,10 @@ def authenticate_or_register(
                     raise ValueError("An account with this email already exists. Please sign in instead.")
                 if not password or not verify_password(password, existing_user["password_hash"]):
                     raise ValueError("Invalid email or password.")
+            elif provider == "google" and "google_sub" in existing_user.keys():
+                if existing_user["google_sub"] and existing_user["google_sub"] != clean_identifier:
+                    raise ValueError("This email is already linked to a different Google account.")
+                cursor.execute("UPDATE users SET google_sub=? WHERE id=? AND (google_sub IS NULL OR google_sub='')", (clean_identifier, existing_user["id"]))
             user_id = existing_user["id"]
             user_name = existing_user["display_name"]
             user_avatar = existing_user["avatar_url"]
@@ -135,20 +153,43 @@ def authenticate_or_register(
                     display_name = "Traveler"
             columns = ["id", "auth_provider", "identifier", "password_hash", "display_name", "avatar_url"]
             values = [user_id, provider, clean_identifier, pwd_hash, display_name, avatar_url]
+            if "username" in user_columns and provider == "email":
+                account_username = (username or clean_identifier.split("@")[0]).strip()
+                columns.extend(["username", "username_normalized", "email", "email_normalized", "identifier_normalized"])
+                values.extend([account_username, account_username.casefold(), clean_identifier, clean_identifier, clean_identifier])
             if provider == "google":
-                columns.append("google_sub")
+                if "google_sub" in user_columns:
+                    columns.append("google_sub")
+                    values.append(clean_identifier)
+                if "email" in user_columns:
+                    columns.append("email")
+                    values.append((email or clean_identifier).casefold())
+                if "email_normalized" in user_columns:
+                    columns.append("email_normalized")
+                    values.append((email or clean_identifier).casefold())
+                if "identifier_normalized" in user_columns:
+                    columns.append("identifier_normalized")
+                    values.append(clean_identifier)
+            elif provider == "guest":
+                columns.append("identifier_normalized")
                 values.append(clean_identifier)
             placeholders = ", ".join(["?" for _ in columns])
             cursor.execute(
                 f"INSERT INTO users ({', '.join(columns)}) VALUES ({placeholders})",
                 tuple(values)
             )
-            conn.commit()
             user_name = display_name
             user_avatar = avatar_url
         cursor.execute("SELECT 1 FROM traveller_profiles WHERE user_id = ?", (user_id,))
         has_profile = cursor.fetchone() is not None
-        token = f"tk_{user_id}_{secrets.token_hex(16)}"
+        if "user_profile" in {r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
+            cursor.execute("INSERT OR IGNORE INTO user_profile(user_id) VALUES(?)", (user_id,))
+        token = secrets.token_urlsafe(32)
+        tables = {r[0] for r in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "auth_sessions" in tables:
+            cursor.execute("DELETE FROM auth_sessions WHERE user_id=? AND expires_at<=?", (user_id, datetime.now(timezone.utc).isoformat()))
+            cursor.execute("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)", (hashlib.sha256(token.encode()).hexdigest(), user_id, (datetime.now(timezone.utc)+timedelta(days=30)).isoformat()))
+        conn.commit()
         return {
             "user_id": user_id,
             "auth_provider": provider,
