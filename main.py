@@ -7,6 +7,10 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
+# A: profile/history integration
+from app.db_migrations_a import migrate_a
+from app.profile_gate import router as profile_gate_router
+# end A: profile/history integration
 from app.api import router
 from app.modules import discover, init_module_tables, registry_router
 
@@ -20,6 +24,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# A: account/profile routes
+app.include_router(profile_gate_router)
+# end A: account/profile routes
 app.include_router(router)
 app.include_router(registry_router)
 for _m in discover():
@@ -31,6 +38,9 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 def startup():
     init_db()
+    # A: profile/history migration
+    migrate_a()
+    # end A: profile/history migration
     init_module_tables()
 
 @app.get("/")

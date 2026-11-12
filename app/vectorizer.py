@@ -180,6 +180,29 @@ class PreferenceVectorizer:
                 for mapped in QUESTION_TO_INTEREST_MAP[key]:
                     active.add(mapped)
 
+        # Reuse the existing interest slots for explicit high-rated travel
+        # categories; the public vector dimensions and names remain stable.
+        history_to_interest = {
+            "scenery": ["nature_outdoors", "photography"],
+            "food": ["food_dining"],
+            "stay_quality": ["relaxation"],
+            "value_for_money": ["local_experiences", "shopping"],
+        }
+        history = profile_dict.get("travel_history") or []
+        if isinstance(history, list):
+            for trip in history:
+                ratings = trip.get("ratings") or {}
+                if isinstance(ratings, str):
+                    try:
+                        ratings = json.loads(ratings)
+                    except (TypeError, ValueError):
+                        ratings = {}
+                if isinstance(ratings, dict):
+                    for category, interests in history_to_interest.items():
+                        rating = ratings.get(category)
+                        if isinstance(rating, (int, float)) and rating >= 4:
+                            active.update(interests)
+
         return active
 
     @classmethod

@@ -4,6 +4,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import json
 
 from app.data.india_destinations import DESTINATIONS_BY_ID
 
@@ -1248,6 +1249,45 @@ def score_destination_for_user(
                 except Exception:
                     pass
 
+    # Structured history ratings personalize destination styles without adding
+    # slots to the stable RL feature vector.
+    history_reasons = []
+    history_category_tags = {
+        "scenery": {"nature", "mountains", "beaches", "photography", "relaxation"},
+        "food": {"food", "cafes", "culinary", "local_experiences"},
+        "safety": {"family", "relaxation", "culture"},
+        "value_for_money": {"budget", "shopping", "local_experiences"},
+        "crowds": {"hidden_gems", "nature", "relaxation"},
+        "accessibility": {"culture", "family", "relaxation"},
+        "stay_quality": {"resort", "comfort", "wellness"},
+    }
+    for pt in (past_trips or []):
+        ratings = pt.get("ratings") or {}
+        if isinstance(ratings, str):
+            try:
+                ratings = json.loads(ratings)
+            except (TypeError, ValueError):
+                ratings = {}
+        if not isinstance(ratings, dict) or not ratings:
+            continue
+        tags = {str(t).lower() for t in dest.get("tags", [])}
+        matched = [key for key, category_tags in history_category_tags.items()
+                   if key in ratings and tags.intersection(category_tags)]
+        high = [key for key in matched if isinstance(ratings.get(key), (int, float)) and ratings[key] >= 4]
+        low = [key for key in matched if isinstance(ratings.get(key), (int, float)) and ratings[key] <= 2]
+        if high:
+            score += min(6.0, len(high) * 2.0)
+            history_reasons.append("your high ratings for " + ", ".join(k.replace("_", " ") for k in high[:2]))
+        if low:
+            score -= min(8.0, len(low) * 2.5)
+        if pt.get("would_revisit") in (True, 1, "1") and str(pt.get("destination", "")).lower() in dest["name"].lower():
+            score += 4.0
+            history_reasons.append("a destination you chose to revisit")
+        trip_type = pt.get("trip_type")
+        companion = str(profile.get("companions", "")).lower()
+        if trip_type and companion and (trip_type == companion or (trip_type == "solo" and companion == "alone")):
+            score += 1.0
+
     # Normalize final score [15.0, 98.0]
     final_score = round(min(98.0, max(15.0, score)), 1)
 
@@ -1275,6 +1315,8 @@ def score_destination_for_user(
         because_items.append(f"budget aligns with {raw_budget.replace('_', ' ')} (Q32)")
     if not is_hard_conflict and active_avoidances:
         because_items.append(f"respects your avoidance of {', '.join([a.replace('_', ' ') for a in active_avoidances[:2]])} (Q12)")
+    if history_reasons:
+        because_items.append("your travel history shows " + ", and ".join(dict.fromkeys(history_reasons[:2])))
 
     because_you_said = f"Because you said {' and '.join(because_items)}." if because_items else f"Because you selected {dest['style']} travel."
 

@@ -137,9 +137,29 @@ def get_detailed_options():
 # Login or signup
 @router.post("/auth", response_model=AuthResponse)
 def login_or_signup(payload: AuthRequest):
+    legacy_mode = payload.mode or "signup"
+    if payload.provider == "google":
+        from app.core.config import get_setting
+        if get_setting("APP_ENV", "development").lower() == "production":
+            raise HTTPException(status_code=403, detail="Use verified Google sign-in.")
+        if not payload.identifier or len(payload.identifier.strip()) > 254:
+            raise HTTPException(status_code=422, detail={"detail": "Enter a valid Google mock identity", "code": "INVALID_IDENTITY", "field": "identifier"})
+        try:
+            return authenticate_or_register("google", payload.identifier.strip(), email=payload.identifier.strip() if "@" in payload.identifier else None,
+                display_name=payload.display_name, avatar_url=payload.avatar_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail={"detail": str(exc), "code": "ACCOUNT_CONFLICT"})
     if payload.provider != "email":
+        if payload.provider == "phone":
+            from app.core.config import get_setting
+            if get_setting("APP_ENV", "development").lower() == "production":
+                raise HTTPException(status_code=403, detail="Phone verification is not enabled.")
+            phone = (payload.identifier or "").strip()
+            if not __import__("re").fullmatch(r"\+?[0-9]{10,15}", phone):
+                raise HTTPException(status_code=422, detail={"detail": "Enter a valid phone number", "code": "INVALID_PHONE", "field": "identifier"})
+            return authenticate_or_register("phone", phone, display_name=payload.display_name or f"Traveler {phone[-4:]}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use the verified sign-in method for this provider.")
-    if payload.mode not in ("login", "signup"):
+    if legacy_mode not in ("login", "signup"):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose sign in or create account.")
     try:
         user_data = authenticate_or_register(
@@ -148,13 +168,19 @@ def login_or_signup(payload: AuthRequest):
             password=payload.password,
             display_name=payload.display_name,
             avatar_url=payload.avatar_url,
-            mode=payload.mode
+            mode=legacy_mode
         )
         return user_data
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        msg = str(e)
+        code = "ACCOUNT_EXISTS" if "already exists" in msg else "INVALID_CREDENTIALS"
+        status_code = 409 if code == "ACCOUNT_EXISTS" else 401
+        raise HTTPException(status_code=status_code, detail={"detail": "Invalid email or password" if status_code == 401 else msg, "code": code})
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error: {str(e)}")
+        from sqlite3 import IntegrityError
+        if isinstance(e, IntegrityError):
+            raise HTTPException(status_code=409, detail={"detail": "That email or username is already in use", "code": "ACCOUNT_EXISTS"})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Sign-in is temporarily unavailable.")
 
 # Real Google Identity Services (GIS) token login
 @router.post("/auth/google-token", response_model=AuthResponse)
@@ -625,6 +651,60 @@ def get_recommendations_for_user(user_id: str, offset: int = 0):
         # 3. Check for past trips
         cursor.execute("SELECT destination, rating, favorite_activity, skipped_or_disliked FROM past_trips WHERE user_id = ?", (user_id,))
         past_trips = [dict(r) for r in cursor.fetchall()]
+        # A-owned history is an additional recommendation signal; existing LinUCB state dimensions stay unchanged.
+        try:
+            for history in cursor.execute("SELECT destination,trip_type,ratings_json,would_revisit,source,trip_id FROM travel_history WHERE user_id=?", (user_id,)).fetchall():
+                row = dict(history)
+                try:
+                    row["ratings"] = json.loads(row.pop("ratings_json") or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    row["ratings"] = {}
+                row["rating"] = row["ratings"].get("overall", 3)
+                past_trips.append(row)
+        except Exception:
+            pass
+        # C owns completed feedback; read it only when the table exists.
+        try:
+            table_exists = cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='post_trip_feedback'").fetchone()
+            if table_exists:
+                feedback_cols = {r[1] for r in cursor.execute("PRAGMA table_info(post_trip_feedback)")}
+                if {"trip_id", "user_id", "ratings_json", "trip_type", "would_revisit"}.issubset(feedback_cols):
+                    trip_cols = {r[1] for r in cursor.execute("PRAGMA table_info(trips)")} if cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trips'").fetchone() else set()
+                    if "destination_name" in trip_cols:
+                        rows = cursor.execute("SELECT f.trip_id,f.trip_type,f.ratings_json,f.would_revisit,t.destination_name AS destination FROM post_trip_feedback f LEFT JOIN trips t ON t.id=f.trip_id WHERE f.user_id=?", (user_id,)).fetchall()
+                    else:
+                        rows = cursor.execute("SELECT trip_id,trip_type,ratings_json,would_revisit,trip_id AS destination FROM post_trip_feedback WHERE user_id=?", (user_id,)).fetchall()
+                    run_columns = {r[1] for r in cursor.execute("PRAGMA table_info(activity_runs)")} if cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='activity_runs'").fetchone() else set()
+                    for feedback in rows:
+                        trip = dict(feedback)
+                        try:
+                            ratings = json.loads(trip.get("ratings_json") or "{}")
+                        except (TypeError, json.JSONDecodeError):
+                            ratings = {}
+                        if not isinstance(ratings, dict):
+                            ratings = {}
+                        if "trip_id" in run_columns and "ratings_json" in run_columns:
+                            for run in cursor.execute("SELECT ratings_json FROM activity_runs WHERE trip_id=? AND ratings_json IS NOT NULL", (trip["trip_id"],)):
+                                try:
+                                    activity_ratings = json.loads(run["ratings_json"] or "{}")
+                                    if isinstance(activity_ratings, dict):
+                                        for key, value in activity_ratings.items():
+                                            if key in {"scenery", "food", "safety", "value_for_money", "crowds", "accessibility", "stay_quality", "overall"} and type(value) is int and 1 <= value <= 5:
+                                                ratings.setdefault(key, value)
+                                except (TypeError, json.JSONDecodeError):
+                                    continue
+                        trip["ratings"] = ratings
+                        trip["rating"] = ratings.get("overall", 3)
+                        past_trips.append(trip)
+        except Exception:
+            pass
+
+        try:
+            excluded_trip_ids = {r[0] for r in cursor.execute("SELECT trip_id FROM travel_history_exclusions WHERE user_id=?", (user_id,)).fetchall()}
+            past_trips = [pt for pt in past_trips if not (pt.get("source") == "trip" and pt.get("trip_id") in excluded_trip_ids)]
+        except Exception:
+            pass
+        base_dict["travel_history"] = past_trips
 
         # 4. Check for shortlisted destinations
         cursor.execute("SELECT destination_id FROM shortlisted_destinations WHERE user_id = ?", (user_id,))
