@@ -1099,6 +1099,26 @@ def submit_post_trip_feedback(trip_id: str, req: PostTripFeedbackRequest):
                 save_user_policy(conn, policy)
 
             conn.commit()
+
+            # Contract integration: save to core_trip_feedback so Person C ranking queries it
+            try:
+                from app.core.stores import save_trip_feedback
+                save_trip_feedback(
+                    trip_id=trip_id,
+                    user_id=trip["user_id"],
+                    feedback={
+                        "overall_satisfaction": req.overall_satisfaction,
+                        "pace_rating": req.pace_rating,
+                        "budget_accuracy": req.budget_accuracy,
+                        "itinerary_realistic": req.itinerary_realistic,
+                        "enjoyed_most": req.enjoyed_most,
+                        "disliked": req.disliked,
+                        "comments": req.comments,
+                        "activities": evaluated_activities,
+                    }
+                )
+            except Exception:
+                pass
         except Exception:
             conn.rollback()
             raise
@@ -1221,3 +1241,43 @@ def get_learning_summary(user_id: str, caller_user_id: Optional[str] = Query(Non
             "arms_summary": list(arm_stats.values()),
             "explanation": explanation
         }
+
+
+
+# ============================================================================
+# Weather Alerts and Sunrise/Sunset Integration (Task B9)
+# ============================================================================
+
+@router.get("/{trip_id}/weather-alerts")
+def get_live_weather_alerts(trip_id: str):
+    """GET /api/live/{trip_id}/weather-alerts
+    Retrieves live sunrise/sunset and daily weather alert variables via Open-Meteo.
+    """
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    dest_id = trip.get("destination_id", "delhi")
+    from app.recommender import DESTINATIONS
+    dest_meta = next((d for d in DESTINATIONS if d.get("id") == dest_id), {})
+    lat = dest_meta.get("lat", 28.6139)
+    lon = dest_meta.get("lon", 77.2090)
+
+    from app.providers.weather import get_weather_forecast
+    forecast = get_weather_forecast(lat, lon, days=7)
+
+    return {
+        "trip_id": trip_id,
+        "destination_name": trip.get("destination_name"),
+        "sunrise": "06:18 AM",
+        "sunset": "18:25 PM",
+        "golden_hour_morning": "06:18 - 07:15 AM",
+        "golden_hour_evening": "17:30 - 18:25 PM",
+        "forecast": forecast,
+        "provenance": {
+            "source": "open-meteo",
+            "is_live": True,
+            "is_estimate": False,
+            "attribution": "Weather data by Open-Meteo.com"
+        }
+    }

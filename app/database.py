@@ -135,6 +135,11 @@ def init_db():
                 transit_pref TEXT DEFAULT 'public_transit',
                 travel_pace TEXT DEFAULT 'balanced',
                 specific_interests TEXT DEFAULT '[]',
+                departure_location TEXT DEFAULT 'Delhi',
+                companions TEXT DEFAULT 'solo',
+                has_children INTEGER DEFAULT 0,
+                has_elderly INTEGER DEFAULT 0,
+                trip_preferences_json TEXT DEFAULT '{}',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
@@ -257,6 +262,19 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_rl_feedback_user ON rl_feedback_log(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_rl_feedback_itin ON rl_feedback_log(itinerary_id)")
 
+
+        cursor.execute("PRAGMA table_info(trips)")
+        tr_cols = [r[1] for r in cursor.fetchall()]
+        if "departure_location" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN departure_location TEXT DEFAULT 'Delhi'")
+        if "companions" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN companions TEXT DEFAULT 'solo'")
+        if "has_children" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN has_children INTEGER DEFAULT 0")
+        if "has_elderly" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN has_elderly INTEGER DEFAULT 0")
+        if "trip_preferences_json" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN trip_preferences_json TEXT DEFAULT '{}'")
 
         # Lightweight schema migrations for existing SQLite databases
         cursor.execute("PRAGMA table_info(traveller_profiles)")

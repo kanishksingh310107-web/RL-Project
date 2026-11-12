@@ -1,42 +1,73 @@
-# Real-Time Places & Dynamic Location API
+# Real-Time Places & Dynamic India Location Discovery API
 
 **Owner:** Person C (Integrator)  
 **Router Prefix:** `/api/places`  
-**UI Module:** `static/modules/places.js`  
-**Test Suite:** `tests/test_places_api.py` (6 unit tests, 100% passing)
+**Test Suites:** 
+- `tests/test_places_api.py` (6 unit tests, 100% passing)
+- `tests/test_places_dynamic.py` (14 unit tests, 100% passing)
 
 ---
 
-## 1. What It Does
+## 1. Executive Summary
 
-Instead of relying solely on hardcoded static destinations in Python dictionaries, the **Real-Time Places API** enables the travel guide to dynamically search, geocode, and fetch real points of interest (attractions, temples, viewpoints, beaches, heritage walks, and dining places) on-demand for **ANY city, town, or tourist hub in India**.
+The **Dynamic India-Wide Location & Real-Time Places Recommendation Engine** transforms the application from a 16-destination fixed-catalogue into a genuinely dynamic, country-wide travel intelligence system covering **all 28 states and 8 union territories of India**.
 
-Once places are fetched in real-time, the system automatically feeds them into the Contextual LinUCB bandit engine, generating a realistic timed day-by-day itinerary (morning, transit buffers, lunch breaks, afternoon sights, tea/rest breaks, and evening experiences) that the traveller can edit, swap, finalize, and start.
+Travellers can discover destinations in two primary modes:
+1. **MODE A (Search Any Location in India):** Instant autocomplete across cities, towns, heritage hubs, hill stations, and neighbourhoods with coordinates resolution and radius selection.
+2. **MODE B (Detect My Current Location):** One-click GPS location detection via HTML5 Geolocation API, reverse geocoding within Indian geographic bounds, and nearby attraction discovery.
+
+Discovered attractions, viewpoints, dining options, and shopping bazaars are dynamically ranked using the **24-dimensional Contextual LinUCB bandit policy**, ensuring personal profiles and constraints (avoidances, accessibility, pace) dictate recommendations.
 
 ---
 
 ## 2. Architecture & Data Flow
 
 ```
-[Traveller UI]
-     │
-     ▼
-[GET /api/places/search?q=...] ──► OpenStreetMap Nominatim API (Real-Time Geocoding)
-     │                                    │
-     ▼                                    ▼
-[Selected Indian Location] ◄──────────────┘ (Coordinates: Lat, Lon, State)
-     │
-     ▼
-[GET /api/places/attractions] ──► Wikivoyage & Wikipedia Travel API
-     │                                    │ (Real Sights, Viewpoints, Categories, Timings)
-     ▼                                    ▼
-[POST /api/places/plan-trip] ──► SQLite `destination_activities` (Live Ingestion)
-     │
-     ▼
-[Contextual LinUCB Policy] ──► Balances Exploration & Exploitation by Category Arm
-     │
-     ▼
-[Timed Day-by-Day Schedule] ──► Morning, Transit (15m), Lunch (90m), Afternoon, Rest (90m), Evening
+   ┌─────────────────────────────────────────────────────────┐
+   │             Traveller Frontend (static/app.js)          │
+   ├────────────────────────────┬────────────────────────────┤
+   │   MODE A: Search India     │   MODE B: Use Current GPS  │
+   │  (/search-locations)       │    (/reverse-geocode)      │
+   └─────────────┬──────────────┴──────────────┬─────────────┘
+                 │                             │
+                 ▼                             ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │             Backend Geo Provider (geo.py)               │
+   │  - Strict India Bounding Box: 6.0°N–38.0°N, 68.0°E–98.0°E│
+   │  - Geoapify Places v2 with countrycode:in filter        │
+   │  - Null-Safety: Unknown prices/ratings remain None      │
+   │  - Curated Indian Hubs Fallback (43+ cities)            │
+   └─────────────────────────────┬───────────────────────────┘
+                                 │
+                                 ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │          Category Mapping to 7 Canonical Arms           │
+   │  - tourism.sights / heritage     ──► culture_history    │
+   │  - catering.restaurant           ──► food_dining        │
+   │  - commercial.shopping / bazaar  ──► shopping_local     │
+   │  - natural / forest / mountain   ──► nature_outdoors    │
+   │  - sport / climbing / trekking   ──► adventure          │
+   │  - leisure.spa / wellness        ──► relaxation         │
+   │  - tourism.attraction / viewpoint──► scenic             │
+   └─────────────────────────────┬───────────────────────────┘
+                                 │
+                                 ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │      Personalized Ranking Engine (personalization.py)    │
+   │  - 24-dim LinUCB Context Vector extraction              │
+   │  - Exploitation reward + Exploration UCB bonus          │
+   │  - Proximity distance bonus (≤3km: +0.15, ≤8km: +0.08)  │
+   │  - Hard Constraint Filtering (crowds, walking, stairs)  │
+   └─────────────────────────────┬───────────────────────────┘
+                                 │
+                                 ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │        Dynamic Itinerary Generation (plan-dynamic)      │
+   │  - Seeds discovered places into SQLite                  │
+   │  - Caches destination center coords (core_place_cache)  │
+   │  - Never falls back silently to Delhi                   │
+   │  - Outputs Timed Day-by-Day Schedule with transit & rest│
+   └─────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -45,45 +76,68 @@ Once places are fetched in real-time, the system automatically feeds them into t
 
 | Method | Endpoint | Query / Body | Description |
 |---|---|---|---|
-| `GET` | `/api/places/search` | `?q={city}&limit=6` | Real-time geocoding across India using OpenStreetMap Nominatim. |
-| `GET` | `/api/places/attractions` | `?city={city}&lat={lat}&lon={lon}` | Fetches live attractions, sights, viewpoints, and dining places via Wikivoyage/Wikipedia. |
-| `GET` | `/api/places/popular` | — | Returns 10 trending real Indian destinations for quick selection. |
-| `POST` | `/api/places/plan-trip` | `PlanDynamicTripRequest` JSON | Takes any city in India, fetches real places via API, generates LinUCB schedule, and returns Timed View. |
+| `GET` | `/api/places/search-locations` | `?q={city}&limit=6` | Real-time Indian location autocomplete via Geoapify / curated hubs fallback. |
+| `GET` | `/api/places/reverse-geocode` | `?lat={lat}&lon={lon}` | GPS reverse geocoding to structured Indian city/state. Rejects non-Indian coordinates (HTTP 400). |
+| `GET` | `/api/places/discover` | `?lat={lat}&lon={lon}&radius_meters={r}&user_id={uid}` | Discovers live places within radius (5–50 km) and personalizes using LinUCB bandit policy. |
+| `POST` | `/api/places/plan-dynamic` | `PlanDynamicTripRequest` JSON | Takes any Indian location, seeds places into `destination_activities`, and generates a full LinUCB itinerary. |
+| `GET` | `/api/places/popular` | — | Returns popular Indian travel hubs with tags and coordinates. |
 
-### Sample Dynamic Plan Request
+### Sample Plan Dynamic Trip Request
 ```json
-POST /api/places/plan-trip
+POST /api/places/plan-dynamic
 {
-  "user_id": "usr_abc123",
-  "city_name": "Pondicherry",
-  "duration_days": 3,
-  "pace_preference": "balanced",
-  "budget_tier": "balanced"
+  "user_id": "usr_demo",
+  "city": "Pune",
+  "state": "Maharashtra",
+  "lat": 18.5204,
+  "lon": 73.8567,
+  "start_date": "2026-12-01",
+  "end_date": "2026-12-03",
+  "travellers_count": 2,
+  "total_budget": 20000.0,
+  "accommodation_tier": "mid_range",
+  "transit_pref": "cab_rental",
+  "travel_pace": "balanced",
+  "radius_meters": 15000
 }
 ```
 
 ---
 
-## 4. Test Verification
+## 4. Bounding Box & Geographical Invariants
 
-Run command: `pytest tests/test_places_api.py -v`
-
-| Test Case | Inputs | Expected Output | Status |
-|---|---|---|---|
-| `test_places_module_registered` | `GET /api/modules` | Module with `id="places"` and `owner="C"` found | **PASS** |
-| `test_search_indian_locations_endpoint` | `?q=Manali` | Returns coordinates, state, and `country="India"` | **PASS** |
-| `test_get_attractions_endpoint` | `city=Manali&lat=32.24&lon=77.18` | Returns real sights with duration, categories, and descriptions | **PASS** |
-| `test_get_popular_destinations` | `GET /api/places/popular` | Returns $\ge 8$ popular Indian hubs | **PASS** |
-| `test_plan_dynamic_trip_end_to_end` | `city_name="Pondicherry", duration_days=2` | Dynamically fetches 14 places, runs LinUCB, produces 2-day timed schedule with transit, meal, and rest blocks | **PASS** |
-| `test_places_service_fallback_offline` | Query: `"Goa"` | Resilient cached dictionary returns valid coordinates if network drops | **PASS** |
+- **India Bounding Box:** `6.0°N` to `38.0°N`, `68.0°E` to `98.0°E`.
+- **Validation Rule:** All coordinates received via `/reverse-geocode`, `/discover`, or `/plan-dynamic` are verified against `is_in_india(lat, lon)`. Any coordinate outside this bounding box is strictly rejected with HTTP 400 Bad Request.
+- **No Delhi Fallback:** If coordinates for an uncatalogued city (e.g. Pune or Hampi) are processed, the system resolves its real coordinates and centers the trip at that exact location.
+- **Null Safety:** Unknown prices or ratings in third-party place feeds remain `None` (never `0.0`), preventing artificial "free activity" distortions in budget calculations.
 
 ---
 
-## 5. External APIs & AI Assistance
+## 5. Verification & Test Suite
 
-- **External APIs Used:**
-  - **OpenStreetMap Nominatim API:** Real-time geocoding and reverse geocoding for Indian cities and towns (`https://nominatim.openstreetmap.org/search`).
-  - **Wikimedia Wikivoyage Travel API:** Structured travel listings (`{{see}}`, `{{do}}`, `{{eat}}`) providing descriptions, opening hours, and pricing (`https://en.wikivoyage.org/w/api.php`).
-  - **Wikipedia MediaWiki Geosearch & Summary REST API:** Geographically clustered landmarks, verified encyclopedic summaries, and authentic thumbnail photographs (`https://en.wikipedia.org/api/rest_v1/page/summary`).
-  - **Google Places API (Optional):** Supported as an alternative provider if `GOOGLE_PLACES_API_KEY` is configured in the environment.
-- **AI Assistance:** Anthropic Claude / Google DeepMind Agentic Pair Programmer was used for scaffolding regular expression parsers for wikitext and designing the LinUCB category mapping.
+All tests mock external HTTP calls with zero external network dependencies.
+
+```bash
+# Run the dynamic places test suite
+python -m pytest tests/test_places_dynamic.py -v
+
+# Run the complete test suite
+python -m pytest tests/test_places_api.py tests/test_places_dynamic.py -v
+```
+
+| Test Case | Description | Result |
+|---|---|---|
+| `test_is_in_india_valid_coordinates` | Verifies coordinates across Delhi, Mumbai, Chennai, Kolkata, Leh, Guwahati, Kanyakumari | **PASS** |
+| `test_is_in_india_invalid_coordinates` | Rejects London, New York, Tokyo, Sydney, and null values | **PASS** |
+| `test_map_geoapify_categories_to_arm` | Verifies mapping from Geoapify categories to 7 canonical LinUCB arms | **PASS** |
+| `test_search_locations_india_offline_fallback` | Resilient offline Indian hubs fallback when network is unconfigured | **PASS** |
+| `test_search_locations_india_mocked_geoapify` | Autocomplete parsing with live Geoapify provenance | **PASS** |
+| `test_reverse_geocode_india_rejects_out_of_bounds` | Non-Indian coordinates raise ValueError | **PASS** |
+| `test_reverse_geocode_india_success` | Resolves real coordinates into structured city and state | **PASS** |
+| `test_discover_places_india_mocked` | Geoapify Places discovery with 7-arm categories and null safety | **PASS** |
+| `test_rank_places_with_linucb` | Contextual 24-dim LinUCB ranking with proximity bonus and avoidance filtering | **PASS** |
+| `test_api_places_search_locations` | `GET /api/places/search-locations` responds with valid Indian results | **PASS** |
+| `test_api_places_reverse_geocode_bounds` | `GET /api/places/reverse-geocode` returns HTTP 400 for non-Indian coordinates | **PASS** |
+| `test_api_places_reverse_geocode_in_india` | `GET /api/places/reverse-geocode` returns 200 with structured location | **PASS** |
+| `test_api_places_discover` | `GET /api/places/discover` discovers places around coordinates | **PASS** |
+| `test_api_places_plan_dynamic_end_to_end` | `POST /api/places/plan-dynamic` creates trip, populates places, and generates itinerary without Delhi fallback | **PASS** |

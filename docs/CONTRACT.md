@@ -64,3 +64,14 @@ All communication between Person A, Person B, and Person C occurs strictly throu
 3. **No Synthetic/Invented Data in Production:** All numbers must be measured or tagged with provenance (`source`, `fetched_at`, `is_live`, `is_estimate`). Unknown numeric quantities must be `None`, never fake `0.0`.
 4. **All Constants in Centralized Assumptions:** Speeds, durations, weights, thresholds, and circuity factors reside exclusively in `app/core/assumptions.py`.
 5. **Non-overlapping Test Suites:** Every test suite must run using temporary databases (`tests/conftest.py` fixtures or isolated `tempfile.TemporaryDirectory()`). Tests must NEVER make live external HTTP calls.
+
+---
+
+## AI assistance and external libraries/APIs used
+
+- **AI Tools:** Development and contract formalization was assisted by **Google Antigravity** (architectural synthesis, database schema alignment, contract definitions, and documentation) and **Claude** (contract verification and cross-module boundary auditing).
+- **External Libraries & APIs:**
+  - `FastAPI` & `Starlette`: REST API router definitions and schema validation.
+  - `Pydantic`: Typed data contracts and schema serialization.
+  - `SQLite3`: ACID relational backing store for shared tables (`core_plans`, `core_stays`, `core_trip_prefs`, `core_trip_feedback`, `core_place_cache`, `core_api_usage`).
+

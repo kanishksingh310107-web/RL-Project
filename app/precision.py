@@ -317,6 +317,12 @@ def validate_answers(raw: Dict[str, Any], context: Dict[str, Any] = None) -> Tup
                 else:
                     normalized_val.append(s)
             val = list(dict.fromkeys(normalized_val))
+            # Auto-default empty allergy/medical selection to 'no_allergies' / 'no_medical_logistics'
+            if not val:
+                if qid in ("d11_food_allergens", "q95") and "no_allergies" in ids:
+                    val = ["no_allergies"]
+                elif qid in ("d21_medical_logistics", "q103") and "no_medical_logistics" in ids:
+                    val = ["no_medical_logistics"]
             allowed_extras = {"omit_health_diet", "omit_health"} if qid in ("d27_privacy_saving", "q47") else set()
             bad = [x for x in val if ids and x not in ids and x not in allowed_extras]
             if bad:
@@ -326,11 +332,16 @@ def validate_answers(raw: Dict[str, Any], context: Dict[str, Any] = None) -> Tup
             clean[orig_qid] = val
 
         elif t == "scale":
-            if not isinstance(val, int) or not (1 <= val <= 5):
+            try:
+                ival = int(val)
+            except (ValueError, TypeError):
                 errors.append(f"{orig_qid}: scale value must be integer 1..5")
                 continue
-            clean[qid] = val
-            clean[orig_qid] = val
+            if not (1 <= ival <= 5):
+                errors.append(f"{orig_qid}: scale value must be integer 1..5")
+                continue
+            clean[qid] = ival
+            clean[orig_qid] = ival
 
         elif t == "number":
             lo = q.get("min", 1)
@@ -346,6 +357,27 @@ def validate_answers(raw: Dict[str, Any], context: Dict[str, Any] = None) -> Tup
             if s:
                 clean[qid] = s
                 clean[orig_qid] = s
+
+    # Ensure safe defaults for visible questions if unprovided in raw
+    defaults_map = {
+        "d05_monsoon_rain": 3,
+        "d06_high_altitude": 3,
+        "d07_heat_humidity": 3,
+        "d08_winter_cold": 3,
+        "d09_spice_tolerance": 3,
+        "d10_street_food": 3,
+        "d15_motion_sickness": 3,
+        "d16_early_starts": 3,
+        "d20_temple_stairs_terrain": 3,
+        "d11_food_allergens": ["no_allergies"],
+        "d21_medical_logistics": ["no_medical_logistics"],
+    }
+    for def_qid, def_val in defaults_map.items():
+        if def_qid not in clean and is_visible(def_qid, full_ctx):
+            clean[def_qid] = def_val
+            leg = CANONICAL_TO_LEGACY.get(def_qid)
+            if leg:
+                clean[leg] = def_val
 
     return clean, errors
 
@@ -645,10 +677,37 @@ def check_precision_missing(answers: Dict[str, Any], context: Dict[str, Any]) ->
             val = (answers or {}).get(qid)
             if val is None and leg_id:
                 val = (answers or {}).get(leg_id)
+            if val is None:
+                # Check legacy aliases
+                for extra_leg, extra_can in EXTRA_LEGACY_ALIASES.items():
+                    if extra_can == qid and (answers or {}).get(extra_leg) is not None:
+                        val = (answers or {}).get(extra_leg)
+                        break
 
             if _is_answered(val):
                 total_ans += 1
             else:
+                # Apply fallback defaults for questions with safe defaults
+                defaults_map = {
+                    "d05_monsoon_rain": 3,
+                    "d06_high_altitude": 3,
+                    "d07_heat_humidity": 3,
+                    "d08_winter_cold": 3,
+                    "d09_spice_tolerance": 3,
+                    "d10_street_food": 3,
+                    "d15_motion_sickness": 3,
+                    "d16_early_starts": 3,
+                    "d20_temple_stairs_terrain": 3,
+                    "d11_food_allergens": ["no_allergies"],
+                    "d21_medical_logistics": ["no_medical_logistics"],
+                }
+                if qid in defaults_map:
+                    val = defaults_map[qid]
+                    if answers is not None and isinstance(answers, dict):
+                        answers[qid] = val
+                    total_ans += 1
+                    continue
+
                 missing.append({
                     "id": qid,
                     "label": q.get("question", qid),

@@ -122,7 +122,7 @@ Ran via `pytest tests/test_ranking.py -v`:
 
 ---
 
-## 7. AI Assistance and External Libraries/APIs Used
+## AI assistance and external libraries/APIs used
 
 - **AI Assistance:** Architectural design and implementation of `app/modules/ranking.py`, regex pattern authoring for season parsing, and unit test generation in `tests/test_ranking.py` were performed with the assistance of Anthropic / Google DeepMind LLM coding assistants.
 - **External Libraries & Frameworks:**

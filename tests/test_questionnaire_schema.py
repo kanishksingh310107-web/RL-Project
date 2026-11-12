@@ -213,3 +213,54 @@ def test_backward_compatibility_adapters():
     assert any(i["kind"] == "constraint" for i in insights)
     assert any("peanuts" in i["text"].lower() for i in insights)
     assert any("windproof" in i["text"].lower() for i in insights)
+
+
+def test_precision_save_graceful_defaults(client, demo_user):
+    user_id = demo_user
+    # Ensure base profile exists
+    client.post(
+        f"/api/profile/{user_id}",
+        json={
+            "age_group": "25_34",
+            "travel_experience": "occasional",
+            "companions": "solo",
+            "planning_approach": "plan_essentials",
+            "travel_goals": ["heritage_architecture", "culinary_exploration"],
+            "place_interests": ["heritage_forts_palaces", "culinary_food_trails"],
+            "dietary": ["pure_veg"],
+            "budget_tier": "mid_range",
+            "preferred_climate": "mild",
+        }
+    )
+
+    # Save precision profile with only a few explicit answers; omitted scale/allergens/health should default safely
+    res = client.post(
+        f"/api/profile/precision/{user_id}",
+        json={
+            "answers": {
+                "d01_solo_safety": "always_prefer_verified",
+                "d04_languages": ["hindi", "english"],
+                "d13_train_class": "vande_bharat_executive",
+                "d14_road_transit": "chauffeur_hired_cab",
+                "d17_stay_types": "heritage_haveli_palace",
+                "d18_stay_amenities": ["high_speed_wifi"],
+                "d19_daily_walking_km": 8,
+                "d22_avoidances": ["avoid_strenuous_hikes"],
+                "d23_cultural_depth": "deep_historical_guide",
+                "d24_permits": "prefer_hassle_free",
+                "d25_budget_flexibility": 3,
+                "d26_proactivity": 4,
+                "d27_privacy_saving": ["travel_prefs", "dietary_needs", "health_accessibility"]
+            }
+        }
+    )
+    assert res.status_code == 200, f"Expected 200 OK, got {res.status_code}: {res.text}"
+    data = res.json()
+    assert data["user_id"] == user_id
+    assert data["exists"] is True
+    # Verify defaults were automatically populated
+    assert data["answers"]["d07_heat_humidity"] == 3
+    assert data["answers"]["d08_winter_cold"] == 3
+    assert data["answers"]["d11_food_allergens"] == ["no_allergies"]
+    assert data["answers"]["d21_medical_logistics"] == ["no_medical_logistics"]
+

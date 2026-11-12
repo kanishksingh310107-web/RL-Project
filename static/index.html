@@ -418,6 +418,80 @@
         </div>
       </div>
 
+      <!-- DYNAMIC INDIA LOCATION EXPLORER & REAL-TIME PLACE DISCOVERY (MODE A & MODE B) -->
+      <div id="dynamicDiscoverySection" class="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/10">
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mb-2">
+              <i class="fa-solid fa-map-location-dot"></i> Dynamic India Discovery
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold">Discover Real Places Anywhere in India</h2>
+            <p class="text-xs text-slate-300 mt-1">
+              Search any Indian city, town, or tourist hub — or detect your GPS position to discover nearby attractions, heritage, dining & nature.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="detectUserLocation()" id="gpsDetectBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg shadow-emerald-900/30">
+              <i class="fa-solid fa-location-crosshairs"></i>
+              <span>Use My Current Location</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Search Bar & Radius Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div class="md:col-span-3 relative">
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400 text-xs"></i>
+              <input type="text" id="dynamicLocationSearchInput" placeholder="Search any city, town, or region in India (e.g. Pune, Srinagar, Munnar, Hampi, Coonoor)..."
+                class="w-full pl-9 pr-10 py-2.5 bg-white/10 hover:bg-white/15 focus:bg-white text-white focus:text-slate-900 placeholder:text-slate-400 border border-white/20 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none text-xs transition"
+                autocomplete="off" oninput="handleDynamicLocationSearch(this.value)">
+              <button onclick="clearDynamicSearch()" id="dynamicClearBtn" class="hidden absolute right-3 top-3 text-slate-400 hover:text-white text-xs">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <!-- Autocomplete suggestions dropdown -->
+            <div id="dynamicLocationSuggestions" class="hidden absolute left-0 right-0 top-12 bg-white text-slate-900 border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto text-xs divide-y divide-slate-100"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="dynamicRadiusSelect" onchange="handleRadiusChange(this.value)" class="w-full bg-white/10 text-white border border-white/20 px-3 py-2.5 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              <option value="5000" class="text-slate-900">Within 5 km</option>
+              <option value="10000" class="text-slate-900">Within 10 km</option>
+              <option value="15000" selected class="text-slate-900">Within 15 km</option>
+              <option value="25000" class="text-slate-900">Within 25 km</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Status / Active Location Bar -->
+        <div id="dynamicLocationStatusBar" class="hidden flex flex-wrap items-center justify-between gap-3 p-3 bg-white/5 rounded-xl border border-white/10 text-xs">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span>Active Location: <strong id="activeLocationName" class="text-white">--</strong></span>
+            <span id="activeLocationCoords" class="text-[11px] text-slate-400 font-mono"></span>
+            <span id="activeLocationProvenance" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Live Geoapify</span>
+          </div>
+          <button onclick="openPlanModalForActiveLocation()" class="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white font-semibold text-xs rounded-lg transition flex items-center gap-1.5">
+            <i class="fa-solid fa-calendar-plus"></i>
+            <span>Plan Itinerary for this Location</span>
+          </button>
+        </div>
+
+        <!-- Discovered Places Grid -->
+        <div id="dynamicPlacesArea" class="hidden space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
+              <h3 class="text-sm font-bold text-white">Discovered Real Places & LinUCB Personalized Recommendations</h3>
+            </div>
+            <span id="discoveredCountText" class="text-[11px] text-slate-400">0 places discovered</span>
+          </div>
+          <div id="dynamicPlacesGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+      </div>
+
       <!-- VIEW 3B: TRAVEL RECOMMENDATIONS (FEATURE TWO) -->
       <div id="recommendationsSection" class="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 space-y-7">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
@@ -532,17 +606,19 @@
           </button>
         </div>
 
-        <!-- Active Itinerary Display Container -->
-        <div id="itineraryDisplayContainer" class="hidden space-y-6">
-          <!-- Active Trip Banner -->
+        <!-- Unified Trip Workspace (Pre-Trip, Live Trip, Post-Trip) -->
+        <div id="itineraryDisplayContainer" class="hidden space-y-5">
+          <!-- Active Trip Banner with Companion & Trip Specs -->
           <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <div class="flex items-center gap-2 mb-1">
-                <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">Active Itinerary</span>
-                <span class="text-xs text-slate-400" id="itinDatesBadge">Nov 10 – Nov 14, 2026 (5 Days)</span>
+              <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">Active Trip</span>
+                <span class="text-xs text-slate-300 font-semibold" id="itinDatesBadge">Nov 10 – Nov 14, 2026 (5 Days)</span>
+                <span class="px-2 py-0.5 text-[10px] font-semibold bg-indigo-500/30 text-indigo-200 rounded border border-indigo-400/30" id="itinCompanionsBadge">Companions: Couple</span>
+                <span class="px-2 py-0.5 text-[10px] font-semibold bg-sky-500/30 text-sky-200 rounded border border-sky-400/30" id="itinDepartureBadge">From: Delhi</span>
               </div>
               <h3 class="text-lg font-bold" id="itinDestinationTitle">Select an Indian Destination</h3>
-              <p class="text-xs text-slate-300 mt-0.5" id="itinSummaryNotes">Generated via LinUCB Contextual Bandit policy.</p>
+              <p class="text-xs text-slate-300 mt-0.5" id="itinSummaryNotes">Generated via Contextual LinUCB policy.</p>
             </div>
             <div class="flex items-center gap-3">
               <div class="text-right">
@@ -551,34 +627,107 @@
               </div>
               <button onclick="regenerateEntireItinerary()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5 transition">
                 <i class="fa-solid fa-arrows-rotate"></i>
-                <span>Regenerate Itinerary</span>
+                <span>Regenerate</span>
               </button>
             </div>
           </div>
 
-          <!-- Live Weather & Context Card -->
-          <div id="itinWeatherCard" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between text-xs gap-3">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-sm">
-                <i class="fa-solid fa-cloud-sun"></i>
+          <!-- UNIFIED WORKSPACE THREE PRIMARY TABS -->
+          <div class="flex border-b border-slate-200 gap-2 bg-slate-50 p-1.5 rounded-xl text-xs font-bold">
+            <button type="button" onclick="switchWorkspaceMode('pre')" id="wsTabBtn-pre" class="flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 text-white shadow-sm flex items-center justify-center gap-2 transition">
+              <i class="fa-solid fa-map-location-dot"></i>
+              <span>PRE-TRIP</span>
+              <span class="text-[10px] font-normal opacity-90 hidden sm:inline">(Itinerary, Stays, Prep)</span>
+            </button>
+            <button type="button" onclick="switchWorkspaceMode('live')" id="wsTabBtn-live" class="flex-1 py-2.5 px-4 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white flex items-center justify-center gap-2 transition">
+              <i class="fa-solid fa-compass"></i>
+              <span>LIVE TRIP</span>
+              <span class="text-[10px] font-normal opacity-90 hidden sm:inline">(Schedule & Alerts)</span>
+            </button>
+            <button type="button" onclick="switchWorkspaceMode('post')" id="wsTabBtn-post" class="flex-1 py-2.5 px-4 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white flex items-center justify-center gap-2 transition">
+              <i class="fa-solid fa-star"></i>
+              <span>POST-TRIP</span>
+              <span class="text-[10px] font-normal opacity-90 hidden sm:inline">(Feedback & Ratings)</span>
+            </button>
+          </div>
+
+          <!-- ============================================== -->
+          <!-- SECTION 1: PRE-TRIP WORKSPACE -->
+          <!-- ============================================== -->
+          <div id="workspacePreTrip" class="space-y-4">
+            <!-- Pre-Trip Subtabs -->
+            <div class="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-semibold">
+              <button type="button" onclick="switchPreSubtab('itin')" id="preSubBtn-itin" class="px-3.5 py-1.5 rounded-lg bg-slate-900 text-white shadow-xs transition">
+                <i class="fa-solid fa-calendar-day mr-1.5"></i> Daily Itinerary
+              </button>
+              <button type="button" onclick="switchPreSubtab('stay')" id="preSubBtn-stay" class="px-3.5 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition">
+                <i class="fa-solid fa-hotel mr-1.5"></i> Stays & Accommodation
+              </button>
+              <button type="button" onclick="switchPreSubtab('prep')" id="preSubBtn-prep" class="px-3.5 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition">
+                <i class="fa-solid fa-suitcase-rolling mr-1.5"></i> Packing & Preparation
+              </button>
+            </div>
+
+            <!-- Subtab Content 1: Daily Itinerary -->
+            <div id="preSubContent-itin" class="space-y-4">
+              <!-- Live Weather & Context Card -->
+              <div id="itinWeatherCard" class="hidden bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between text-xs gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-sm">
+                    <i class="fa-solid fa-cloud-sun"></i>
+                  </div>
+                  <div>
+                    <div class="font-bold text-slate-800" id="itinWeatherSummary">Checking forecast...</div>
+                    <div class="text-[10px] text-slate-500" id="itinWeatherDetails">Open-Meteo Weather API</div>
+                  </div>
+                </div>
+                <div id="itinWeatherSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                  source: api
+                </div>
               </div>
-              <div>
-                <div class="font-bold text-slate-800" id="itinWeatherSummary">Checking forecast...</div>
-                <div class="text-[10px] text-slate-500" id="itinWeatherDetails">Open-Meteo Weather API</div>
+
+              <!-- Day-by-Day Timeline Accordion / Tabs -->
+              <div id="itineraryDaysContainer" class="space-y-6">
+                <!-- Populated via JavaScript -->
               </div>
             </div>
-            <div id="itinWeatherSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
-              source: api
+
+            <!-- Subtab Content 2: Stay & Accommodation -->
+            <div id="preSubContent-stay" class="hidden">
+              <div id="workspaceStayContainer" class="bg-white rounded-xl border border-slate-200 p-4"></div>
+            </div>
+
+            <!-- Subtab Content 3: Packing & Preparation -->
+            <div id="preSubContent-prep" class="hidden">
+              <div id="workspacePrepContainer" class="bg-white rounded-xl border border-slate-200 p-4"></div>
             </div>
           </div>
 
-          <!-- Day-by-Day Timeline Accordion / Tabs -->
-          <div id="itineraryDaysContainer" class="space-y-6">
-            <!-- Populated via JavaScript -->
+          <!-- ============================================== -->
+          <!-- SECTION 2: LIVE TRIP WORKSPACE -->
+          <!-- ============================================== -->
+          <div id="workspaceLiveTrip" class="hidden">
+            <div id="workspaceLiveContainer" class="bg-white rounded-xl border border-slate-200 p-4"></div>
+          </div>
+
+          <!-- ============================================== -->
+          <!-- SECTION 3: POST-TRIP WORKSPACE -->
+          <!-- ============================================== -->
+          <div id="workspacePostTrip" class="hidden">
+            <div id="workspacePostContainer" class="bg-white rounded-xl border border-slate-200 p-4"></div>
           </div>
         </div>
       </div>
     </section>
+
+    <!-- UI FOOTER WITH ATTRIBUTIONS -->
+    <footer class="mt-12 py-6 border-t border-slate-200 text-center text-xs text-slate-500">
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-2">
+        <span>RL-Based Proactive Travel Guide &copy; 2026</span>
+        <span class="hidden sm:inline">&bull;</span>
+        <span>Map and places data: Powered by Geoapify | &copy; OpenStreetMap contributors</span>
+      </div>
+    </footer>
 
   </main>
 
@@ -773,68 +922,149 @@
     </div>
   </div>
 
-  <!-- MODAL: EXPLORE DESTINATION DETAILS -->
-  <div id="exploreModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 flex flex-col">
-      <div class="relative h-52 w-full shrink-0">
-        <img id="exploreImg" src="" alt="Destination" class="w-full h-full object-cover rounded-t-2xl">
-        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent rounded-t-2xl"></div>
-        <button onclick="closeModal('exploreModal')" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/60 text-white hover:bg-slate-900/90 flex items-center justify-center transition">
+  <!-- MODAL: EXPLORE DESTINATION DETAILS (TASK 5) -->
+  <div id="exploreModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+    <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col">
+      <!-- Header Banner with Image -->
+      <div class="relative h-56 w-full shrink-0">
+        <img id="exploreImg" src="" alt="Destination" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent"></div>
+        <button onclick="closeModal('exploreModal')" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-slate-900/70 text-white hover:bg-slate-900 flex items-center justify-center transition shadow">
           <i class="fa-solid fa-xmark"></i>
         </button>
         <div class="absolute bottom-3 left-4 right-4 text-white">
-          <div class="flex items-center gap-2 mb-1">
-            <span id="exploreBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white"></span>
-            <span id="exploreCountry" class="text-xs text-slate-200 font-medium"></span>
+          <div class="flex flex-wrap items-center gap-2 mb-1">
+            <span id="exploreBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shadow-xs">95% Match</span>
+            <span id="exploreStateBadge" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-white/20 backdrop-blur-xs text-slate-100"></span>
+            <span id="exploreCountry" class="text-xs text-slate-300 font-medium">India</span>
           </div>
-          <h2 id="exploreTitle" class="text-xl font-bold tracking-tight"></h2>
+          <h2 id="exploreTitle" class="text-2xl font-bold tracking-tight"></h2>
         </div>
       </div>
 
-      <div class="p-6 space-y-5 flex-1">
-        <!-- Tags & Meta -->
+      <!-- Loading Spinner -->
+      <div id="exploreLoadingState" class="p-12 text-center text-slate-500 flex-1">
+        <div class="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <p class="text-xs font-semibold">Assembling complete travel experience & verified attractions...</p>
+      </div>
+
+      <!-- Scrollable Content Body -->
+      <div id="exploreContentContainer" class="hidden p-5 sm:p-6 space-y-6 flex-1 overflow-y-auto text-xs">
+        <!-- Quick Meta Badges -->
         <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
           <div id="exploreTags" class="flex flex-wrap gap-1.5"></div>
           <div class="flex items-center gap-2 text-xs font-semibold text-slate-700">
-            <span id="exploreDuration" class="px-2 py-0.5 rounded bg-slate-100"></span>
-            <span id="exploreBudget" class="px-2 py-0.5 rounded bg-slate-100"></span>
+            <span id="exploreDuration" class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold"></span>
+            <span id="exploreSeasonTag" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold"></span>
           </div>
         </div>
 
-        <!-- Why it fits you -->
-        <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 text-xs text-slate-800">
-          <h4 class="font-bold text-indigo-900 flex items-center gap-1.5 mb-1 text-xs">
-            <i class="fa-solid fa-compass text-indigo-600"></i> Why this fits your profile
-          </h4>
-          <p id="exploreWhy" class="text-slate-700 leading-relaxed"></p>
-        </div>
-
-        <!-- Available Experiences -->
+        <!-- 1. Destination Overview -->
         <div>
-          <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Available Experiences & Highlights</h4>
-          <ul id="exploreExperiences" class="space-y-1.5 text-xs text-slate-600"></ul>
+          <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-map-location-dot text-indigo-600"></i> Destination Overview & Vibe
+          </h4>
+          <p id="exploreOverview" class="text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200/80"></p>
         </div>
 
-        <!-- Best Season & Weather -->
-        <div class="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs">
-          <span class="font-bold text-slate-800 block mb-0.5">Best Season & Weather</span>
-          <p id="exploreSeason" class="text-slate-600"></p>
+        <!-- 2. Personalized "Why Recommended For You" -->
+        <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl p-4 text-xs">
+          <h4 class="font-bold text-indigo-950 flex items-center gap-2 mb-2 text-xs">
+            <i class="fa-solid fa-sparkles text-indigo-600"></i> Why This Fits Your Personal Profile
+          </h4>
+          <ul id="exploreWhyList" class="space-y-1.5 text-slate-700"></ul>
         </div>
 
-        <!-- Practical Considerations -->
-        <div id="explorePracticalWrapper" class="space-y-1.5">
-          <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider">Practical Considerations & Travel Tips</h4>
-          <ul id="explorePractical" class="space-y-1 text-xs text-slate-600"></ul>
+        <!-- 3. Main Attractions & Verified Entry Fees -->
+        <div>
+          <div class="flex items-center justify-between mb-2.5">
+            <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-landmark text-emerald-600"></i> Main Attractions & Highlights
+            </h4>
+            <span class="text-[10px] text-slate-400">Verified hours & entry pricing</span>
+          </div>
+          <div id="exploreAttractionsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
         </div>
 
-        <!-- Footer Actions -->
-        <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
-          <button id="exploreShortlistBtn" onclick="" class="px-4 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition flex items-center gap-1.5">
-            <i class="fa-regular fa-bookmark"></i>
-            <span>Shortlist This Destination</span>
-          </button>
-          <button onclick="closeModal('exploreModal')" class="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition">
+        <!-- 4. Suggested Day-Wise Itinerary (Morning, Afternoon, Evening) -->
+        <div>
+          <div class="flex items-center justify-between mb-2.5">
+            <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-calendar-days text-indigo-600"></i> Suggested Day-Wise Itinerary
+            </h4>
+            <span class="text-[10px] text-indigo-600 font-semibold">Morning &bull; Commute &bull; Afternoon &bull; Evening</span>
+          </div>
+          <div id="exploreItineraryDays" class="space-y-3"></div>
+        </div>
+
+        <!-- 5. Culinary & Dining Experiences -->
+        <div>
+          <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-utensils text-amber-600"></i> Authentic Culinary & Food Experiences
+          </h4>
+          <div id="exploreFoodGrid" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5"></div>
+        </div>
+
+        <!-- 6. Shopping Recommendations & Bazaars -->
+        <div>
+          <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+            <i class="fa-solid fa-bag-shopping text-rose-600"></i> Artisans & Shopping Recommendations
+          </h4>
+          <div id="exploreShoppingGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5"></div>
+        </div>
+
+        <!-- 7. Realistic Trip Budget & Accommodation Estimates -->
+        <div class="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-white/10 pb-2">
+            <div>
+              <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Trip Cost Estimator</span>
+              <h4 class="font-bold text-white text-sm">Realistic Budget Breakdown (3 Days)</h4>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] text-slate-300">Minimum Estimated</span>
+              <div id="exploreBareMinBudget" class="text-base font-extrabold text-emerald-400">₹0</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div class="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+              <span class="text-[10px] text-slate-400 font-semibold block">Comfortable Recommended Budget</span>
+              <div id="exploreRecBudget" class="text-lg font-bold text-white">₹0</div>
+              <p class="text-[10px] text-slate-300">Includes AC private cab, boutique stay, curated thali meals & entry tickets.</p>
+            </div>
+            <div class="bg-white/5 p-3 rounded-xl border border-white/10 space-y-1">
+              <span class="text-[10px] text-slate-400 font-semibold block">Estimated Accommodation Rates</span>
+              <div class="text-[11px] space-y-0.5 text-slate-200">
+                <div>&bull; Hostels/Guesthouses: <span class="font-bold text-emerald-300">₹800–₹1,800/night</span></div>
+                <div>&bull; Boutique/3-Star: <span class="font-bold text-emerald-300">₹2,500–₹4,800/night</span></div>
+                <div>&bull; Heritage Resorts: <span class="font-bold text-emerald-300">₹6,500–₹14,000/night</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. Practical Information & Travel Tips -->
+        <div>
+          <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-info text-sky-600"></i> Practical Information & Guidelines
+          </h4>
+          <div id="explorePracticalGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- Modal Footer Action Bar (Task 5: Seamless "Plan This Trip" button) -->
+      <div class="p-3.5 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
+        <button id="exploreShortlistBtn" onclick="" class="px-3.5 py-2 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 transition flex items-center gap-1.5">
+          <i class="fa-regular fa-bookmark"></i>
+          <span>Shortlist</span>
+        </button>
+
+        <div class="flex items-center gap-2">
+          <button onclick="closeModal('exploreModal')" class="px-4 py-2 border border-slate-300 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold transition">
             Close
+          </button>
+          <button id="explorePlanTripBtn" onclick="planTripFromExplore()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-2">
+            <i class="fa-solid fa-route"></i>
+            <span>Plan This Trip &rarr;</span>
           </button>
         </div>
       </div>
@@ -979,12 +1209,18 @@
         <!-- Live Comparative Benchmark -->
         <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-800">Empirical Benchmark vs. Static Recommender Baseline:</span>
+            <div>
+              <span class="text-xs font-bold text-slate-800 block">Simulation Benchmark (20-round demo, not evidence)</span>
+              <span class="text-[10px] text-slate-500">20-round comparison against static baseline. For scientific evaluation, see docs/evaluation.md.</span>
+            </div>
             <button onclick="runLiveAcademicBenchmark()" id="runBenchmarkBtn" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg transition shadow-sm">
-              Run Simulation Benchmark
+              Run 20-round demo, not evidence
             </button>
           </div>
           <div id="benchmarkResultsArea" class="hidden text-[11px] font-mono bg-white p-2.5 rounded-lg border border-slate-200 space-y-1">
+            <div class="text-[10px] text-amber-700 bg-amber-50 p-1.5 rounded mb-1 font-sans">
+              <b>Disclosure:</b> 20-round demo, not evidence. Empirical evaluations across seeds and personas are documented in <code>docs/evaluation.md</code>.
+            </div>
             <div class="flex justify-between">
               <span>Adaptive LinUCB Acceptance:</span>
               <span class="font-bold text-emerald-600" id="benchLinucbAcc">--</span>
@@ -1044,13 +1280,16 @@
     </div>
   </div>
 
-  <!-- MODAL: PLAN NEW TRIP FORM -->
+  <!-- MODAL: PLAN NEW TRIP FORM (UNIFIED COMPANION & TRIP PLANNING) -->
   <div id="tripFormModal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 p-6">
+    <div class="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-100 p-6">
       <div class="flex justify-between items-center pb-3 border-b border-slate-200">
         <div>
+          <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 mb-1">
+            <i class="fa-solid fa-route"></i> Unified Trip Planner
+          </div>
           <h3 class="text-base font-bold text-slate-900">Plan a New Trip</h3>
-          <p class="text-xs text-slate-500 mt-0.5">Preferences auto-filled from your travel profile.</p>
+          <p class="text-xs text-slate-500 mt-0.5">Preferences pre-filled from your profile. Customize anytime per trip.</p>
         </div>
         <button onclick="closeModal('tripFormModal')" class="text-slate-400 hover:text-slate-600">
           <i class="fa-solid fa-xmark text-lg"></i>
@@ -1058,13 +1297,14 @@
       </div>
 
       <form id="tripCreateForm" onsubmit="handleTripCreateSubmit(event)" class="mt-4 space-y-4 text-xs">
+        <!-- 1. DESTINATION -->
         <div>
           <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
-            <span>Destination</span>
-            <span class="text-[10px] text-emerald-600 font-normal">Open-Meteo Geocoding Live Search</span>
+            <span>Destination (Anywhere in India)</span>
+            <span class="text-[10px] text-emerald-600 font-normal">Real-Time Search & Curated Hubs</span>
           </label>
           <div class="relative mb-2">
-            <input type="text" id="tripCitySearchInput" placeholder="Search any city worldwide (e.g. Pune, Srinagar, Shillong)..." 
+            <input type="text" id="tripCitySearchInput" placeholder="Search any city or tourist place (e.g. Pune, Srinagar, Shillong, Hampi)..." 
               class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50 text-xs"
               autocomplete="off" oninput="handleCitySearchInput(this.value)">
             <div id="citySearchResults" class="hidden absolute left-0 right-0 top-10 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto text-xs"></div>
@@ -1088,60 +1328,320 @@
           </select>
           <div id="destinationSourceInfo" class="hidden text-[10px] text-slate-500 mt-1 flex items-center gap-1.5">
             <i class="fa-solid fa-circle-check text-emerald-500"></i>
-            <span id="destinationSourceText">Resolved via Open-Meteo Geocoding</span>
+            <span id="destinationSourceText">Resolved via Geocoding</span>
+          </div>
+        </div>
+
+        <!-- 2. DEPARTURE LOCATION & DATES -->
+        <div class="bg-slate-50/70 p-3 rounded-xl border border-slate-200 space-y-2.5">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Departure City / Location</label>
+            <div class="flex gap-2">
+              <input type="text" id="tripDepartureInput" value="Delhi" placeholder="e.g. Mumbai, Delhi, Bengaluru" class="flex-1 px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs">
+            </div>
+            <!-- Quick Chips -->
+            <div class="flex flex-wrap gap-1 mt-1.5">
+              <button type="button" onclick="setTripDeparture('Delhi')" class="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 hover:bg-slate-300 text-slate-700">Delhi</button>
+              <button type="button" onclick="setTripDeparture('Mumbai')" class="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 hover:bg-slate-300 text-slate-700">Mumbai</button>
+              <button type="button" onclick="setTripDeparture('Bengaluru')" class="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 hover:bg-slate-300 text-slate-700">Bengaluru</button>
+              <button type="button" onclick="setTripDeparture('Kolkata')" class="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 hover:bg-slate-300 text-slate-700">Kolkata</button>
+              <button type="button" onclick="setTripDeparture('Chennai')" class="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 hover:bg-slate-300 text-slate-700">Chennai</button>
+              <button type="button" onclick="setTripDeparture('Hyderabad')" class="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 hover:bg-slate-300 text-slate-700">Hyderabad</button>
+              <button type="button" onclick="setTripDeparture('Pune')" class="px-2 py-0.5 rounded text-[10px] bg-slate-200/80 hover:bg-slate-300 text-slate-700">Pune</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Start Date</label>
+              <input type="date" id="tripStartDateInput" required onchange="updateTripDurationPreview()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>End Date</span>
+                <span id="tripDurationBadge" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">4 Days</span>
+              </label>
+              <input type="date" id="tripEndDateInput" required onchange="updateTripDurationPreview()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. COMPANIONS & TRAVELLERS -->
+        <div class="bg-indigo-50/50 p-3 rounded-xl border border-indigo-100 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <label class="block font-semibold text-slate-800">Who are you travelling with?</label>
+            <div class="flex items-center gap-1.5">
+              <span class="text-[11px] text-slate-500">Party Size:</span>
+              <input type="number" id="tripTravellersInput" min="1" max="15" value="2" class="w-16 px-2 py-1 border border-slate-300 rounded-lg text-center font-bold bg-white">
+            </div>
+          </div>
+
+          <!-- Companion Type Cards -->
+          <div class="grid grid-cols-4 gap-2 text-center" id="tripCompanionGrid">
+            <label class="cursor-pointer">
+              <input type="radio" name="tripCompanionsRadio" value="solo" onchange="onCompanionTypeChanged(this.value)" class="sr-only peer">
+              <div class="p-2 rounded-xl border border-slate-200 bg-white peer-checked:border-indigo-600 peer-checked:bg-indigo-600 peer-checked:text-white transition">
+                <i class="fa-solid fa-person block text-sm mb-1"></i>
+                <span class="font-semibold block text-[11px]">Solo</span>
+              </div>
+            </label>
+            <label class="cursor-pointer">
+              <input type="radio" name="tripCompanionsRadio" value="partner" checked onchange="onCompanionTypeChanged(this.value)" class="sr-only peer">
+              <div class="p-2 rounded-xl border border-slate-200 bg-white peer-checked:border-indigo-600 peer-checked:bg-indigo-600 peer-checked:text-white transition">
+                <i class="fa-solid fa-heart block text-sm mb-1"></i>
+                <span class="font-semibold block text-[11px]">Couple</span>
+              </div>
+            </label>
+            <label class="cursor-pointer">
+              <input type="radio" name="tripCompanionsRadio" value="friends" onchange="onCompanionTypeChanged(this.value)" class="sr-only peer">
+              <div class="p-2 rounded-xl border border-slate-200 bg-white peer-checked:border-indigo-600 peer-checked:bg-indigo-600 peer-checked:text-white transition">
+                <i class="fa-solid fa-user-group block text-sm mb-1"></i>
+                <span class="font-semibold block text-[11px]">Friends</span>
+              </div>
+            </label>
+            <label class="cursor-pointer">
+              <input type="radio" name="tripCompanionsRadio" value="family" onchange="onCompanionTypeChanged(this.value)" class="sr-only peer">
+              <div class="p-2 rounded-xl border border-slate-200 bg-white peer-checked:border-indigo-600 peer-checked:bg-indigo-600 peer-checked:text-white transition">
+                <i class="fa-solid fa-people-roof block text-sm mb-1"></i>
+                <span class="font-semibold block text-[11px]">Family</span>
+              </div>
+            </label>
+          </div>
+
+          <!-- Specific Needs: Children & Elderly -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-indigo-100/60">
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" id="tripHasChildrenCheck" class="rounded text-indigo-600 focus:ring-indigo-500">
+              <div>
+                <span class="font-semibold text-slate-800 text-[11px] block">Children in Party (&lt; 12 yrs)</span>
+                <span class="text-[10px] text-slate-500 block">Filters adult nightlife; adds kid-friendly stops & buffers</span>
+              </div>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" id="tripHasElderlyCheck" class="rounded text-indigo-600 focus:ring-indigo-500">
+              <div>
+                <span class="font-semibold text-slate-800 text-[11px] block">Seniors / Elderly in Party</span>
+                <span class="text-[10px] text-slate-500 block">Avoids steep treks & rocky stairs; prioritizes accessible transit</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 4. REALISTIC BUDGET SYSTEM & ALLOWANCE SLIDER -->
+        <div class="bg-emerald-50/40 p-3.5 rounded-xl border border-emerald-200/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <i class="fa-solid fa-calculator text-emerald-600"></i>
+              <span class="font-bold text-slate-800 text-xs">Realistic Trip Budget System</span>
+            </div>
+            <button type="button" onclick="calculateTripMinimumBudget()" id="calcBudgetBtn" class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold shadow-xs flex items-center gap-1.5 transition">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Calculate Minimum Budget</span>
+            </button>
+          </div>
+
+          <!-- Shopping checkbox toggle -->
+          <div class="flex items-center justify-between pt-1 text-[11px] text-slate-600">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" id="tripIncludeShoppingCheck" onchange="calculateTripMinimumBudget()" class="rounded text-emerald-600 focus:ring-emerald-500">
+              <span>Include Artisan Market & Bazaar Shopping Allowance</span>
+            </label>
+            <span class="text-[10px] text-slate-400">Handicrafts & Gifts</span>
+          </div>
+
+          <!-- Live Budget Estimation Display Container -->
+          <div id="budgetEstimateResult" class="hidden space-y-2.5 pt-2 border-t border-emerald-100">
+            <!-- 2-Tier Cards: Bare Minimum vs Recommended -->
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="p-2.5 rounded-xl bg-white border border-slate-200 shadow-xs">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block">Bare Minimum Budget</span>
+                <span class="text-base font-extrabold text-slate-800 block" id="dispBareMinBudget">₹0</span>
+                <span class="text-[10px] text-slate-500 block mt-0.5" id="dispBareMinPerPerson">₹0 / person</span>
+              </div>
+              <div class="p-2.5 rounded-xl bg-white border-2 border-emerald-500 shadow-xs">
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] uppercase font-bold text-emerald-700 block">Recommended Budget</span>
+                  <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-bold">Comfortable</span>
+                </div>
+                <span class="text-base font-extrabold text-emerald-700 block" id="dispRecBudget">₹0</span>
+                <span class="text-[10px] text-emerald-600 block mt-0.5" id="dispRecPerPerson">₹0 / person</span>
+              </div>
+            </div>
+
+            <!-- Expandable 8-Category Breakdown -->
+            <div class="border border-slate-200 rounded-xl bg-white overflow-hidden text-xs">
+              <button type="button" onclick="toggleBudgetBreakdownTable()" class="w-full px-3 py-2 bg-slate-50 hover:bg-slate-100 flex items-center justify-between font-semibold text-slate-700 text-[11px] transition">
+                <span class="flex items-center gap-1.5">
+                  <i class="fa-solid fa-list-check text-indigo-600"></i>
+                  <span>8-Category Itemized Cost Breakdown</span>
+                </span>
+                <span id="budgetTableToggleIcon" class="text-slate-400 text-xs">View &darr;</span>
+              </button>
+              <div id="budgetBreakdownTableContainer" class="hidden p-2.5 space-y-1.5 text-[11px] border-t border-slate-200 max-h-56 overflow-y-auto">
+                <table class="w-full text-left">
+                  <thead>
+                    <tr class="text-[10px] text-slate-400 uppercase border-b border-slate-100">
+                      <th class="pb-1">Category</th>
+                      <th class="pb-1 text-right">Min (₹)</th>
+                      <th class="pb-1 text-right">Comfort (₹)</th>
+                      <th class="pb-1 text-center">Basis</th>
+                      <th class="pb-1 text-center">Data Source</th>
+                    </tr>
+                  </thead>
+                  <tbody id="budgetBreakdownTbody" class="divide-y divide-slate-100">
+                    <!-- Populated via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Spending Allowance Slider -->
+            <div class="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+              <div class="flex items-center justify-between">
+                <label for="tripBudgetSlider" class="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                  <i class="fa-solid fa-sliders text-indigo-600"></i>
+                  <span>Adjust Spending Allowance Above Minimum:</span>
+                </label>
+                <span id="sliderAllowanceLabel" class="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">₹0</span>
+              </div>
+              <input type="range" id="tripBudgetSlider" min="5000" max="60000" step="500" value="25000" oninput="onBudgetSliderChange(this.value)" class="w-full accent-emerald-600 cursor-pointer">
+              <div class="flex justify-between text-[10px] text-slate-400">
+                <span id="sliderMinLabel">Min: ₹0</span>
+                <span id="sliderStatusLabel" class="font-medium text-slate-600">Drag right to increase travel comfort</span>
+                <span id="sliderMaxLabel">Max: ₹0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Total Budget Input & Pace Fields -->
+          <div class="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Selected Budget (₹ INR)</span>
+                <span id="budgetTierBadge" class="text-[10px] font-bold text-emerald-600">Comfortable</span>
+              </label>
+              <input type="number" id="tripBudgetInput" min="1000" max="1000000" step="500" value="25000" oninput="onBudgetNumberInputChange(this.value)" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-slate-800">
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 mb-1">Travel Pace</label>
+              <select id="tripPaceSelect" onchange="calculateTripMinimumBudget()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+                <option value="relaxed">Relaxed (1–2 spots/day, extra rest buffers)</option>
+                <option value="balanced" selected>Balanced (2–3 spots/day, sight-seeing & meals)</option>
+                <option value="packed">Packed (Fast pace, see maximum sights)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Insufficient Budget Warning Box -->
+          <div id="tripBudgetWarningBox" class="hidden p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] flex items-start gap-2">
+            <i class="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5"></i>
+            <div id="tripBudgetWarningText">Warning: Selected budget is below the minimum required.</div>
           </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">Departure Date</label>
-            <input type="date" id="tripStartDateInput" required class="w-full px-3 py-2 border border-slate-300 rounded-xl">
-          </div>
-          <div>
-            <label class="block font-semibold text-slate-700 mb-1">Return Date</label>
-            <input type="date" id="tripEndDateInput" required class="w-full px-3 py-2 border border-slate-300 rounded-xl">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block font-semibold text-slate-700 mb-1">Travellers Count</label>
-            <input type="number" id="tripTravellersInput" min="1" max="10" value="2" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
-          </div>
-          <div>
-            <label class="block font-semibold text-slate-700 mb-1">Total Trip Budget (₹)</label>
-            <input type="number" id="tripBudgetInput" min="1000" max="500000" step="500" value="15000" class="w-full px-3 py-2 border border-slate-300 rounded-xl">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block font-semibold text-slate-700 mb-1">Travel Pace</label>
-            <select id="tripPaceSelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
-              <option value="relaxed">Relaxed (1-2 major activities/day)</option>
-              <option value="balanced" selected>Balanced (2-3 activities/day)</option>
-              <option value="packed">Packed (See as much as possible)</option>
+            <label class="block font-semibold text-slate-700 mb-1">Transport Preference</label>
+            <select id="tripTransitSelect" onchange="calculateTripMinimumBudget()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+              <option value="public_transit" selected>Metro & Public Transit</option>
+              <option value="cab_rental">Private Cab / AC Chauffeur (Recommended for family/seniors)</option>
+              <option value="walking">Walking & Local E-Rickshaws</option>
+              <option value="train">Express Train (Vande Bharat / Sleeper)</option>
             </select>
           </div>
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Accommodation Tier</label>
-            <select id="tripAccomSelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+            <select id="tripAccomSelect" onchange="calculateTripMinimumBudget()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
               <option value="boutique" selected>Boutique & Heritage</option>
-              <option value="budget_hostel">Hostels & Guesthouses</option>
-              <option value="resort">Luxury Resorts</option>
-              <option value="apartment">Apartments / Airbnb</option>
+              <option value="resort">Luxury Resorts & Villas</option>
+              <option value="apartment">Homestays / Serviced Apartments</option>
+              <option value="budget_hostel">Hostels & Budget Stays</option>
             </select>
           </div>
         </div>
 
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Transit Preference</label>
-          <select id="tripTransitSelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
-            <option value="public_transit" selected>Metro & Public Transit</option>
-            <option value="walking">Walking</option>
-            <option value="rental_car">Rental Car / Scooter</option>
-            <option value="taxi">Taxis / Ride-Share</option>
-          </select>
+        <!-- ACCOMMODATION & HOTEL SELECTION (OPTION A vs OPTION B) -->
+        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-hotel text-emerald-600"></i> Accommodation Anchor Workflow
+            </span>
+            <span class="text-[10px] text-slate-500">Task 4: Choose when to select your stay</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <label class="cursor-pointer border-2 border-emerald-500 bg-white rounded-xl p-2.5 transition flex flex-col justify-between shadow-xs" id="hotelOptionBLabel">
+              <div class="flex items-center gap-2">
+                <input type="radio" name="hotelWorkflowOption" id="hotelWorkflowOptB" value="option_b" checked onchange="toggleHotelWorkflowOption('option_b')" class="accent-emerald-600">
+                <span class="font-bold text-slate-800 text-[11px]">Option B: Post-Plan (Recommended)</span>
+              </div>
+              <p class="text-[10px] text-slate-500 mt-1 leading-snug">
+                Generate the initial itinerary first, explore top 3 commute-optimized areas, then pick your hotel.
+              </p>
+            </label>
+
+            <label class="cursor-pointer border-2 border-slate-200 bg-white rounded-xl p-2.5 transition flex flex-col justify-between" id="hotelOptionALabel">
+              <div class="flex items-center gap-2">
+                <input type="radio" name="hotelWorkflowOption" id="hotelWorkflowOptA" value="option_a" onchange="toggleHotelWorkflowOption('option_a')" class="accent-emerald-600">
+                <span class="font-bold text-slate-800 text-[11px]">Option A: Pre-Select Hotel</span>
+              </div>
+              <p class="text-[10px] text-slate-500 mt-1 leading-snug">
+                Pick a hotel near your destination now. Schedules & daily transit anchor directly to it from Day 1.
+              </p>
+            </label>
+          </div>
+
+          <!-- OPTION A Container (Shown only when Option A radio is chosen) -->
+          <div id="hotelOptionAContainer" class="hidden space-y-2 pt-2 border-t border-slate-200">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold text-slate-700">Search Verified Accommodations Near Destination:</span>
+              <button type="button" onclick="searchHotelsForOptionA()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-xs">
+                <i class="fa-solid fa-magnifying-glass"></i> Find Verified Hotels
+              </button>
+            </div>
+            <div id="optionAHotelLoading" class="hidden text-center py-3 text-slate-500 text-[11px]">
+              <i class="fa-solid fa-spinner fa-spin mr-1 text-indigo-600"></i> Querying accommodations (actual properties without fabricated rates)...
+            </div>
+            <div id="optionAHotelResults" class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              <!-- Dynamically populated -->
+            </div>
+            <!-- Selected Hotel Badge -->
+            <div id="optionASelectedHotelBadge" class="hidden p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+              <div>
+                <span class="text-[10px] font-bold text-emerald-700 uppercase tracking-wide block">Selected Hotel Anchor:</span>
+                <span id="optionASelectedHotelName" class="font-bold text-slate-800 text-xs"></span>
+                <span id="optionASelectedHotelAddr" class="block text-[10px] text-slate-500"></span>
+              </div>
+              <button type="button" onclick="clearOptionAHotel()" class="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1">
+                Change
+              </button>
+            </div>
+          </div>
+
+          <!-- Hidden inputs for Option A -->
+          <input type="hidden" id="selectedHotelId" value="">
+          <input type="hidden" id="selectedHotelName" value="">
+          <input type="hidden" id="selectedHotelLat" value="">
+          <input type="hidden" id="selectedHotelLon" value="">
+          <input type="hidden" id="selectedHotelAddress" value="">
+          <input type="hidden" id="selectedHotelType" value="">
+        </div>
+
+        <!-- 5. TRIP-SPECIFIC PREFERENCES & NOTES -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Trip Food Style</label>
+            <select id="tripDietarySelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+              <option value="all" selected>All / Multi-Cuisine</option>
+              <option value="vegetarian">Pure Vegetarian Only</option>
+              <option value="jain">Jain Friendly (No root veg)</option>
+              <option value="non_veg">Non-Veg / Regional Specialties</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Accessibility / Specific Notes</label>
+            <input type="text" id="tripNotesInput" placeholder="e.g. ground floor rooms, elevator needed" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs">
+          </div>
         </div>
 
         <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
@@ -1233,5 +1733,8 @@
 
   <script src="/static/app.js"></script>
   <script src="/static/modules/loader.js"></script>
+  <script src="/static/modules/stay.js"></script>
+  <script src="/static/modules/prep.js"></script>
+  <script src="/static/modules/live.js"></script>
 </body>
 </html>

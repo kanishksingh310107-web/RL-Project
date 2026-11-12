@@ -339,9 +339,19 @@ def build_packing_list(
     wind = float(summary.get("wind_kmh", 15.0))
     rain = bool(summary.get("rain_expected", False))
 
-    # Read precision profile answers if available
+    # Read precision profile answers and derive rule insights (Task B7)
     prec = user_ctx.get("precision") or {}
     answers = prec.get("answers_json") or {}
+    has_cold_insight = False
+    try:
+        from app.precision import derive_insights
+        res_insights = derive_insights(answers)
+        if isinstance(res_insights, list):
+            has_cold_insight = any("Cold" in str(ins.get("text", "")) or "cold" in str(ins.get("text", "")) for ins in res_insights if isinstance(ins, dict))
+        elif isinstance(res_insights, dict):
+            has_cold_insight = bool(res_insights.get("cold_sensitive"))
+    except Exception:
+        has_cold_insight = False
 
     q78 = answers.get("q78")  # cold tolerance (1-5)
     q79 = answers.get("q79")  # heat tolerance (1-5)
@@ -352,9 +362,9 @@ def build_packing_list(
     food_allergens = answers.get("q95") or []
     med_reqs = answers.get("q103") or []
 
-    # Climate classifications
+    # Climate classifications with insights integration
     is_hot = (t_min >= 20.0 and t_max >= 25.0) and (q78 is None or q78 >= 3)
-    is_cold = (t_min < 15.0) or (q78 is not None and q78 <= 2)
+    is_cold = (t_min < 15.0) or (q78 is not None and q78 <= 2) or has_cold_insight
     is_windy = (wind >= 25.0) or (q80 is not None and q80 <= 2)
     is_carry_on = (luggage == "carry_on")
 
@@ -1109,3 +1119,178 @@ def submit_reminder_feedback(
 
 
 
+
+
+
+# ============================================================================
+# D4: Safety Essentials (Task B8)
+# ============================================================================
+
+# Official verified national and tourist emergency numbers in India
+STATIC_EMERGENCY_NUMBERS: List[Dict[str, Any]] = [
+    {
+        "service": "National Emergency Helpline (All-in-One)",
+        "number": "112",
+        "notes": "Pan-India single emergency response support system (Police, Fire, Medical)",
+        "source": "Ministry of Home Affairs, Govt. of India",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+    {
+        "service": "Police Control Room",
+        "number": "100",
+        "notes": "Direct city police dispatch",
+        "source": "State Police Departments",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+    {
+        "service": "Ambulance & Medical Emergency",
+        "number": "102 / 108",
+        "notes": "National rural & urban emergency medical ambulance service",
+        "source": "Ministry of Health & Family Welfare",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+    {
+        "service": "Tourist Infoline & Assistance",
+        "number": "1363",
+        "notes": "24/7 multi-lingual toll-free helpline (12 foreign & Indian languages)",
+        "source": "Incredible India / Ministry of Tourism",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+    {
+        "service": "Women Safety Helpline",
+        "number": "1091",
+        "notes": "24/7 emergency distress response for women travellers",
+        "source": "National Commission for Women",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+]
+
+# Verified required permits & ticketing guidelines for Indian travel
+STATIC_PERMITS_TICKETS: List[Dict[str, Any]] = [
+    {
+        "requirement": "Inner Line Permit (ILP) & Protected Area Permit (PAP)",
+        "applies_to": "Ladakh (Pangong, Nubra, Khardung La), Arunachal Pradesh, Sikkim, Andaman (Tribal)",
+        "action": "Apply online at official state portal prior to travel (e.g., lahdclehpermit.in). Keep physical copies.",
+        "source": "Ministry of Home Affairs / State Administration",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+    {
+        "requirement": "ASI Protected Monuments Entry Tickets",
+        "applies_to": "Taj Mahal, Red Fort, Qutub Minar, Hampi monuments, Ajanta & Ellora caves",
+        "action": "Mandatory QR e-tickets; cash ticketing is discontinued at ASI gates. Book in advance at asi.nic.in.",
+        "source": "Archaeological Survey of India (ASI)",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+    {
+        "requirement": "Wildlife Safari & National Park Permits",
+        "applies_to": "Ranthambore, Jim Corbett, Kaziranga, Bandhavgarh, Periyar",
+        "action": "Requires advance quota booking via respective state forest department portals 30-90 days prior.",
+        "source": "National Tiger Conservation Authority & State Forest Portals",
+        "as_of": "2026-11-01",
+        "is_static": True,
+    },
+]
+
+
+@router.get("/{trip_id}/safety")
+def get_trip_safety_essentials(trip_id: str):
+    """GET /api/prep/{trip_id}/safety
+    Returns safety essentials:
+    - Nearest ATM, Pharmacy, and Hospital via provider places
+    - Verified static emergency helpline numbers (source & as-of date)
+    - Required permits and ticketing checklist (source & as-of date)
+    """
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+
+    dest_id = trip.get("destination_id", "delhi")
+    dest_name = trip.get("destination_name") or dest_id.replace("_", " ").title()
+
+    from app.recommender import DESTINATIONS
+    dest_meta = next((d for d in DESTINATIONS if d.get("id") == dest_id), {})
+    center_lat = dest_meta.get("lat", 28.6139)
+    center_lon = dest_meta.get("lon", 77.2090)
+
+    # Provider lookups for nearest ATM, pharmacy, hospital
+    nearby_facilities: List[Dict[str, Any]] = []
+    try:
+        from app.providers.geo import get_places_by_category
+        # 1. Hospital / Healthcare
+        hosp_res = get_places_by_category(center_lat, center_lon, "healthcare.hospital", radius_meters=10000, limit=2)
+        for f in hosp_res.get("features") or []:
+            props = f.get("properties") or {}
+            nearby_facilities.append({
+                "type": "hospital",
+                "name": props.get("name") or "Local District Hospital",
+                "address": props.get("formatted"),
+                "phone": props.get("contact", {}).get("phone") or "Call 102/108",
+                "is_live": True,
+            })
+
+        # 2. Pharmacy
+        pharm_res = get_places_by_category(center_lat, center_lon, "healthcare.pharmacy", radius_meters=8000, limit=2)
+        for f in pharm_res.get("features") or []:
+            props = f.get("properties") or {}
+            nearby_facilities.append({
+                "type": "pharmacy",
+                "name": props.get("name") or "Apollo / MedPlus Chemist",
+                "address": props.get("formatted"),
+                "phone": props.get("contact", {}).get("phone"),
+                "is_live": True,
+            })
+
+        # 3. ATM
+        atm_res = get_places_by_category(center_lat, center_lon, "service.financial.atm", radius_meters=6000, limit=2)
+        for f in atm_res.get("features") or []:
+            props = f.get("properties") or {}
+            nearby_facilities.append({
+                "type": "atm",
+                "name": props.get("name") or "SBI / HDFC Bank ATM",
+                "address": props.get("formatted"),
+                "phone": None,
+                "is_live": True,
+            })
+    except Exception:
+        pass
+
+    if not nearby_facilities:
+        # Transparent offline fallback
+        nearby_facilities = [
+            {
+                "type": "hospital",
+                "name": f"{dest_name} Civil Hospital & Trauma Centre",
+                "address": f"Main Hospital Road, {dest_name}",
+                "phone": "Dial 102 / 108",
+                "is_live": False,
+            },
+            {
+                "type": "pharmacy",
+                "name": "24/7 City Emergency Chemist",
+                "address": f"Near District Hospital, {dest_name}",
+                "phone": "Check local listing",
+                "is_live": False,
+            },
+            {
+                "type": "atm",
+                "name": "Nationalized Bank ATM (SBI / PNB)",
+                "address": f"Market Square / Mall Road, {dest_name}",
+                "phone": None,
+                "is_live": False,
+            },
+        ]
+
+    return {
+        "trip_id": trip_id,
+        "destination_name": dest_name,
+        "nearby_facilities": nearby_facilities,
+        "emergency_numbers": STATIC_EMERGENCY_NUMBERS,
+        "permits_and_ticketing": STATIC_PERMITS_TICKETS,
+    }

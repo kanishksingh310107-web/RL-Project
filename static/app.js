@@ -121,6 +121,28 @@ function formatApiError(data, fallback = "An unexpected error occurred") {
   return String(detail);
 }
 
+function formatOptionLabel(val) {
+  if (!val) return "";
+  const key = String(val);
+  if (state.questionnaire && state.questionnaire.questions) {
+    for (const q of Object.values(state.questionnaire.questions)) {
+      if (q && q.options) {
+        const found = q.options.find(o => o.id === key);
+        if (found && found.label) return found.label;
+      }
+    }
+  }
+  if (state.precision && state.precision.bank && state.precision.bank.questions) {
+    for (const q of Object.values(state.precision.bank.questions)) {
+      if (q && q.options) {
+        const found = q.options.find(o => o.id === key);
+        if (found && found.label) return found.label;
+      }
+    }
+  }
+  return key.replace(/_/g, " ").title();
+}
+
 // Icons map
 const ICON_MAP = {
   relaxation: "fa-umbrella-beach",
@@ -864,7 +886,7 @@ async function renderDashboard(profile) {
     const chip = document.createElement("span");
     chip.className = "px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-full border border-indigo-100 flex items-center gap-1.5";
     const ic = ICON_MAP[g] || "fa-circle";
-    chip.innerHTML = `<i class="fa-solid ${ic} text-[10px]"></i> ${g.replace("_", " ").title()}`;
+    chip.innerHTML = `<i class="fa-solid ${ic} text-[10px]"></i> ${formatOptionLabel(g)}`;
     goalsContainer.appendChild(chip);
   });
 
@@ -876,7 +898,7 @@ async function renderDashboard(profile) {
     const chip = document.createElement("span");
     chip.className = "px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-semibold rounded-full border border-slate-200 flex items-center gap-1.5";
     const ic = ICON_MAP[p] || "fa-map-pin";
-    chip.innerHTML = `<i class="fa-solid ${ic} text-[10px] text-slate-500"></i> ${p.replace("_", " ").title()}`;
+    chip.innerHTML = `<i class="fa-solid ${ic} text-[10px] text-slate-500"></i> ${formatOptionLabel(p)}`;
     placesContainer.appendChild(chip);
   });
 
@@ -945,21 +967,21 @@ async function syncUnifiedProfileCard(userId) {
     const densityVal = data.answers.q60 || "balanced";
     document.getElementById("dashDensity").textContent = densityVal === "one_major" ? "1 Major Spot" : (densityVal === "packed" ? "Full Schedule" : "2–3 Activities");
 
-    const stayVal = data.answers.q56 ? (Array.isArray(data.answers.q56) ? data.answers.q56[0] : data.answers.q56) : "Boutique hotel";
-    document.getElementById("dashStay").textContent = typeof stayVal === "string" ? stayVal.replace("_", " ").title() : "Boutique";
+    const stayVal = data.answers.d17_stay_types || data.answers.q56 || data.answers.q34 || "boutique_hotel";
+    document.getElementById("dashStay").textContent = typeof stayVal === "string" ? formatOptionLabel(stayVal) : (Array.isArray(stayVal) ? stayVal.map(formatOptionLabel).join(", ") : "Boutique Hotel");
 
-    const transitVal = data.answers.q57 ? (Array.isArray(data.answers.q57) ? data.answers.q57[0] : data.answers.q57) : "Public transit";
-    document.getElementById("dashTransit").textContent = typeof transitVal === "string" ? transitVal.replace("_", " ").title() : "Public Transit";
+    const transitVal = data.answers.d14_road_transit || data.answers.q57 || data.answers.q35 || "public_transit";
+    document.getElementById("dashTransit").textContent = typeof transitVal === "string" ? formatOptionLabel(transitVal) : "Public Transit";
 
     // Avoidances
     const avoidContainer = document.getElementById("dashAvoidancesContainer");
     avoidContainer.innerHTML = "";
-    const avoidances = data.answers.q12 || [];
+    const avoidances = data.answers.d22_avoidances || data.answers.q12 || [];
     if (avoidances.length > 0) {
       avoidances.forEach(a => {
         const chip = document.createElement("span");
         chip.className = "px-2.5 py-1 bg-rose-50 text-rose-700 text-xs font-semibold rounded-md border border-rose-200 flex items-center gap-1.5";
-        chip.innerHTML = `<i class="fa-solid fa-ban text-[10px]"></i> ${a.replace("_", " ").title()}`;
+        chip.innerHTML = `<i class="fa-solid fa-ban text-[10px]"></i> ${formatOptionLabel(a)}`;
         avoidContainer.appendChild(chip);
       });
     } else {
@@ -1200,69 +1222,271 @@ function renderRecommendationCard(item, category) {
   return card;
 }
 
-// Explore Modal
-function openExploreModal(destId) {
-  const item = recCache[destId];
-  if (!item) return;
+// Explore Modal (Task 5: Complete Travel Experience)
+let currentExploredDestination = null;
 
-  const imgEl = document.getElementById("exploreImg");
-  imgEl.src = item.image_url;
-  imgEl.onerror = () => { imgEl.src = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80'; };
-
-  document.getElementById("exploreTitle").textContent = item.name;
-  document.getElementById("exploreCountry").textContent = item.country;
-  document.getElementById("exploreBadge").textContent = `${Math.round(item.match_score)}% Match`;
-  document.getElementById("exploreDuration").textContent = item.duration || "4–6 days";
-  document.getElementById("exploreBudget").textContent = item.budget_tier || "Balanced";
-  document.getElementById("exploreWhy").textContent = item.why_it_suits;
-  document.getElementById("exploreSeason").textContent = item.best_season_and_weather;
-
-  // Tags
-  const tagsCont = document.getElementById("exploreTags");
-  tagsCont.innerHTML = "";
-  (item.tags || []).forEach(t => {
-    const s = document.createElement("span");
-    s.className = "px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium";
-    s.textContent = t;
-    tagsCont.appendChild(s);
-  });
-
-  // Experiences
-  const expList = document.getElementById("exploreExperiences");
-  expList.innerHTML = "";
-  (item.available_experiences || []).forEach(exp => {
-    const li = document.createElement("li");
-    li.className = "flex items-start gap-2";
-    li.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-500 text-xs mt-0.5 shrink-0"></i> <span>${exp}</span>`;
-    expList.appendChild(li);
-  });
-
-  // Practical Considerations
-  const pracCont = document.getElementById("explorePractical");
-  pracCont.innerHTML = "";
-  const tips = item.practical_considerations || [
-    "Check local transportation passes for cost-effective travel.",
-    "Advance bookings recommended during peak season."
-  ];
-  tips.forEach(tip => {
-    const li = document.createElement("li");
-    li.className = "flex items-start gap-2";
-    li.innerHTML = `<i class="fa-solid fa-info-circle text-indigo-500 text-xs mt-0.5 shrink-0"></i> <span>${tip}</span>`;
-    pracCont.appendChild(li);
-  });
-
-  // Shortlist action button in modal
-  const shortBtn = document.getElementById("exploreShortlistBtn");
-  const isShortlisted = !!item.is_shortlisted;
-  shortBtn.innerHTML = `
-    <i class="${isShortlisted ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark"></i>
-    <span>${isShortlisted ? 'Shortlisted ✓' : 'Shortlist This Destination'}</span>
-  `;
-  shortBtn.onclick = () => {
-    toggleShortlist(destId, shortBtn);
-  };
-
+async function openExploreModal(destId) {
+  const item = recCache[destId] || {};
   openModal("exploreModal");
+
+  const loadingEl = document.getElementById("exploreLoadingState");
+  const contentEl = document.getElementById("exploreContentContainer");
+  if (loadingEl) loadingEl.classList.remove("hidden");
+  if (contentEl) contentEl.classList.add("hidden");
+
+  // Immediate preview from cache if available
+  const imgEl = document.getElementById("exploreImg");
+  if (imgEl && item.image_url) {
+    imgEl.src = item.image_url;
+    imgEl.onerror = () => { imgEl.src = 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=1200&q=80'; };
+  }
+  if (document.getElementById("exploreTitle")) {
+    document.getElementById("exploreTitle").textContent = item.name || destId.replace(/_/g, " ");
+  }
+  if (document.getElementById("exploreBadge")) {
+    document.getElementById("exploreBadge").textContent = `${Math.round(item.match_score || 95)}% Match`;
+  }
+
+  try {
+    const userId = state.currentUser ? state.currentUser.user_id : "";
+    const res = await fetch(`/api/destination/${encodeURIComponent(destId)}/explore?user_id=${encodeURIComponent(userId)}&duration_days=3`);
+    if (!res.ok) throw new Error("Failed to load destination details");
+    const data = await res.json();
+    currentExploredDestination = data;
+
+    // 1. Header & Quick Meta
+    if (imgEl && data.image_url) imgEl.src = data.image_url;
+    document.getElementById("exploreTitle").textContent = data.name;
+    document.getElementById("exploreCountry").textContent = data.country || "India";
+    const stateBadge = document.getElementById("exploreStateBadge");
+    if (stateBadge) stateBadge.textContent = data.state || "India";
+    if (document.getElementById("exploreDuration")) {
+      document.getElementById("exploreDuration").textContent = `${data.recommended_duration_days || 3} Days Recommended`;
+    }
+    if (document.getElementById("exploreSeasonTag")) {
+      document.getElementById("exploreSeasonTag").textContent = data.best_season_and_weather;
+    }
+
+    // Tags
+    const tagsCont = document.getElementById("exploreTags");
+    if (tagsCont) {
+      tagsCont.innerHTML = "";
+      (data.tags || []).forEach(t => {
+        const s = document.createElement("span");
+        s.className = "px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold";
+        s.textContent = t;
+        tagsCont.appendChild(s);
+      });
+    }
+
+    // 2. Overview & Atmosphere
+    const overviewEl = document.getElementById("exploreOverview");
+    if (overviewEl) overviewEl.textContent = data.overview;
+
+    // 3. Personalized "Why Recommended For You"
+    const whyList = document.getElementById("exploreWhyList");
+    if (whyList) {
+      whyList.innerHTML = "";
+      (data.why_recommended_for_you || []).forEach(r => {
+        const li = document.createElement("li");
+        li.className = "flex items-start gap-2 leading-relaxed";
+        li.innerHTML = `<i class="fa-solid fa-sparkles text-indigo-600 text-xs mt-0.5 shrink-0"></i> <span>${r}</span>`;
+        whyList.appendChild(li);
+      });
+    }
+
+    // 4. Main Attractions Grid
+    const attGrid = document.getElementById("exploreAttractionsGrid");
+    if (attGrid) {
+      attGrid.innerHTML = "";
+      (data.main_attractions || []).forEach(att => {
+        const card = document.createElement("div");
+        card.className = "p-3 rounded-xl border border-slate-200 bg-white space-y-1.5 shadow-xs hover:border-slate-300 transition";
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-1">
+            <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(att.name)}</span>
+            <span class="text-[10px] px-2 py-0.5 rounded font-bold ${att.is_cost_verified ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'} shrink-0">
+              ${escapeHtml(att.cost_label)}
+            </span>
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-slate-500">
+            <span><i class="fa-solid fa-location-dot text-indigo-500 mr-1"></i>${escapeHtml(att.neighborhood)}</span>
+            <span>&bull;</span>
+            <span><i class="fa-regular fa-clock text-slate-400 mr-1"></i>${escapeHtml(att.opening_hours)}</span>
+          </div>
+          <p class="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">${escapeHtml(att.description)}</p>
+        `;
+        attGrid.appendChild(card);
+      });
+    }
+
+    // 5. Suggested Day-Wise Itinerary
+    const itinDaysEl = document.getElementById("exploreItineraryDays");
+    if (itinDaysEl) {
+      itinDaysEl.innerHTML = "";
+      (data.suggested_itinerary || []).forEach(day => {
+        const dCard = document.createElement("div");
+        dCard.className = "p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5";
+        
+        let slotsHtml = "";
+        (day.slots || []).forEach(slot => {
+          if (slot.slot === "Midday Commute & Lunch") {
+            slotsHtml += `
+              <div class="p-2 rounded-lg bg-indigo-50/80 border border-indigo-100 text-[11px] flex items-center justify-between gap-2">
+                <span class="text-indigo-900 font-semibold flex items-center gap-1.5">
+                  <i class="fa-solid fa-taxi text-indigo-600"></i> ${escapeHtml(slot.transit_note)}
+                </span>
+                <span class="text-indigo-700 font-bold truncate">
+                  <i class="fa-solid fa-utensils mr-1"></i> ${escapeHtml(slot.lunch_spot)}
+                </span>
+              </div>
+            `;
+          } else {
+            slotsHtml += `
+              <div class="p-2 rounded-lg bg-white border border-slate-200 text-[11px] space-y-1">
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-slate-800">${escapeHtml(slot.slot)} &bull; ${escapeHtml(slot.title)}</span>
+                  <span class="text-[10px] text-slate-400">${escapeHtml(slot.neighborhood)}</span>
+                </div>
+                <p class="text-slate-600 text-[10px] leading-relaxed">${escapeHtml(slot.description)}</p>
+              </div>
+            `;
+          }
+        });
+
+        dCard.innerHTML = `
+          <h5 class="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">${day.day_number}</span>
+            <span>${escapeHtml(day.title)}</span>
+          </h5>
+          <div class="space-y-1.5">${slotsHtml}</div>
+        `;
+        itinDaysEl.appendChild(dCard);
+      });
+    }
+
+    // 6. Culinary & Dining Grid
+    const foodGrid = document.getElementById("exploreFoodGrid");
+    if (foodGrid) {
+      foodGrid.innerHTML = "";
+      (data.food_experiences || []).forEach(f => {
+        const fCard = document.createElement("div");
+        fCard.className = "p-2.5 rounded-xl border border-amber-200/80 bg-amber-50/40 space-y-1 text-xs";
+        fCard.innerHTML = `
+          <div class="font-bold text-amber-950 truncate">${escapeHtml(f.name)}</div>
+          <div class="text-[10px] text-amber-800 font-medium">${escapeHtml(f.neighborhood || 'Local Area')}</div>
+          <p class="text-[10px] text-slate-600 leading-snug">${escapeHtml(f.type)}</p>
+          <div class="text-[10px] font-bold text-amber-900 pt-0.5">Est. Cost: ~₹${f.cost_est}</div>
+        `;
+        foodGrid.appendChild(fCard);
+      });
+    }
+
+    // 7. Shopping Recommendations Grid
+    const shopGrid = document.getElementById("exploreShoppingGrid");
+    if (shopGrid) {
+      shopGrid.innerHTML = "";
+      (data.shopping_recommendations || []).forEach(s => {
+        const sCard = document.createElement("div");
+        sCard.className = "p-2.5 rounded-xl border border-rose-200/80 bg-rose-50/40 space-y-1 text-xs";
+        sCard.innerHTML = `
+          <div class="font-bold text-rose-950 truncate">${escapeHtml(s.name)}</div>
+          <div class="text-[10px] text-rose-800 font-semibold">${escapeHtml(s.type)}</div>
+          <p class="text-[10px] text-slate-600 leading-snug">${escapeHtml(s.best_for)}</p>
+        `;
+        shopGrid.appendChild(sCard);
+      });
+    }
+
+    // 8. Budget Summary
+    if (data.budget_summary) {
+      const bareMinEl = document.getElementById("exploreBareMinBudget");
+      const recBudgetEl = document.getElementById("exploreRecBudget");
+      if (bareMinEl) bareMinEl.textContent = `₹${Math.round(data.budget_summary.bare_minimum_budget).toLocaleString('en-IN')}`;
+      if (recBudgetEl) recBudgetEl.textContent = `₹${Math.round(data.budget_summary.recommended_budget).toLocaleString('en-IN')}`;
+    }
+
+    // 9. Practical Information Grid
+    const pracGrid = document.getElementById("explorePracticalGrid");
+    if (pracGrid) {
+      pracGrid.innerHTML = "";
+      (data.practical_tips || []).forEach(tip => {
+        const tCard = document.createElement("div");
+        tCard.className = "p-2.5 rounded-xl border border-slate-200 bg-slate-50 space-y-0.5 text-xs";
+        tCard.innerHTML = `
+          <div class="font-bold text-slate-800 text-[11px]">${escapeHtml(tip.title)}</div>
+          <p class="text-[10px] text-slate-600 leading-relaxed">${escapeHtml(tip.detail)}</p>
+        `;
+        pracGrid.appendChild(tCard);
+      });
+    }
+
+    // Shortlist action button in modal
+    const shortBtn = document.getElementById("exploreShortlistBtn");
+    if (shortBtn) {
+      const isShortlisted = !!item.is_shortlisted;
+      shortBtn.innerHTML = `
+        <i class="${isShortlisted ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark"></i>
+        <span>${isShortlisted ? 'Shortlisted ✓' : 'Shortlist'}</span>
+      `;
+      shortBtn.onclick = () => {
+        toggleShortlist(destId, shortBtn);
+      };
+    }
+
+    if (loadingEl) loadingEl.classList.add("hidden");
+    if (contentEl) contentEl.classList.remove("hidden");
+  } catch (err) {
+    console.error("Explore error:", err);
+    if (loadingEl) {
+      loadingEl.innerHTML = `<div class="p-6 text-rose-500 text-xs">Failed to load rich exploration: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+}
+
+// Task 5: Seamless "Plan This Trip" CTA action
+function planTripFromExplore() {
+  if (!currentExploredDestination) {
+    closeModal("exploreModal");
+    toggleTripFormModal();
+    return;
+  }
+
+  const d = currentExploredDestination;
+  closeModal("exploreModal");
+  toggleTripFormModal();
+
+  // Pre-fill destination select or search input
+  const destSelect = document.getElementById("tripDestSelect");
+  let found = false;
+  if (destSelect) {
+    for (let i = 0; i < destSelect.options.length; i++) {
+      if (destSelect.options[i].value === d.destination_id) {
+        destSelect.selectedIndex = i;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      // Dynamic destination insertion
+      const opt = document.createElement("option");
+      opt.value = d.destination_id;
+      opt.text = `${d.name} (${d.state || 'India'})`;
+      destSelect.add(opt, 0);
+      destSelect.selectedIndex = 0;
+    }
+  }
+
+  // Pre-fill budget if recommended budget available
+  if (d.budget_summary && d.budget_summary.recommended_budget) {
+    const budgetInput = document.getElementById("tripBudgetInput");
+    if (budgetInput) {
+      budgetInput.value = Math.round(d.budget_summary.recommended_budget);
+    }
+  }
+
+  // Trigger recalculation so slider and breakdown adapt immediately
+  calculateTripMinimumBudget();
 }
 
 // Toggle Shortlist
@@ -1338,7 +1562,7 @@ function precFull() {
 function precCondTrue(cond, full) {
   if (cond.any) return cond.any.some(c => precCondTrue(c, full));
   if (cond.all) return cond.all.every(c => precCondTrue(c, full));
-  const bank = state.precision.bank.questions;
+  const bank = state.precision.bank ? state.precision.bank.questions : {};
   if (bank[cond.q] && !precVisible(cond.q, full)) return false;
   const v = full[cond.q];
   const arr = Array.isArray(v) ? v : (precAnswered(v) ? [v] : []);
@@ -1346,12 +1570,15 @@ function precCondTrue(cond, full) {
 }
 
 function precVisible(qid, full) {
+  if (!state.precision.bank || !state.precision.bank.questions) return false;
   const q = state.precision.bank.questions[qid];
+  if (!q) return false;
   return !q.show_if || precCondTrue(q.show_if, full);
 }
 
 function precVisibleIds(sectionId) {
   const full = precFull();
+  if (!state.precision.bank || !state.precision.bank.questions) return [];
   return Object.values(state.precision.bank.questions)
     .filter(q => (!sectionId || q.section === sectionId) && precVisible(q.id, full))
     .map(q => q.id);
@@ -1374,6 +1601,18 @@ async function openPersonalProfileModal() {
     state.precision.answers = data.answers || {};
     state.precision.context = data.context_answers || {};
     state.precision.exists = !!data.exists;
+
+    // Pre-seed default non-empty answers for scale & multi questions if uncalibrated
+    if (!state.precision.answers.d05_monsoon_rain) state.precision.answers.d05_monsoon_rain = 3;
+    if (!state.precision.answers.d06_high_altitude) state.precision.answers.d06_high_altitude = 3;
+    if (!state.precision.answers.d07_heat_humidity) state.precision.answers.d07_heat_humidity = 3;
+    if (!state.precision.answers.d08_winter_cold) state.precision.answers.d08_winter_cold = 3;
+    if (!state.precision.answers.d11_food_allergens || state.precision.answers.d11_food_allergens.length === 0) {
+      state.precision.answers.d11_food_allergens = ["no_allergies"];
+    }
+    if (!state.precision.answers.d21_medical_logistics || state.precision.answers.d21_medical_logistics.length === 0) {
+      state.precision.answers.d21_medical_logistics = ["no_medical_logistics"];
+    }
     
     // Auto-focus first section with unanswered applicable questions for smooth completion
     const firstUnansSec = state.precision.bank.sections.find(sec => {
@@ -1568,17 +1807,21 @@ function precMulti(q, cur) {
   const sel = Array.isArray(cur) ? cur : [];
   const grid = precEl("div", "grid grid-cols-2 gap-1.5");
   if (q.max) grid.appendChild(precEl("p", "col-span-2 text-[10px] text-slate-400", `Choose up to ${q.max} (${sel.length}/${q.max})`));
+  const exclusiveId = q.exclusive || (q.id === "d11_food_allergens" ? "no_allergies" : (q.id === "d21_medical_logistics" ? "no_medical_logistics" : null));
   q.options.forEach(opt => {
     grid.appendChild(precOptionCard(opt, sel.includes(opt.id), () => {
       let next = sel.slice();
       if (next.includes(opt.id)) {
         next = next.filter(x => x !== opt.id);
-      } else if (opt.id === q.exclusive) {
+      } else if (exclusiveId && opt.id === exclusiveId) {
         next = [opt.id];
       } else {
-        next = next.filter(x => x !== q.exclusive);
+        if (exclusiveId) next = next.filter(x => x !== exclusiveId);
         if (q.max && next.length >= q.max) { alert(`You can choose up to ${q.max} options.`); return; }
         next.push(opt.id);
+      }
+      if (next.length === 0 && exclusiveId) {
+        next = [exclusiveId];
       }
       setPrecisionAnswer(q.id, next);
     }));
@@ -1590,9 +1833,10 @@ function precScale(q, cur) {
   const box = precEl("div", "space-y-1");
   const row = precEl("div", "grid grid-cols-5 gap-1.5");
   for (let n = 1; n <= 5; n++) {
-    const b = precEl("button", `selectable-card py-2 rounded-lg bg-white border text-xs font-bold text-slate-700 ${cur === n ? "selected" : ""}`, String(n));
+    const isSelected = cur !== undefined && cur !== null && Number(cur) === n;
+    const b = precEl("button", `selectable-card py-2 rounded-lg bg-white border text-xs font-bold text-slate-700 ${isSelected ? "selected" : ""}`, String(n));
     b.type = "button";
-    b.onclick = () => setPrecisionAnswer(q.id, n);
+    b.onclick = () => setPrecisionAnswer(q.id, Number(n));
     row.appendChild(b);
   }
   box.appendChild(row);
@@ -1686,6 +1930,21 @@ async function submitPersonalProfile() {
   if (!state.currentUser) return;
   const btn = document.getElementById("personalSaveBtn");
   btn.disabled = true;
+
+  // Guarantee default values for climate tolerance, allergies, and health logistics before sending
+  const ans = { ...(state.precision.answers || {}) };
+  if (!ans.d05_monsoon_rain) ans.d05_monsoon_rain = 3;
+  if (!ans.d06_high_altitude) ans.d06_high_altitude = 3;
+  if (!ans.d07_heat_humidity) ans.d07_heat_humidity = 3;
+  if (!ans.d08_winter_cold) ans.d08_winter_cold = 3;
+  if (!ans.d09_spice_tolerance) ans.d09_spice_tolerance = 3;
+  if (!ans.d10_street_food) ans.d10_street_food = 3;
+  if (!ans.d15_motion_sickness) ans.d15_motion_sickness = 3;
+  if (!ans.d16_early_starts) ans.d16_early_starts = 3;
+  if (!ans.d20_temple_stairs_terrain) ans.d20_temple_stairs_terrain = 3;
+  if (!ans.d11_food_allergens || !ans.d11_food_allergens.length) ans.d11_food_allergens = ["no_allergies"];
+  if (!ans.d21_medical_logistics || !ans.d21_medical_logistics.length) ans.d21_medical_logistics = ["no_medical_logistics"];
+  state.precision.answers = ans;
 
   try {
     const res = await fetch(`/api/profile/precision/${state.currentUser.user_id}`, {
@@ -1861,7 +2120,7 @@ async function runLiveAcademicBenchmark() {
   const btn = document.getElementById("runBenchmarkBtn");
   const area = document.getElementById("benchmarkResultsArea");
   if (btn) btn.disabled = true;
-  if (btn) btn.textContent = "Running 20-round simulation...";
+  if (btn) btn.textContent = "Running (20-round demo, not evidence)...";
 
   try {
     const res = await fetch("/api/evaluation/benchmark?persona=nature_enthusiast&rounds=20");
@@ -1876,9 +2135,310 @@ async function runLiveAcademicBenchmark() {
     console.error("Benchmark error:", err);
   } finally {
     if (btn) btn.disabled = false;
-    if (btn) btn.textContent = "Run Simulation Benchmark";
+    if (btn) btn.textContent = "Run 20-round demo, not evidence";
   }
 }
+
+// ==========================================
+// DYNAMIC INDIA LOCATION DISCOVERY & GPS ENGINE (MODE A & MODE B)
+// ==========================================
+let activeDynamicLocation = null;
+let selectedDynamicLocation = null;
+let currentDynamicRadius = 15000;
+let _dynamicSearchTimer = null;
+
+function clearDynamicSearch() {
+  const input = document.getElementById("dynamicLocationSearchInput");
+  const suggestions = document.getElementById("dynamicLocationSuggestions");
+  const clearBtn = document.getElementById("dynamicClearBtn");
+  if (input) input.value = "";
+  if (suggestions) {
+    suggestions.classList.add("hidden");
+    suggestions.innerHTML = "";
+  }
+  if (clearBtn) clearBtn.classList.add("hidden");
+}
+
+function handleRadiusChange(val) {
+  currentDynamicRadius = parseInt(val) || 15000;
+  if (activeDynamicLocation && activeDynamicLocation.lat && activeDynamicLocation.lon) {
+    fetchDynamicPlaces(activeDynamicLocation.lat, activeDynamicLocation.lon, currentDynamicRadius);
+  }
+}
+
+function handleDynamicLocationSearch(val) {
+  clearTimeout(_dynamicSearchTimer);
+  const suggestions = document.getElementById("dynamicLocationSuggestions");
+  const clearBtn = document.getElementById("dynamicClearBtn");
+  if (!suggestions) return;
+
+  const query = (val || "").trim();
+  if (clearBtn) {
+    if (query.length > 0) clearBtn.classList.remove("hidden");
+    else clearBtn.classList.add("hidden");
+  }
+
+  if (query.length < 2) {
+    suggestions.classList.add("hidden");
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  _dynamicSearchTimer = setTimeout(async () => {
+    try {
+      suggestions.classList.remove("hidden");
+      suggestions.innerHTML = '<div class="p-3 text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Searching Indian locations via Geoapify...</div>';
+
+      const res = await fetch(`/api/places/search-locations?q=${encodeURIComponent(query)}&limit=6`);
+      if (!res.ok) throw new Error("Search request failed");
+      const data = await res.json();
+      const results = data.results || [];
+
+      if (results.length === 0) {
+        suggestions.innerHTML = '<div class="p-3 text-slate-500 text-xs">No matching Indian locations found. Please check spelling.</div>';
+        return;
+      }
+
+      suggestions.innerHTML = results.map(loc => {
+        const itemStr = JSON.stringify(loc).replace(/"/g, '&quot;');
+        const isLive = loc.provenance && loc.provenance.is_live;
+        const provBadge = isLive 
+          ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">Live Geoapify</span>'
+          : '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">Curated</span>';
+
+        return `
+          <div onclick="selectDynamicLocation(${itemStr})"
+               class="p-3 hover:bg-indigo-50 cursor-pointer flex items-center justify-between text-xs transition">
+            <div class="flex items-center gap-2.5">
+              <i class="fa-solid fa-location-dot text-indigo-600"></i>
+              <div>
+                <span class="font-bold text-slate-900 block">${loc.name}</span>
+                <span class="text-slate-500 text-[11px]">${loc.formatted || (loc.city + ', ' + loc.state)}</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-slate-400 font-mono">${loc.lat.toFixed(2)}°, ${loc.lon.toFixed(2)}°</span>
+              ${provBadge}
+            </div>
+          </div>
+        `;
+      }).join("");
+    } catch (err) {
+      console.warn("Location search error:", err);
+      suggestions.innerHTML = `<div class="p-3 text-rose-600 text-xs">${err.message || 'Error searching locations'}</div>`;
+    }
+  }, 300);
+}
+
+async function selectDynamicLocation(loc) {
+  const suggestions = document.getElementById("dynamicLocationSuggestions");
+  const input = document.getElementById("dynamicLocationSearchInput");
+  if (suggestions) suggestions.classList.add("hidden");
+  if (input) input.value = loc.formatted || `${loc.name}, ${loc.state}`;
+
+  activeDynamicLocation = loc;
+  selectedDynamicLocation = loc;
+  updateDynamicStatusBar(loc);
+  await fetchDynamicPlaces(loc.lat, loc.lon, currentDynamicRadius);
+}
+
+function updateDynamicStatusBar(loc) {
+  const bar = document.getElementById("dynamicLocationStatusBar");
+  const nameEl = document.getElementById("activeLocationName");
+  const coordsEl = document.getElementById("activeLocationCoords");
+  const provEl = document.getElementById("activeLocationProvenance");
+
+  if (!bar || !nameEl) return;
+  bar.classList.remove("hidden");
+  nameEl.textContent = loc.formatted || `${loc.name}, ${loc.state}`;
+  if (coordsEl) coordsEl.textContent = `(${loc.lat.toFixed(3)}° N, ${loc.lon.toFixed(3)}° E)`;
+  if (provEl) {
+    const isLive = loc.provenance && loc.provenance.is_live;
+    if (isLive) {
+      provEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+      provEl.textContent = "Live Geoapify";
+    } else {
+      provEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30";
+      provEl.textContent = "Curated Catalogue";
+    }
+  }
+}
+
+async function detectUserLocation() {
+  const btn = document.getElementById("gpsDetectBtn");
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by your browser. Please search any Indian city using the search bar.");
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Locating GPS...';
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      try {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+
+        const res = await fetch(`/api/places/reverse-geocode?lat=${lat}&lon=${lon}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.detail || "Unable to resolve your GPS position.");
+        }
+
+        const loc = data.location;
+        activeDynamicLocation = loc;
+        selectedDynamicLocation = loc;
+        const input = document.getElementById("dynamicLocationSearchInput");
+        if (input) input.value = loc.formatted || `${loc.name}, ${loc.city}`;
+
+        updateDynamicStatusBar(loc);
+        await fetchDynamicPlaces(lat, lon, currentDynamicRadius);
+      } catch (err) {
+        alert(err.message || "Failed to resolve your GPS location.");
+        const input = document.getElementById("dynamicLocationSearchInput");
+        if (input) input.focus();
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> <span>Use My Current Location</span>';
+        }
+      }
+    },
+    (err) => {
+      let msg = "Could not retrieve your location.";
+      if (err.code === err.PERMISSION_DENIED) {
+        msg = "Location permission denied. Please search for any Indian city or town using the search box.";
+      } else if (err.code === err.POSITION_UNAVAILABLE) {
+        msg = "Location signal unavailable. Please use the search bar to find your destination.";
+      } else if (err.code === err.TIMEOUT) {
+        msg = "Location request timed out. Please try again or search manually.";
+      }
+      alert(msg);
+      const input = document.getElementById("dynamicLocationSearchInput");
+      if (input) input.focus();
+
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> <span>Use My Current Location</span>';
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+async function fetchDynamicPlaces(lat, lon, radius) {
+  const area = document.getElementById("dynamicPlacesArea");
+  const grid = document.getElementById("dynamicPlacesGrid");
+  const countText = document.getElementById("discoveredCountText");
+  if (!area || !grid) return;
+
+  area.classList.remove("hidden");
+  grid.innerHTML = '<div class="col-span-full py-8 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Fetching real-world places and scoring with LinUCB...</div>';
+
+  try {
+    const userId = state.currentUser ? state.currentUser.user_id : '';
+    const res = await fetch(`/api/places/discover?lat=${lat}&lon=${lon}&radius_meters=${radius}&user_id=${encodeURIComponent(userId)}&limit=15`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to discover places");
+    }
+
+    const data = await res.json();
+    const places = data.places || [];
+
+    if (countText) {
+      countText.textContent = `${places.length} places discovered (${(radius / 1000).toFixed(0)} km radius)`;
+    }
+
+    if (places.length === 0) {
+      grid.innerHTML = '<div class="col-span-full py-8 text-center text-slate-400 text-xs">No attractions found within this radius. Try selecting a wider search radius.</div>';
+      return;
+    }
+
+    const armIcons = {
+      culture_history: "fa-landmark",
+      nature_outdoors: "fa-tree",
+      food_dining: "fa-utensils",
+      adventure: "fa-person-hiking",
+      relaxation: "fa-spa",
+      shopping_local: "fa-bag-shopping",
+      scenic: "fa-mountain-sun"
+    };
+
+    grid.innerHTML = places.map((p, idx) => {
+      const icon = armIcons[p.arm] || "fa-map-pin";
+      const isLive = p.provenance && p.provenance.is_live;
+      const provBadge = isLive
+        ? '<span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Live Geoapify</span>'
+        : '<span class="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Curated</span>';
+
+      const distBadge = p.distance_km !== null && p.distance_km !== undefined
+        ? `<span class="text-[10px] text-slate-300 flex items-center gap-1"><i class="fa-solid fa-route text-indigo-400"></i> ${p.distance_km} km away</span>`
+        : '';
+
+      const scoreBadge = p.score !== undefined
+        ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-200">LinUCB: ${p.score.toFixed(2)}</span>`
+        : '';
+
+      return `
+        <div class="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 flex flex-col justify-between space-y-3 transition">
+          <div class="space-y-2">
+            <div class="flex items-start justify-between gap-2">
+              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-white/10 text-slate-200">
+                <i class="fa-solid ${icon} text-indigo-400"></i> ${(p.arm || p.category).replace('_', ' ').toUpperCase()}
+              </span>
+              ${provBadge}
+            </div>
+            <div>
+              <h4 class="font-bold text-sm text-white">${p.name}</h4>
+              <p class="text-[11px] text-slate-300 mt-0.5">${p.neighbourhood || p.address || 'Local point of interest'}</p>
+            </div>
+          </div>
+
+          <div class="space-y-2 pt-2 border-t border-white/10 text-[11px]">
+            <div class="flex items-center justify-between">
+              ${distBadge}
+              ${scoreBadge}
+            </div>
+            ${p.match_reason ? `<div class="text-[10px] text-emerald-300 bg-emerald-950/40 border border-emerald-800/40 p-1.5 rounded"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>${p.match_reason}</div>` : ''}
+            ${p.opening_hours ? `<div class="text-[10px] text-slate-400"><i class="fa-regular fa-clock mr-1"></i>${p.opening_hours}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+  } catch (err) {
+    grid.innerHTML = `<div class="col-span-full py-8 text-center text-rose-400 text-xs">${err.message || 'Failed to load places'}</div>`;
+  }
+}
+
+function openPlanModalForActiveLocation() {
+  if (!activeDynamicLocation) {
+    alert("Please search an Indian location or detect your GPS position first.");
+    return;
+  }
+  openTripModalWithLocation(activeDynamicLocation);
+}
+
+function openTripModalWithLocation(loc) {
+  selectGeocodedCity({
+    name: loc.name || loc.city,
+    city: loc.city,
+    admin1: loc.state,
+    country: "India",
+    latitude: loc.lat,
+    longitude: loc.lon,
+    formatted: loc.formatted
+  }, loc.provenance && loc.provenance.is_live ? "geoapify" : "curated");
+
+  openModal("tripFormModal");
+  calculateTripMinimumBudget();
+}
+
 
 // ==========================================
 // ADAPTIVE PRE-TRIP ITINERARY PLANNER
@@ -1926,7 +2486,7 @@ async function handleCitySearchInput(val) {
       resultsEl.classList.remove("hidden");
       resultsEl.innerHTML = '<div class="p-2.5 text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Searching Open-Meteo...</div>';
       
-      const res = await fetch(`/api/geo/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/places/search-locations?q=${encodeURIComponent(query)}&limit=6`);
       const data = await res.json();
       const results = data.results || [];
       const src = data.source || "api";
@@ -1957,6 +2517,14 @@ async function handleCitySearchInput(val) {
 }
 
 function selectGeocodedCity(item, src) {
+  selectedDynamicLocation = {
+    city: item.city || item.name,
+    state: item.state || item.admin1 || "India",
+    name: item.name,
+    lat: item.lat !== undefined ? item.lat : item.latitude,
+    lon: item.lon !== undefined ? item.lon : item.longitude,
+    formatted: item.formatted || `${item.name}, ${item.admin1 || 'India'}`
+  };
   const destSelect = document.getElementById("tripDestSelect");
   const searchInput = document.getElementById("tripCitySearchInput");
   const resultsEl = document.getElementById("citySearchResults");
@@ -2095,6 +2663,253 @@ function onTripSelectChanged(tripId) {
   loadTripItinerary(tripId);
 }
 
+function setTripDeparture(city) {
+  const input = document.getElementById("tripDepartureInput");
+  if (input) input.value = city;
+}
+
+function updateTripDurationPreview() {
+  const s = document.getElementById("tripStartDateInput")?.value;
+  const e = document.getElementById("tripEndDateInput")?.value;
+  const badge = document.getElementById("tripDurationBadge");
+  if (!badge) return;
+  if (s && e) {
+    const d1 = new Date(s);
+    const d2 = new Date(e);
+    const diffTime = d2 - d1;
+    const days = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    if (days > 0) {
+      badge.textContent = `${days} Day${days > 1 ? "s" : ""}`;
+      return;
+    }
+  }
+  badge.textContent = "—";
+}
+
+function onCompanionTypeChanged(val) {
+  const travellersInput = document.getElementById("tripTravellersInput");
+  const hasKidsCheck = document.getElementById("tripHasChildrenCheck");
+  const hasElderlyCheck = document.getElementById("tripHasElderlyCheck");
+  if (val === "solo") {
+    if (travellersInput) travellersInput.value = "1";
+    if (hasKidsCheck) hasKidsCheck.checked = false;
+    if (hasElderlyCheck) hasElderlyCheck.checked = false;
+  } else if (val === "partner") {
+    if (travellersInput) travellersInput.value = "2";
+  } else if (val === "friends") {
+    if (travellersInput && parseInt(travellersInput.value) < 2) {
+      travellersInput.value = "3";
+    }
+  } else if (val === "family") {
+    if (travellersInput && parseInt(travellersInput.value) < 3) {
+      travellersInput.value = "3";
+    }
+  }
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function toggleBudgetBreakdownTable() {
+  const container = document.getElementById("budgetBreakdownTableContainer");
+  const icon = document.getElementById("budgetToggleIcon");
+  if (!container) return;
+  const isHidden = container.classList.contains("hidden");
+  container.classList.toggle("hidden", !isHidden);
+  if (icon) {
+    icon.className = isHidden ? "fa-solid fa-chevron-up text-indigo-500" : "fa-solid fa-chevron-down text-indigo-500";
+  }
+}
+
+async function calculateTripMinimumBudget() {
+  const destSelect = document.getElementById("tripDestSelect");
+  if (!destSelect) return;
+  const destId = destSelect.value;
+  const selectedOption = destSelect.options[destSelect.selectedIndex];
+  const destination = (selectedOption ? selectedOption.text : destId) || "Jaipur, Rajasthan";
+
+  const departure = document.getElementById("tripDepartureInput")?.value.trim() || "Delhi";
+  const startDate = document.getElementById("tripStartDateInput")?.value;
+  const endDate = document.getElementById("tripEndDateInput")?.value;
+  const travellers = parseInt(document.getElementById("tripTravellersInput")?.value) || 1;
+  const accommodation = document.getElementById("tripAccomSelect")?.value || "budget_hotel";
+  const transport = document.getElementById("tripTransitSelect")?.value || "public_transit";
+  const pace = document.getElementById("tripPaceSelect")?.value || "balanced";
+  const includeShopping = document.getElementById("tripIncludeShoppingCheck")?.checked || false;
+
+  let durationDays = 4;
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    const diff = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+    if (diff > 0) durationDays = diff;
+  }
+
+  const payload = {
+    destination_id: destId,
+    destination_name: destination,
+    departure_location: departure,
+    duration_days: durationDays,
+    travellers_count: travellers,
+    accommodation_tier: accommodation,
+    transit_pref: transport,
+    travel_pace: pace,
+    include_shopping: includeShopping
+  };
+
+  try {
+    const res = await fetch("/api/budget/estimate-minimum", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    state.activeBudgetEstimate = data;
+
+    // Display minimum & recommended cards
+    const minDisplay = document.getElementById("bareMinimumBudgetDisplay");
+    const recDisplay = document.getElementById("recommendedBudgetDisplay");
+    const minSubtext = document.getElementById("bareMinSubtext");
+    const recSubtext = document.getElementById("recommendedSubtext");
+
+    if (minDisplay) minDisplay.textContent = formatINR(data.bare_minimum_budget);
+    if (recDisplay) recDisplay.textContent = formatINR(data.recommended_budget);
+    const minPer = data.bare_minimum_per_person || Math.round(data.bare_minimum_budget / (data.travellers_count || 1));
+    const recPer = data.recommended_per_person || Math.round(data.recommended_budget / (data.travellers_count || 1));
+    if (minSubtext) minSubtext.textContent = `₹${minPer.toLocaleString("en-IN")}/person (${data.duration_days} days)`;
+    if (recSubtext) recSubtext.textContent = `₹${recPer.toLocaleString("en-IN")}/person (${data.duration_days} days)`;
+
+    // Populate category breakdown table
+    const tbody = document.getElementById("budgetBreakdownTbody");
+    if (tbody && Array.isArray(data.categories)) {
+      tbody.innerHTML = "";
+      data.categories.forEach(item => {
+        const catName = item.name || item.category_name || item.category || "Expense";
+        const minCost = item.minimum_cost ?? item.minimum_amount ?? 0;
+        const recCost = item.recommended_cost ?? item.recommended_amount ?? 0;
+        const basis = item.assumptions || item.basis || item.description || "";
+        const prov = item.data_source || item.provenance || "estimated";
+
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
+        tr.innerHTML = `
+          <td class="p-2 font-semibold text-slate-800">${escapeHtml(catName)}</td>
+          <td class="p-2 text-right font-bold text-slate-700">${formatINR(minCost)}</td>
+          <td class="p-2 text-right font-bold text-emerald-700">${formatINR(recCost)}</td>
+          <td class="p-2 text-slate-500 text-[10px]">${escapeHtml(basis)}</td>
+          <td class="p-2 text-center">
+            ${prov === "verified"
+              ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-bold">Verified</span>'
+              : (prov === "estimated"
+                ? '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9px] font-bold">Estimated</span>'
+                : '<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[9px]">Unavailable</span>')}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Configure slider
+    const slider = document.getElementById("tripBudgetSlider");
+    const budgetInput = document.getElementById("tripBudgetInput");
+    const minBound = document.getElementById("sliderMinBound");
+    const maxBound = document.getElementById("sliderMaxBound");
+
+    if (slider && data.slider_config) {
+      slider.min = data.slider_config.min ?? data.slider_config.min_slider;
+      slider.max = data.slider_config.max ?? data.slider_config.max_slider;
+      slider.step = data.slider_config.step || 500;
+
+      const minVal = data.slider_config.min ?? data.slider_config.min_slider;
+      const maxVal = data.slider_config.max ?? data.slider_config.max_slider;
+      if (minBound) minBound.textContent = `Min: ${formatINR(minVal)}`;
+      if (maxBound) maxBound.textContent = `Max: ${formatINR(maxVal)}`;
+
+      const currentVal = budgetInput ? parseFloat(budgetInput.value) : 0;
+      if (!currentVal || currentVal < data.bare_minimum_budget) {
+        if (budgetInput) budgetInput.value = data.bare_minimum_budget;
+        slider.value = data.bare_minimum_budget;
+      } else {
+        slider.value = currentVal;
+      }
+    }
+
+    updateBudgetAllowanceLabels(budgetInput ? parseFloat(budgetInput.value) : data.bare_minimum_budget);
+  } catch (err) {
+    console.warn("Failed to calculate minimum budget estimate:", err);
+  }
+}
+
+function onBudgetSliderChange(val) {
+  const num = Number(val);
+  const input = document.getElementById("tripBudgetInput");
+  if (input) input.value = num;
+  updateBudgetAllowanceLabels(num);
+}
+
+function onBudgetNumberInputChange(val) {
+  const num = Number(val);
+  const slider = document.getElementById("tripBudgetSlider");
+  if (slider && !isNaN(num)) {
+    if (num >= Number(slider.min) && num <= Number(slider.max)) {
+      slider.value = num;
+    }
+  }
+  updateBudgetAllowanceLabels(num);
+}
+
+function updateBudgetAllowanceLabels(numVal) {
+  const est = state.activeBudgetEstimate;
+  const allowanceLabel = document.getElementById("sliderAllowanceLabel");
+  const warningBox = document.getElementById("tripBudgetWarningBox");
+  const warningText = document.getElementById("tripBudgetWarningText");
+  const tierBadge = document.getElementById("budgetTierBadge");
+
+  if (!est) return;
+
+  const min = est.bare_minimum_budget;
+  const rec = est.recommended_budget;
+  const diff = numVal - min;
+
+  if (diff < 0) {
+    if (allowanceLabel) {
+      allowanceLabel.textContent = `Shortfall: ${formatINR(Math.abs(diff))}`;
+      allowanceLabel.className = "text-xs font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full";
+    }
+    if (warningBox) warningBox.classList.remove("hidden");
+    if (warningText) {
+      warningText.textContent = `Entered budget of ${formatINR(numVal)} is below the minimum viable estimated cost of ${formatINR(min)} (Shortfall: ${formatINR(Math.abs(diff))}). Transport, accommodation, or meal requirements cannot be met without cutting days or travellers.`;
+    }
+    if (tierBadge) {
+      tierBadge.textContent = "Insufficient Budget";
+      tierBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300";
+    }
+  } else {
+    if (warningBox) warningBox.classList.add("hidden");
+    if (allowanceLabel) {
+      allowanceLabel.textContent = diff === 0 ? "Bare Minimum Allowance" : `+${formatINR(diff)} above minimum`;
+      allowanceLabel.className = "text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full";
+    }
+    if (tierBadge) {
+      if (numVal < rec) {
+        tierBadge.textContent = "Budget-Conscious";
+        tierBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300";
+      } else {
+        tierBadge.textContent = "Comfortable & Flexible";
+        tierBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300";
+      }
+    }
+  }
+}
+
 function toggleTripFormModal() {
   if (state.profileStatus && !state.profileStatus.complete) {
     const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : "applicable";
@@ -2113,22 +2928,185 @@ function toggleTripFormModal() {
     d2.setDate(d2.getDate() + 18);
     endInput.value = d2.toISOString().split("T")[0];
   }
+  updateTripDurationPreview();
+
+  // Prefill companions from profile if available
+  const companionsPref = state.currentProfile?.companions || (state.precision?.context?.b03_companions);
+  if (companionsPref) {
+    let compRadio = "solo";
+    if (companionsPref.includes("partner") || companionsPref.includes("couple")) compRadio = "partner";
+    else if (companionsPref.includes("friend")) compRadio = "friends";
+    else if (companionsPref.includes("family")) compRadio = "family";
+    const radioEl = document.querySelector(`input[name="tripCompanionsRadio"][value="${compRadio}"]`);
+    if (radioEl) {
+      radioEl.checked = true;
+      onCompanionTypeChanged(compRadio);
+    }
+  }
+
+  // Prefill children & elderly flags
+  const hasKidsCheck = document.getElementById("tripHasChildrenCheck");
+  const hasElderlyCheck = document.getElementById("tripHasElderlyCheck");
+  if (hasKidsCheck && (companionsPref === "family_kids" || state.precision?.answers?.d02_children_age_group)) {
+    hasKidsCheck.checked = true;
+  }
+  if (hasElderlyCheck && (companionsPref === "family_seniors" || state.precision?.answers?.d03_senior_accessibility)) {
+    hasElderlyCheck.checked = true;
+  }
 
   // Pre-fill pace, stay style, and transit from profile
-  if (state.detailedProfile) {
+  if (state.detailedProfile || state.currentProfile) {
     const paceSel = document.getElementById("tripPaceSelect");
-    if (paceSel && state.detailedProfile.schedule_density) {
-      if (state.detailedProfile.schedule_density.includes("relaxed")) paceSel.value = "relaxed";
-      else if (state.detailedProfile.schedule_density.includes("packed")) paceSel.value = "packed";
+    const sched = state.detailedProfile?.schedule_density || state.currentProfile?.schedule_density;
+    if (paceSel && sched) {
+      if (sched.includes("relaxed")) paceSel.value = "relaxed";
+      else if (sched.includes("packed")) paceSel.value = "packed";
       else paceSel.value = "balanced";
     }
     const accomSel = document.getElementById("tripAccomSelect");
-    if (accomSel && state.detailedProfile.stay_style) accomSel.value = state.detailedProfile.stay_style;
+    const stay = state.detailedProfile?.stay_style || state.currentProfile?.stay_style;
+    if (accomSel && stay) accomSel.value = stay;
     const transitSel = document.getElementById("tripTransitSelect");
-    if (transitSel && state.detailedProfile.transit_pref) transitSel.value = state.detailedProfile.transit_pref;
+    const tr = state.detailedProfile?.transit_pref || state.currentProfile?.transit_pref;
+    if (transitSel && tr) transitSel.value = tr;
   }
 
   openModal("tripFormModal");
+  calculateTripMinimumBudget();
+}
+
+// Option A vs Option B Hotel Selection (Task 4)
+let currentHotelWorkflow = "option_b";
+
+function toggleHotelWorkflowOption(opt) {
+  currentHotelWorkflow = opt;
+  const labelA = document.getElementById("hotelOptionALabel");
+  const labelB = document.getElementById("hotelOptionBLabel");
+  const contA = document.getElementById("hotelOptionAContainer");
+
+  if (opt === "option_a") {
+    if (labelA) labelA.className = "cursor-pointer border-2 border-emerald-500 bg-white rounded-xl p-2.5 transition flex flex-col justify-between shadow-xs";
+    if (labelB) labelB.className = "cursor-pointer border-2 border-slate-200 bg-white rounded-xl p-2.5 transition flex flex-col justify-between";
+    if (contA) contA.classList.remove("hidden");
+  } else {
+    if (labelB) labelB.className = "cursor-pointer border-2 border-emerald-500 bg-white rounded-xl p-2.5 transition flex flex-col justify-between shadow-xs";
+    if (labelA) labelA.className = "cursor-pointer border-2 border-slate-200 bg-white rounded-xl p-2.5 transition flex flex-col justify-between";
+    if (contA) contA.classList.add("hidden");
+    clearOptionAHotel();
+  }
+}
+
+async function searchHotelsForOptionA() {
+  const destSelect = document.getElementById("tripDestSelect");
+  const destId = destSelect ? destSelect.value : "";
+  const destName = destSelect && destSelect.options[destSelect.selectedIndex] ? destSelect.options[destSelect.selectedIndex].text : "";
+  const budget = parseFloat(document.getElementById("tripBudgetInput")?.value) || 25000;
+  
+  let days = 4;
+  const startDate = document.getElementById("tripStartDateInput")?.value;
+  const endDate = document.getElementById("tripEndDateInput")?.value;
+  if (startDate && endDate) {
+    const s = new Date(startDate);
+    const e = new Date(endDate);
+    const diff = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+    if (diff > 0) days = diff;
+  }
+
+  const loadingEl = document.getElementById("optionAHotelLoading");
+  const resultsEl = document.getElementById("optionAHotelResults");
+  if (loadingEl) loadingEl.classList.remove("hidden");
+  if (resultsEl) resultsEl.innerHTML = "";
+
+  try {
+    const res = await fetch(`/api/stay/search?destination_id=${encodeURIComponent(destId)}&destination_name=${encodeURIComponent(destName)}&budget=${budget}&duration_days=${days}&limit=10`);
+    if (!res.ok) throw new Error("Could not find verified accommodations");
+    const data = await res.json();
+    renderOptionAHotels(data.options || []);
+  } catch (err) {
+    if (resultsEl) resultsEl.innerHTML = `<div class="p-3 text-center text-xs text-rose-500">Could not retrieve hotels: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    if (loadingEl) loadingEl.classList.add("hidden");
+  }
+}
+
+function renderOptionAHotels(options) {
+  const resultsEl = document.getElementById("optionAHotelResults");
+  if (!resultsEl) return;
+  resultsEl.innerHTML = "";
+
+  if (options.length === 0) {
+    resultsEl.innerHTML = `<div class="p-3 text-center text-xs text-slate-400">No properties found near this destination.</div>`;
+    return;
+  }
+
+  options.forEach(h => {
+    const card = document.createElement("div");
+    card.className = "p-2.5 rounded-xl border border-slate-200 bg-white hover:border-emerald-400 transition flex items-center justify-between gap-2";
+    card.innerHTML = `
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(h.name)}</span>
+          <span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 capitalize">${escapeHtml(h.stay_type || 'hotel')}</span>
+        </div>
+        <p class="text-[10px] text-slate-400 truncate">${escapeHtml(h.address || 'Central location')}</p>
+      </div>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <a href="${escapeHtml(h.external_search_url)}" target="_blank" rel="noopener noreferrer" class="px-2 py-1 text-[10px] rounded border border-slate-200 text-slate-500 hover:bg-slate-50">
+          Rates <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i>
+        </a>
+        <button type="button" class="selectHotelOptBtn px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition">
+          Select Hotel
+        </button>
+      </div>
+    `;
+    card.querySelector(".selectHotelOptBtn").onclick = () => selectOptionAHotel(h);
+    resultsEl.appendChild(card);
+  });
+}
+
+function selectOptionAHotel(h) {
+  const idEl = document.getElementById("selectedHotelId");
+  const nameEl = document.getElementById("selectedHotelName");
+  const latEl = document.getElementById("selectedHotelLat");
+  const lonEl = document.getElementById("selectedHotelLon");
+  const addrEl = document.getElementById("selectedHotelAddress");
+  const typeEl = document.getElementById("selectedHotelType");
+
+  if (idEl) idEl.value = h.stay_id || "";
+  if (nameEl) nameEl.value = h.name || "";
+  if (latEl) latEl.value = h.lat !== undefined ? h.lat : "";
+  if (lonEl) lonEl.value = h.lon !== undefined ? h.lon : "";
+  if (addrEl) addrEl.value = h.address || "";
+  if (typeEl) typeEl.value = h.stay_type || "hotel";
+
+  const badge = document.getElementById("optionASelectedHotelBadge");
+  const badgeName = document.getElementById("optionASelectedHotelName");
+  const badgeAddr = document.getElementById("optionASelectedHotelAddr");
+  const resultsEl = document.getElementById("optionAHotelResults");
+
+  if (badgeName) badgeName.textContent = h.name;
+  if (badgeAddr) badgeAddr.textContent = h.address || "Central location";
+  if (badge) badge.classList.remove("hidden");
+  if (resultsEl) resultsEl.innerHTML = "";
+}
+
+function clearOptionAHotel() {
+  const idEl = document.getElementById("selectedHotelId");
+  const nameEl = document.getElementById("selectedHotelName");
+  const latEl = document.getElementById("selectedHotelLat");
+  const lonEl = document.getElementById("selectedHotelLon");
+  const addrEl = document.getElementById("selectedHotelAddress");
+  const typeEl = document.getElementById("selectedHotelType");
+
+  if (idEl) idEl.value = "";
+  if (nameEl) nameEl.value = "";
+  if (latEl) latEl.value = "";
+  if (lonEl) lonEl.value = "";
+  if (addrEl) addrEl.value = "";
+  if (typeEl) typeEl.value = "";
+
+  const badge = document.getElementById("optionASelectedHotelBadge");
+  if (badge) badge.classList.add("hidden");
 }
 
 async function handleTripCreateSubmit(e) {
@@ -2147,6 +3125,14 @@ async function handleTripCreateSubmit(e) {
   const pace = document.getElementById("tripPaceSelect").value;
   const accom = document.getElementById("tripAccomSelect").value;
   const transit = document.getElementById("tripTransitSelect") ? document.getElementById("tripTransitSelect").value : "public_transit";
+
+  const departureLocation = document.getElementById("tripDepartureInput")?.value.trim() || "Delhi";
+  const compRadio = document.querySelector('input[name="tripCompanionsRadio"]:checked')?.value || "solo";
+  const hasChildren = document.getElementById("tripHasChildrenCheck")?.checked || false;
+  const hasElderly = document.getElementById("tripHasElderlyCheck")?.checked || false;
+  const dietaryStyle = document.getElementById("tripDietarySelect")?.value || "all";
+  const tripNotes = document.getElementById("tripNotesInput")?.value.trim() || "";
+  const tripPrefs = { dietary: dietaryStyle, notes: tripNotes };
 
   // Validate destination
   const isGeo = destId.startsWith("geo_");
@@ -2183,7 +3169,54 @@ async function handleTripCreateSubmit(e) {
   if (btn) btn.textContent = "Generating LinUCB Itinerary...";
 
   try {
-    // 1. Create Trip Record
+    // Dynamic trip planning route if a dynamic location is selected or geocoded
+    if (selectedDynamicLocation && (destId.startsWith("geo_") || selectedDynamicLocation.name === destName || destId.includes((selectedDynamicLocation.city || "").toLowerCase()))) {
+      const planRes = await fetch(`/api/places/plan-dynamic`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: state.currentUser.user_id,
+          city: selectedDynamicLocation.city || selectedDynamicLocation.name,
+          state: selectedDynamicLocation.state || "India",
+          lat: selectedDynamicLocation.lat,
+          lon: selectedDynamicLocation.lon,
+          start_date: startDate,
+          end_date: endDate,
+          travellers_count: travellers,
+          total_budget: budget,
+          accommodation_tier: accom,
+          transit_pref: transit,
+          travel_pace: pace,
+          radius_meters: currentDynamicRadius || 15000,
+          departure_location: departureLocation,
+          companions: compRadio,
+          has_children: hasChildren,
+          has_elderly: hasElderly,
+          trip_preferences: tripPrefs
+        })
+      });
+      if (!planRes.ok) {
+        const errData = await planRes.json();
+        alert("Error generating dynamic itinerary: " + formatApiError(errData, "Invalid trip details"));
+        return;
+      }
+      const planData = await planRes.json();
+      currentItinerary = planData.itinerary;
+      currentPlannedTripId = planData.trip ? planData.trip.id : null;
+      closeModal("tripFormModal");
+      await loadUserTrips();
+      renderItinerary(currentItinerary);
+      return;
+    }
+
+    // 1. Create Trip Record (Standard fixed catalog)
+    const hotelName = document.getElementById("selectedHotelName")?.value.trim() || null;
+    const hotelLat = parseFloat(document.getElementById("selectedHotelLat")?.value) || null;
+    const hotelLon = parseFloat(document.getElementById("selectedHotelLon")?.value) || null;
+    const hotelId = document.getElementById("selectedHotelId")?.value.trim() || null;
+    const hotelAddr = document.getElementById("selectedHotelAddress")?.value.trim() || null;
+    const hotelType = document.getElementById("selectedHotelType")?.value.trim() || null;
+
     const tripRes = await fetch(`/api/trips/${state.currentUser.user_id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2198,7 +3231,18 @@ async function handleTripCreateSubmit(e) {
         accommodation_tier: accom,
         transit_pref: transit,
         travel_pace: pace,
-        specific_interests: []
+        specific_interests: [],
+        departure_location: departureLocation,
+        companions: compRadio,
+        has_children: hasChildren,
+        has_elderly: hasElderly,
+        trip_preferences: tripPrefs,
+        stay_id: hotelId,
+        stay_name: hotelName,
+        stay_lat: hotelLat,
+        stay_lon: hotelLon,
+        stay_address: hotelAddr,
+        stay_type: hotelType
       })
     });
 
@@ -2211,7 +3255,15 @@ async function handleTripCreateSubmit(e) {
     const newTrip = await tripRes.json();
     closeModal("tripFormModal");
 
-    // 2. Generate LinUCB Itinerary
+    // 2. Generate LinUCB Itinerary & Plan Engine
+    if (hotelName && hotelLat !== null) {
+      try {
+        await fetch(`/api/plan/generate/${newTrip.id}`, { method: "POST" });
+      } catch (e) {
+        console.warn("Plan engine generation note:", e);
+      }
+    }
+
     const itinRes = await fetch(`/api/itinerary/generate/${newTrip.id}?user_id=${state.currentUser.user_id}`, {
       method: "POST"
     });
@@ -2231,6 +3283,129 @@ async function handleTripCreateSubmit(e) {
   } finally {
     if (btn) btn.disabled = false;
     if (btn) btn.textContent = "Generate LinUCB Itinerary →";
+  }
+}
+
+// ============================================================================
+// UNIFIED TRIP WORKSPACE: PRE-TRIP, LIVE TRIP, POST-TRIP CONTROLLER
+// ============================================================================
+let currentWorkspaceMode = "pre";
+let currentPreSubtab = "itin";
+
+function switchWorkspaceMode(mode) {
+  currentWorkspaceMode = mode;
+  const modes = ["pre", "live", "post"];
+  modes.forEach(m => {
+    const btn = document.getElementById(`wsTabBtn-${m}`);
+    const pane = document.getElementById(m === "pre" ? "workspacePreTrip" : (m === "live" ? "workspaceLiveTrip" : "workspacePostTrip"));
+    if (btn) {
+      if (m === mode) {
+        btn.className = "flex-1 py-2.5 px-4 rounded-lg bg-indigo-600 text-white shadow-sm flex items-center justify-center gap-2 transition";
+      } else {
+        btn.className = "flex-1 py-2.5 px-4 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white flex items-center justify-center gap-2 transition";
+      }
+    }
+    if (pane) {
+      pane.classList.toggle("hidden", m !== mode);
+    }
+  });
+
+  if (mode === "live") {
+    renderLiveTripWorkspace();
+  } else if (mode === "post") {
+    renderPostTripWorkspace();
+  } else if (mode === "pre") {
+    switchPreSubtab(currentPreSubtab);
+  }
+}
+
+function switchPreSubtab(sub) {
+  currentPreSubtab = sub;
+  const subs = ["itin", "stay", "prep"];
+  subs.forEach(s => {
+    const btn = document.getElementById(`preSubBtn-${s}`);
+    const pane = document.getElementById(`preSubContent-${s}`);
+    if (btn) {
+      if (s === sub) {
+        btn.className = "px-3.5 py-1.5 rounded-lg bg-slate-900 text-white shadow-xs transition";
+      } else {
+        btn.className = "px-3.5 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition";
+      }
+    }
+    if (pane) {
+      pane.classList.toggle("hidden", s !== sub);
+    }
+  });
+
+  if (sub === "stay") {
+    renderStayWorkspace();
+  } else if (sub === "prep") {
+    renderPrepWorkspace();
+  }
+}
+
+function getWorkspaceContext() {
+  const api = async (endpoint, opts = {}) => {
+    const res = await fetch(endpoint, opts);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || "API request failed");
+    }
+    return res.json();
+  };
+  return {
+    user: state.currentUser,
+    userId: state.currentUser ? state.currentUser.user_id : null,
+    tripId: currentPlannedTripId,
+    trips: state.userTrips || [],
+    api: (window.TravelModules && window.TravelModules.api) ? window.TravelModules.api : api
+  };
+}
+
+function renderStayWorkspace() {
+  const container = document.getElementById("workspaceStayContainer");
+  if (!container) return;
+  const ctx = getWorkspaceContext();
+  if (window.TravelModules && window.TravelModules.stay && typeof window.TravelModules.stay.render === "function") {
+    window.TravelModules.stay.render(container, ctx);
+  } else {
+    container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading stays & accommodation...</div>`;
+  }
+}
+
+function renderPrepWorkspace() {
+  const container = document.getElementById("workspacePrepContainer");
+  if (!container) return;
+  const ctx = getWorkspaceContext();
+  if (window.TravelModules && window.TravelModules.prep && typeof window.TravelModules.prep.render === "function") {
+    window.TravelModules.prep.render(container, ctx);
+  } else {
+    container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading packing & preparation...</div>`;
+  }
+}
+
+function renderLiveTripWorkspace() {
+  const container = document.getElementById("workspaceLiveContainer");
+  if (!container) return;
+  const ctx = getWorkspaceContext();
+  if (window.TravelModules && window.TravelModules.live && typeof window.TravelModules.live.render === "function") {
+    window.TravelModules.live.render(container, ctx);
+  } else {
+    container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading live companion...</div>`;
+  }
+}
+
+function renderPostTripWorkspace() {
+  const container = document.getElementById("workspacePostContainer");
+  if (!container) return;
+  const ctx = getWorkspaceContext();
+  if (window.TravelModules && window.TravelModules.live && typeof window.TravelModules.live.render === "function") {
+    window.TravelModules.live.render(container, ctx).then(() => {
+      const postBtn = container.querySelector("#liveTabPost");
+      if (postBtn) postBtn.click();
+    });
+  } else {
+    container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading post-trip feedback...</div>`;
   }
 }
 
@@ -2305,6 +3480,38 @@ function renderItinerary(itin) {
   document.getElementById("itinDatesBadge").textContent = `${itin.total_days} Days Planned`;
   document.getElementById("itinSummaryNotes").textContent = itin.summary_notes || "Tailored by Contextual LinUCB bandit.";
   document.getElementById("itinTotalCostDisplay").textContent = formatINR(itin.total_estimated_cost);
+
+  // Companion and departure location badges
+  const currentTrip = (activeUserTrips || []).find(t => t.id === (itin.trip_id || currentPlannedTripId));
+  const compBadge = document.getElementById("itinCompanionsBadge");
+  if (compBadge) {
+    if (currentTrip) {
+      let compLabel = "Solo Explorer";
+      if (currentTrip.companions === "partner" || currentTrip.companions === "couple") compLabel = "👫 Couple";
+      else if (currentTrip.companions === "friends") compLabel = "👥 Friends Trip";
+      else if (currentTrip.companions === "family") compLabel = "👨‍👩‍👧 Family";
+      else if (currentTrip.companions === "solo") compLabel = "🎒 Solo";
+      if (currentTrip.has_children) compLabel += " (with Kids)";
+      if (currentTrip.has_elderly) compLabel += " (Senior-Friendly)";
+      compBadge.textContent = compLabel;
+      compBadge.classList.remove("hidden");
+    } else {
+      compBadge.textContent = "Personalized Trip";
+    }
+  }
+  const depBadge = document.getElementById("itinDepartureBadge");
+  if (depBadge) {
+    if (currentTrip && currentTrip.departure_location) {
+      depBadge.textContent = `From: ${currentTrip.departure_location}`;
+      depBadge.classList.remove("hidden");
+    } else {
+      depBadge.textContent = "From: Delhi";
+    }
+  }
+
+  // Ensure Pre-trip daily itinerary tab is active
+  switchWorkspaceMode("pre");
+  switchPreSubtab("itin");
 
   // Load and display live weather forecast with transparent source badge
   loadItineraryLiveWeather(itin.destination_name);

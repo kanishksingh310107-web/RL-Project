@@ -94,6 +94,11 @@ TravelModules.register("ranking", {
 
           <!-- Excluded Destinations Section -->
           ${state.data && state.data.excluded && state.data.excluded.length > 0 ? renderExcluded(state.data.excluded) : ''}
+
+          <!-- Geoapify & OSM Attribution -->
+          <div class="text-[10px] text-slate-400 text-center pt-3 border-t border-slate-100">
+            Powered by Geoapify | &copy; OpenStreetMap contributors
+          </div>
         </div>
       `;
 

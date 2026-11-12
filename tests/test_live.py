@@ -431,3 +431,80 @@ def test_learning_summary_endpoint(client, demo_trip):
     assert "arm_id" in first_arm
     assert "pull_count" in first_arm
     assert "weight_norm" in first_arm
+
+
+
+def test_weather_alerts_and_core_trip_feedback_bridge():
+    from fastapi.testclient import TestClient
+    from main import app
+    from app.database import get_connection
+    from app.core.stores import load_trip_feedback, ensure_core_tables
+    from app.modules.live import init_tables as init_live_tables
+    import uuid
+
+    client = TestClient(app)
+    user_id = f"user_live_{uuid.uuid4().hex[:6]}"
+    trip_id = f"trip_live_{uuid.uuid4().hex[:6]}"
+
+    with get_connection() as conn:
+        init_live_tables(conn)
+        ensure_core_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO users (id, auth_provider, identifier, display_name)
+            VALUES (?, 'email', ?, 'Live Tester')
+            """,
+            (user_id, f"{user_id}@test.com"),
+        )
+        conn.execute(
+            """
+            INSERT INTO trips (id, user_id, destination_id, destination_name, start_date, end_date, duration_days, total_budget)
+            VALUES (?, ?, 'delhi', 'Delhi, India', '2026-11-20', '2026-11-23', 3, 25000.0)
+            """,
+            (trip_id, user_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO itineraries (id, trip_id, user_id, title, total_days, status)
+            VALUES (?, ?, ?, 'Test Itin', 3, 'completed')
+            """,
+            (f"itin_{trip_id}", trip_id, user_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO live_trip_state (trip_id, user_id, is_completed, completed_at)
+            VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+            """,
+            (trip_id, user_id),
+        )
+        conn.commit()
+
+    # 1. Weather alerts endpoint (Task B9)
+    res_w = client.get(f"/api/live/{trip_id}/weather-alerts")
+    assert res_w.status_code == 200
+    w_data = res_w.json()
+    assert "sunrise" in w_data
+    assert "sunset" in w_data
+    assert "forecast" in w_data
+
+    # 2. Post-trip feedback bridges to core_trip_feedback (Task B11)
+    res_post = client.post(
+        f"/api/live/{trip_id}/postrip",
+        json={
+            "user_id": user_id,
+            "overall_satisfaction": 5.0,
+            "pace_rating": "just_right",
+            "budget_accuracy": "accurate",
+            "itinerary_realistic": "realistic",
+            "enjoyed_most": "Cultural monuments",
+            "disliked": "None",
+            "comments": "Great trip!",
+            "activity_ratings": [],
+        },
+    )
+    assert res_post.status_code == 200
+
+    # Verify that core_trip_feedback received the feedback!
+    fb_list = load_trip_feedback(trip_id)
+    assert len(fb_list) > 0
+    assert fb_list[0]["overall_satisfaction"] == 5

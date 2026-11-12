@@ -18,7 +18,10 @@ window.TravelModules = (function () {
   const ctx = () => ({ user: state.currentUser, userId: state.currentUser && state.currentUser.user_id,
                        tripId, trips, api });
 
-  function register(id, mod) { registry[id] = mod; }
+  function register(id, mod) { 
+    registry[id] = mod; 
+    window.TravelModules[id] = mod;
+  }
 
   // Global currency helper for INR
   window.formatINR = function (val) {

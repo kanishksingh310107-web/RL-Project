@@ -263,13 +263,25 @@ class TripCreate(BaseModel):
     destination_name: Optional[str] = None
     start_date: str # YYYY-MM-DD
     end_date: str # YYYY-MM-DD
+    duration_days: Optional[int] = None
     travellers_count: int = 1
+    companions: Optional[str] = "solo"
+    has_children: Optional[bool] = False
+    has_elderly: Optional[bool] = False
+    departure_location: Optional[str] = "Delhi"
     total_budget: float = 25000.0
     currency: str = "INR"
     accommodation_tier: str = "balanced" # 'budget_hostel', 'boutique', 'resort', 'apartment'
     transit_pref: str = "public_transit" # 'public_transit', 'walking', 'rental_car', 'taxi'
     travel_pace: str = "balanced" # 'relaxed', 'balanced', 'packed'
     specific_interests: List[str] = []
+    trip_preferences: Optional[Dict[str, Any]] = None
+    stay_id: Optional[str] = None
+    stay_name: Optional[str] = None
+    stay_lat: Optional[float] = None
+    stay_lon: Optional[float] = None
+    stay_address: Optional[str] = None
+    stay_type: Optional[str] = None
 
 class TripResponse(BaseModel):
     id: str
@@ -280,12 +292,19 @@ class TripResponse(BaseModel):
     end_date: str
     duration_days: int
     travellers_count: int
+    companions: Optional[str] = "solo"
+    has_children: Optional[bool] = False
+    has_elderly: Optional[bool] = False
+    departure_location: Optional[str] = "Delhi"
     total_budget: float
     currency: str
     accommodation_tier: str
     transit_pref: str
     travel_pace: str
     specific_interests: List[str] = []
+    trip_preferences: Optional[Dict[str, Any]] = None
+    stay_id: Optional[str] = None
+    stay_name: Optional[str] = None
     created_at: str
 
 class ItineraryActivityModel(BaseModel):
@@ -372,5 +391,69 @@ class PolicyInspectionResponse(BaseModel):
     total_interactions: int
     exploration_param_alpha: float
     recent_feedback: List[Dict[str, Any]]
+
+class BudgetCategoryItem(BaseModel):
+    category: str
+    name: str
+    description: str
+    minimum_cost: float
+    recommended_cost: float
+    per_person_min: float
+    per_person_rec: float
+    cost_basis: str
+    data_source: str
+    assumptions: str
+
+class SliderConfig(BaseModel):
+    min: float
+    default: float
+    max: float
+    step: float
+
+class MinimumBudgetRequest(BaseModel):
+    destination_id: Optional[str] = None
+    destination_name: Optional[str] = None
+    departure_location: Optional[str] = "Delhi"
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    duration_days: Optional[int] = None
+    travellers_count: int = 1
+    accommodation_tier: Optional[str] = "boutique"
+    transit_pref: Optional[str] = "public_transit"
+    travel_pace: Optional[str] = "balanced"
+    include_shopping: bool = False
+    user_id: Optional[str] = None
+
+class MinimumBudgetResponse(BaseModel):
+    destination: Dict[str, Any]
+    departure_location: str
+    duration_days: int
+    nights_count: int
+    travellers_count: int
+    rooms_count: int
+    intercity_distance_km: float
+    bare_minimum_budget: float
+    recommended_budget: float
+    bare_minimum_per_person: float
+    recommended_per_person: float
+    bare_minimum_daily_per_person: float
+    recommended_daily_per_person: float
+    categories: List[BudgetCategoryItem]
+    slider_config: SliderConfig
+    currency: str = "INR"
+
+class BudgetValidationRequest(BaseModel):
+    selected_budget: float
+    bare_minimum_budget: float
+    recommended_budget: float
+
+class BudgetValidationResponse(BaseModel):
+    is_sufficient: bool
+    tier: str
+    shortfall: Optional[float] = None
+    surplus_above_min: Optional[float] = None
+    surplus_above_recommended: Optional[float] = None
+    warning: Optional[str] = None
+    message: str
 
 

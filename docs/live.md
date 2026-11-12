@@ -190,7 +190,7 @@ FastAPI's auto-discovery (`app/modules/discover()`) will instantly register the 
 
 ---
 
-## 10. AI Assistance and External Libraries/APIs Used
+## AI assistance and external libraries/APIs used
 
 In accordance with academic integrity guidelines:
 * **AI Assistance:** Anthropic Claude / Google DeepMind Antigravity was used to assist in implementing the module backend, designing SQLite schemas, formulating mathematical LinUCB updates, and authoring unit tests.

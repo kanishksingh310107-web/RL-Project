@@ -422,3 +422,53 @@ def test_packing_user_cold_sensitivity_override(client, demo_trip, monkeypatch):
 
 
 
+
+
+
+def test_safety_essentials_endpoint():
+    from fastapi.testclient import TestClient
+    from main import app
+    from app.database import get_connection
+    import uuid
+
+    client = TestClient(app)
+    user_id = f"user_safe_{uuid.uuid4().hex[:6]}"
+    trip_id = f"trip_safe_{uuid.uuid4().hex[:6]}"
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO users (id, auth_provider, identifier, display_name)
+            VALUES (?, 'email', ?, 'Safety Tester')
+            """,
+            (user_id, f"{user_id}@test.com"),
+        )
+        conn.execute(
+            """
+            INSERT INTO trips (id, user_id, destination_id, destination_name, start_date, end_date, duration_days, total_budget)
+            VALUES (?, ?, 'delhi', 'Delhi, India', '2026-11-20', '2026-11-23', 3, 25000.0)
+            """,
+            (trip_id, user_id),
+        )
+        conn.commit()
+
+    res = client.get(f"/api/prep/{trip_id}/safety")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["trip_id"] == trip_id
+    assert "nearby_facilities" in data
+    assert len(data["nearby_facilities"]) > 0
+    # Must contain hospital, pharmacy, atm
+    fac_types = {f["type"] for f in data["nearby_facilities"]}
+    assert "hospital" in fac_types
+    assert "pharmacy" in fac_types
+    assert "atm" in fac_types
+
+    # Must contain verified static emergency numbers
+    assert "emergency_numbers" in data
+    assert any(n["number"] == "112" for n in data["emergency_numbers"])
+    assert all(n["is_static"] is True for n in data["emergency_numbers"])
+
+    # Must contain permits and ticketing guidelines
+    assert "permits_and_ticketing" in data
+    assert any("Inner Line Permit" in p["requirement"] for p in data["permits_and_ticketing"])

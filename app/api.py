@@ -13,7 +13,8 @@ from app.models import (
     ShortlistToggleRequest, ShortlistResponse,
     TripCreate, TripResponse, ItineraryResponse,
     ActivityFeedbackRequest, ActivityFeedbackResponse, ItineraryRegenerateRequest,
-    PolicyArmState, PolicyInspectionResponse
+    PolicyArmState, PolicyInspectionResponse,
+    MinimumBudgetRequest, MinimumBudgetResponse, BudgetValidationRequest, BudgetValidationResponse
 )
 from app.auth import (
     authenticate_or_register, get_user_by_id,
@@ -38,6 +39,9 @@ from app.questionnaire import (
 )
 
 from app import precision as prec
+from app.planning.budget import (
+    calculate_minimum_trip_budget, validate_trip_budget, adapt_itinerary_to_budget
+)
 
 router = APIRouter(prefix="/api")
 
@@ -678,6 +682,24 @@ def get_user_shortlist(user_id: str):
         return ShortlistResponse(user_id=user_id, shortlisted_ids=items)
 
 
+@router.get("/destination/{dest_id}/explore")
+def explore_destination_details(
+    dest_id: str,
+    user_id: Optional[str] = Query(None),
+    duration_days: int = Query(3, ge=1, le=14),
+    departure_location: str = Query("Delhi"),
+):
+    """Retrieves rich, personalized destination exploration data covering overview,
+    why recommended, attractions, day-wise suggested itinerary, budget, dining, and shopping."""
+    from app.planning.explore import get_destination_explore_details
+    return get_destination_explore_details(
+        destination_id=dest_id,
+        user_id=user_id,
+        duration_days=duration_days,
+        departure_location=departure_location,
+    )
+
+
 
 
 # ==========================================================================
@@ -1024,14 +1046,73 @@ def create_trip(user_id: str, payload: TripCreate):
         dest_name = dest_match["name"] if dest_match else payload.destination_id.replace("_", " ").title()
 
     trip_id = str(uuid.uuid4())
+    # Calculate realistic minimum budget reference
+    min_budget_data = calculate_minimum_trip_budget(
+        destination_id=payload.destination_id,
+        destination_name=dest_name,
+        departure_location=payload.departure_location or "Delhi",
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        duration_days=duration,
+        travellers_count=payload.travellers_count or 1,
+        accommodation_tier=payload.accommodation_tier or "boutique",
+        transit_pref=payload.transit_pref or "public_transit",
+        travel_pace=payload.travel_pace or "balanced",
+    )
+    bare_min = min_budget_data["bare_minimum_budget"]
+    rec_budget = min_budget_data["recommended_budget"]
+
+    trip_prefs_dict = dict(payload.trip_preferences or {})
+    trip_prefs_dict["bare_minimum_budget"] = bare_min
+    trip_prefs_dict["recommended_budget"] = rec_budget
+    trip_prefs_dict["budget_categories"] = min_budget_data["categories"]
+    if payload.total_budget is not None and payload.total_budget < bare_min:
+        shortfall = round(bare_min - payload.total_budget, 2)
+        trip_prefs_dict["budget_shortfall"] = shortfall
+        trip_prefs_dict["budget_warning"] = (
+            f"Budget Warning: Selected budget of ₹{payload.total_budget:,.0f} is below the realistic "
+            f"minimum estimated cost of ₹{bare_min:,.0f}. Shortfall: ₹{shortfall:,.0f}."
+        )
+
+    # Option A: Save pre-selected stay into core_stays if provided
+    stay_obj_id = payload.stay_id
+    if payload.stay_name and payload.stay_lat is not None and payload.stay_lon is not None:
+        from app.core.schemas import Stay, Provenance
+        from app.core.stores import save_stay
+        stay_obj_id = stay_obj_id or f"stay_pre_{uuid.uuid4().hex[:6]}"
+        stay_obj = Stay(
+            stay_id=stay_obj_id,
+            trip_id=trip_id,
+            name=payload.stay_name,
+            stay_type=payload.stay_type or "hotel",
+            lat=payload.stay_lat,
+            lon=payload.stay_lon,
+            address=payload.stay_address,
+            provenance=Provenance(
+                source="pre_trip_user_selection",
+                is_live=False,
+                is_estimate=True,
+                notes="Selected before itinerary generation",
+            ),
+        )
+        save_stay(stay_obj)
+        trip_prefs_dict["stay_anchor"] = {
+            "stay_id": stay_obj.stay_id,
+            "name": stay_obj.name,
+            "lat": stay_obj.lat,
+            "lon": stay_obj.lon,
+            "address": stay_obj.address,
+        }
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO trips (
                 id, user_id, destination_id, destination_name, start_date, end_date,
                 duration_days, travellers_count, total_budget, currency,
-                accommodation_tier, transit_pref, travel_pace, specific_interests
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                accommodation_tier, transit_pref, travel_pace, specific_interests,
+                departure_location, companions, has_children, has_elderly, trip_preferences_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trip_id,
             user_id,
@@ -1046,7 +1127,12 @@ def create_trip(user_id: str, payload: TripCreate):
             payload.accommodation_tier,
             payload.transit_pref,
             payload.travel_pace,
-            json.dumps(payload.specific_interests)
+            json.dumps(payload.specific_interests),
+            payload.departure_location or "Delhi",
+            payload.companions or "solo",
+            1 if payload.has_children else 0,
+            1 if payload.has_elderly else 0,
+            json.dumps(trip_prefs_dict)
         ))
         conn.commit()
 
@@ -1054,6 +1140,14 @@ def create_trip(user_id: str, payload: TripCreate):
         row = cursor.fetchone()
         t_dict = dict(row)
         t_dict["specific_interests"] = json.loads(t_dict["specific_interests"]) if t_dict["specific_interests"] else []
+        t_dict["has_children"] = bool(t_dict.get("has_children", 0))
+        t_dict["has_elderly"] = bool(t_dict.get("has_elderly", 0))
+        if t_dict.get("trip_preferences_json"):
+            try: t_dict["trip_preferences"] = json.loads(t_dict["trip_preferences_json"])
+            except Exception: t_dict["trip_preferences"] = {}
+        if payload.stay_name:
+            t_dict["stay_id"] = stay_obj_id
+            t_dict["stay_name"] = payload.stay_name
         return TripResponse(**t_dict)
 
 @router.get("/trips/{user_id}", response_model=List[TripResponse])
@@ -1071,6 +1165,16 @@ def get_user_trips(user_id: str):
         for r in rows:
             d = dict(r)
             d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
+            d["has_children"] = bool(d.get("has_children", 0))
+            d["has_elderly"] = bool(d.get("has_elderly", 0))
+            if d.get("trip_preferences_json"):
+                try:
+                    d["trip_preferences"] = json.loads(d["trip_preferences_json"])
+                    anchor = d["trip_preferences"].get("stay_anchor") if isinstance(d["trip_preferences"], dict) else None
+                    if anchor:
+                        d["stay_id"] = anchor.get("stay_id")
+                        d["stay_name"] = anchor.get("name")
+                except Exception: d["trip_preferences"] = {}
             result.append(TripResponse(**d))
         return result
 
@@ -1085,7 +1189,59 @@ def get_trip_detail(trip_id: str):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
         d = dict(row)
         d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
+        d["has_children"] = bool(d.get("has_children", 0))
+        d["has_elderly"] = bool(d.get("has_elderly", 0))
+        if d.get("trip_preferences_json"):
+            try:
+                d["trip_preferences"] = json.loads(d["trip_preferences_json"])
+                anchor = d["trip_preferences"].get("stay_anchor") if isinstance(d["trip_preferences"], dict) else None
+                if anchor:
+                    d["stay_id"] = anchor.get("stay_id")
+                    d["stay_name"] = anchor.get("name")
+            except Exception: d["trip_preferences"] = {}
         return TripResponse(**d)
+
+# ==============================================================================
+# REALISTIC MINIMUM TRIP BUDGET ENDPOINTS
+# ==============================================================================
+
+@router.post("/budget/estimate-minimum", response_model=MinimumBudgetResponse)
+def estimate_minimum_budget(payload: MinimumBudgetRequest):
+    """Calculates a realistic minimum budget, comfortable budget, and 8-category breakdown."""
+    user_profile = None
+    if payload.user_id:
+        try:
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                user_profile = _load_base_dict(cursor, payload.user_id)
+        except Exception:
+            pass
+
+    data = calculate_minimum_trip_budget(
+        destination_id=payload.destination_id,
+        destination_name=payload.destination_name,
+        departure_location=payload.departure_location or "Delhi",
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        duration_days=payload.duration_days,
+        travellers_count=payload.travellers_count,
+        accommodation_tier=payload.accommodation_tier or "boutique",
+        transit_pref=payload.transit_pref or "public_transit",
+        travel_pace=payload.travel_pace or "balanced",
+        include_shopping=payload.include_shopping,
+        profile=user_profile,
+    )
+    return MinimumBudgetResponse(**data)
+
+@router.post("/budget/validate", response_model=BudgetValidationResponse)
+def validate_budget_endpoint(payload: BudgetValidationRequest):
+    """Validates user-selected budget against minimum and comfortable thresholds."""
+    result = validate_trip_budget(
+        selected_budget=payload.selected_budget,
+        bare_minimum_budget=payload.bare_minimum_budget,
+        recommended_budget=payload.recommended_budget,
+    )
+    return BudgetValidationResponse(**result)
 
 @router.post("/itinerary/generate/{trip_id}", response_model=ItineraryResponse)
 def generate_trip_itinerary(trip_id: str, user_id: str):

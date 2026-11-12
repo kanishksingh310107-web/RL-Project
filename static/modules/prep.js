@@ -53,12 +53,13 @@
       </div>`;
 
     try {
-      // Parallel fetch for weather, packing, documents, and reminders
-      const [weather, packing, documents, remindersData] = await Promise.all([
+      // Parallel fetch for weather, packing, documents, reminders, and safety (Task B8)
+      const [weather, packing, documents, remindersData, safetyData] = await Promise.all([
         ctx.api(`/api/prep/${ctx.tripId}/weather`),
         ctx.api(`/api/prep/${ctx.tripId}/packing`),
         ctx.api(`/api/prep/${ctx.tripId}/documents`),
         ctx.api(`/api/prep/${ctx.tripId}/reminders`),
+        ctx.api(`/api/prep/${ctx.tripId}/safety`).catch(() => ({ nearby_facilities: [], emergency_numbers: [], permits_and_ticketing: [] })),
       ]);
 
       const checkedMap = getCheckedItems(ctx.tripId);
@@ -272,6 +273,77 @@
                     <span class="block text-[9px] text-slate-400">α=${escapeHtml(b.alpha)} β=${escapeHtml(b.beta)}</span>
                   </div>
                 `).join("")}
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. SAFETY ESSENTIALS & EMERGENCY SUPPORT (Task B8) -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center font-bold text-sm">
+                  <i class="fa-solid fa-kit-medical"></i>
+                </div>
+                <div>
+                  <h4 class="font-bold text-slate-800 text-sm">Safety Essentials & Emergency Protocol</h4>
+                  <p class="text-xs text-slate-400">Nearby emergency facilities, verified national helplines, and permit advisories.</p>
+                </div>
+              </div>
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 text-rose-700 uppercase">Emergency Support</span>
+            </div>
+
+            <!-- Nearby Facilities -->
+            <div class="space-y-2">
+              <h5 class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <i class="fa-solid fa-hospital text-rose-500"></i>
+                <span>Nearest Healthcare & Financial Services</span>
+              </h5>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                ${(safetyData.nearby_facilities || []).map(f => `
+                  <div class="p-2.5 rounded-lg border border-slate-100 bg-slate-50/70">
+                    <div class="flex items-center gap-1.5 font-bold text-slate-800 truncate">
+                      <i class="fa-solid ${f.type === 'hospital' ? 'fa-square-h text-rose-600' : (f.type === 'pharmacy' ? 'fa-prescription-bottle-medical text-emerald-600' : 'fa-money-bill-wave text-indigo-600')} text-xs"></i>
+                      <span class="truncate">${escapeHtml(f.name)}</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1 line-clamp-1">${escapeHtml(f.address || 'Local listing')}</p>
+                    ${f.phone ? `<p class="text-[10px] text-indigo-600 font-mono mt-0.5">${escapeHtml(f.phone)}</p>` : ''}
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+
+            <!-- Emergency Helplines & Permits -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <!-- Helplines -->
+              <div class="p-3 rounded-lg border border-slate-100 bg-slate-50/50 space-y-1.5">
+                <h5 class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-phone-volume text-indigo-600"></i>
+                  <span>Verified National Helplines (Pan-India)</span>
+                </h5>
+                <div class="space-y-1 text-xs">
+                  ${(safetyData.emergency_numbers || []).map(n => `
+                    <div class="flex items-center justify-between py-0.5">
+                      <span class="text-slate-600 text-[11px]">${escapeHtml(n.service)}</span>
+                      <span class="font-mono font-bold text-slate-900 bg-white px-1.5 py-0.2 rounded border border-slate-200 text-xs">${escapeHtml(n.number)}</span>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+
+              <!-- Permits & Ticketing -->
+              <div class="p-3 rounded-lg border border-slate-100 bg-slate-50/50 space-y-1.5">
+                <h5 class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-passport text-amber-600"></i>
+                  <span>Permits & Entry Ticketing Checklist</span>
+                </h5>
+                <div class="space-y-1 text-[11px] text-slate-600">
+                  ${(safetyData.permits_and_ticketing || []).map(p => `
+                    <div class="border-b border-slate-100 pb-1 last:border-0">
+                      <div class="font-bold text-slate-800">${escapeHtml(p.requirement)}</div>
+                      <p class="text-[10px] text-slate-500">${escapeHtml(p.action)}</p>
+                    </div>
+                  `).join("")}
+                </div>
               </div>
             </div>
           </div>
