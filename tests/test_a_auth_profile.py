@@ -7,6 +7,7 @@ from app.profile_gate import HistoryInput, RATING_KEYS, require_profile_complete
 from fastapi import HTTPException
 from app.vectorizer import PreferenceVectorizer
 from app.recommender import DESTINATIONS, score_destination_for_user
+from starlette.requests import Request
 
 
 def _signup(client, email="a@example.com", username="traveler", password="SafePass123"):
@@ -92,17 +93,23 @@ def test_history_validation_and_profile_gate(client):
         require_profile_complete({"id": user["user_id"]})
     except Exception as exc:
         assert False, f"complete profile should pass gate: {exc}"
+    foreign_request = Request({"type": "http", "method": "POST", "path": "/api/trips/other-user", "headers": [], "path_params": {"user_id": "other-user"}})
+    try:
+        require_profile_complete({"id": user["user_id"]}, foreign_request)
+    except HTTPException as exc:
+        assert exc.status_code == 403
+        assert exc.detail["code"] == "USER_MISMATCH"
+    else:
+        raise AssertionError("trip planning must not accept another user’s path ID")
 
 
 def test_completed_feedback_appears_in_revisit_list(client):
     migrate_a()
     user = _signup(client).json()
     with get_connection() as conn:
-        conn.execute("CREATE TABLE post_trip_feedback(trip_id TEXT,user_id TEXT,ratings_json TEXT,trip_type TEXT,would_revisit INTEGER,notes TEXT,submitted_at TEXT)")
-        conn.execute("CREATE TABLE activity_runs(id TEXT,trip_id TEXT,activity_id TEXT,started_at TEXT,ended_at TEXT,ratings_json TEXT,notes TEXT,action TEXT)")
         conn.execute("INSERT INTO trips(id,user_id,destination_id,destination_name,start_date,end_date,duration_days) VALUES('trip_a',?,'jaipur','Jaipur','2025-01-01','2025-01-02',2)", (user["user_id"],))
-        conn.execute("INSERT INTO post_trip_feedback VALUES('trip_a',?,'{\"overall\":5}','friends',1,'Loved it','2025-01-03')", (user["user_id"],))
-        conn.execute("INSERT INTO activity_runs VALUES('run_a','trip_a','act_a',NULL,NULL,'{\"food\":5}','Great meal','keep')")
+        conn.execute("INSERT INTO post_trip_feedback(trip_id,user_id,ratings_json,trip_type,would_revisit,liked,disliked,notes,submitted_at) VALUES('trip_a',?,'{\"overall\":5}','friends','yes','Loved it','','Loved it','2025-01-03')", (user["user_id"],))
+        conn.execute("INSERT INTO activity_runs(id,trip_id,activity_id,itinerary_activity_id,day_number,ratings_json,notes,action) VALUES('run_a','trip_a','act_a','itin_act_a',1,'{\"food\":5}','Great meal','keep')")
     response = client.get("/api/profile/history", headers={"Authorization": f"Bearer {user['token']}"})
     assert response.status_code == 200
     trip = next(row for row in response.json()["entries"] if row["source"] == "trip")

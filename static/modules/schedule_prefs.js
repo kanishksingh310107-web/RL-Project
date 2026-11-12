@@ -1,6 +1,7 @@
 /* Person B: trip schedule preference form and client-side validation. */
 (() => {
   "use strict";
+  const byId = id => document.getElementById(id);
   const mount = document.getElementById("schedulePrefsMount");
   if (!mount) return;
   const field = (id, label, value, help = "") => `<label class="block text-slate-700">${label}<input id="${id}" type="time" value="${value}" class="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5"><span id="${id}Error" class="block text-rose-700 text-[10px] mt-0.5" role="alert"></span>${help ? `<small class="text-slate-500">${help}</small>` : ""}</label>`;
@@ -44,11 +45,11 @@
   document.getElementById("addFreeBlockBtn").addEventListener("click", () => addBlock());
   function readPrefs() {
     const prefs = {
-      hotel_arrival_time: document.getElementById("hotelArrivalTime").value,
-      hotel_departure_time: document.getElementById("hotelDepartureTime").value,
-      wake_time: document.getElementById("wakeTime").value,
-      bed_time: document.getElementById("bedTime").value,
-      activity_start_time: document.getElementById("activityStartTime").value,
+      hotel_arrival_time: byId("hotelArrivalTime").value,
+      hotel_departure_time: byId("hotelDepartureTime").value,
+      wake_time: byId("wakeTime").value,
+      bed_time: byId("bedTime").value,
+      activity_start_time: byId("activityStartTime").value,
       free_blocks: [...document.querySelectorAll("#freeBlocksList > div")].map(row => ({
         day: row.querySelector(".freeDay").value ? Number(row.querySelector(".freeDay").value) : null,
         start: row.querySelector(".freeStart").value, end: row.querySelector(".freeEnd").value,
@@ -208,11 +209,11 @@
 
   function fill(prefs) {
     if (!prefs) return;
-    document.getElementById("hotelArrivalTime").value = prefs.hotel_arrival_time || "14:00";
-    document.getElementById("hotelDepartureTime").value = prefs.hotel_departure_time || "11:00";
-    document.getElementById("wakeTime").value = prefs.wake_time || "07:00";
-    document.getElementById("bedTime").value = prefs.bed_time || "21:00";
-    document.getElementById("activityStartTime").value = prefs.activity_start_time || "09:00";
+    byId("hotelArrivalTime").value = prefs.hotel_arrival_time || "14:00";
+    byId("hotelDepartureTime").value = prefs.hotel_departure_time || "11:00";
+    byId("wakeTime").value = prefs.wake_time || "07:00";
+    byId("bedTime").value = prefs.bed_time || "21:00";
+    byId("activityStartTime").value = prefs.activity_start_time || "09:00";
     document.getElementById("freeBlocksList").replaceChildren();
     (prefs.free_blocks || []).forEach(addBlock);
   }

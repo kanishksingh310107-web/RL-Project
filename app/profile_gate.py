@@ -205,7 +205,10 @@ def current_user(authorization: Optional[str] = Header(default=None)) -> dict:
     return dict(row)
 
 
-def require_profile_complete(user: dict = Depends(current_user)) -> dict:
+def require_profile_complete(user: dict = Depends(current_user), request: Request = None) -> dict:
+    requested_user_id = request.path_params.get("user_id") if request else None
+    if requested_user_id and requested_user_id != user["id"]:
+        _error(403, "You cannot plan trips for another account", "USER_MISMATCH", "user_id")
     with get_connection() as conn:
         row = conn.execute("SELECT profile_complete FROM user_profile WHERE user_id=?", (user["id"],)).fetchone()
     if not row or not row[0]:
@@ -346,7 +349,11 @@ def _history_list(conn, user_id: str):
             row["ratings"] = json.loads(row.pop("ratings_json", "{}") or "{}")
         except (TypeError, json.JSONDecodeError):
             row["ratings"] = {}
-        row["would_revisit"] = bool(row["would_revisit"]) if row["would_revisit"] is not None else None
+        revisit = row["would_revisit"]
+        if isinstance(revisit, str):
+            row["would_revisit"] = True if revisit.casefold() in ("yes", "true", "1") else (False if revisit.casefold() in ("no", "false", "0") else None)
+        else:
+            row["would_revisit"] = bool(revisit) if revisit is not None else None
     return rows
 
 
