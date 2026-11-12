@@ -80,105 +80,29 @@ def recommend_stay_areas(trip_id: str):
     Total daily commute = sum over days of:
       (distance from area to day's first stop + distance from day's last stop back to area)
     """
-    plan = load_trip_plan(trip_id)
+    from app.data.stay_areas import areas_for_destination
+    from app.providers.geo import resolve_trip_location
     trip = get_trip(trip_id)
     if not trip:
-        raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found")
-
-    dest_id = trip["destination_id"]
-    dest_name = trip.get("destination_name", "")
-    dest_meta = next((d for d in DESTINATIONS if d.get("id") == dest_id), {})
-    center_lat = dest_meta.get("lat")
-    center_lon = dest_meta.get("lon")
-
-    if center_lat is None or center_lon is None:
-        try:
-            with get_connection() as conn:
-                row = conn.execute(
-                    "SELECT AVG(latitude), AVG(longitude) FROM destination_activities WHERE destination_id = ? AND latitude IS NOT NULL",
-                    (dest_id,)
-                ).fetchone()
-                if row and row[0] is not None and row[1] is not None:
-                    center_lat = float(row[0])
-                    center_lon = float(row[1])
-        except Exception:
-            pass
-
-    if center_lat is None or center_lon is None:
-        try:
-            from app.providers.geo import geocode_india
-            geo_res = geocode_india(dest_name)
-            if geo_res:
-                center_lat = float(geo_res["lat"])
-                center_lon = float(geo_res["lon"])
-        except Exception:
-            pass
-
-    if center_lat is None or center_lon is None:
-        center_lat = 20.5937
-        center_lon = 78.9629
-
-    # 1. Identify daily first and last stops from plan
-    daily_endpoints: List[Tuple[Tuple[float, float], Tuple[float, float]]] = []
-    candidate_areas: Dict[str, Tuple[float, float]] = {}
-
-    if plan and plan.days:
-        for day in plan.days:
-            act_blocks = [b for b in day.blocks if b.block_type == "activity" and b.place]
-            if act_blocks:
-                first_p = act_blocks[0].place
-                last_p = act_blocks[-1].place
-                daily_endpoints.append(((first_p.lat, first_p.lon), (last_p.lat, last_p.lon)))
-
-                # Add neighbourhood candidates
-                for ab in act_blocks:
-                    nb = ab.place.neighbourhood or f"{ab.place.name} Area"
-                    if nb not in candidate_areas:
-                        candidate_areas[nb] = (ab.place.lat, ab.place.lon)
-
-    if not candidate_areas:
-        # Default area candidates around city center
-        candidate_areas = {
-            f"Central {trip.get('destination_name', 'City')}": (center_lat, center_lon),
-            f"North {trip.get('destination_name', 'City')} Historic Hub": (center_lat + 0.03, center_lon - 0.02),
-            f"South {trip.get('destination_name', 'City')} Modern Quarter": (center_lat - 0.03, center_lon + 0.02),
-        }
-        daily_endpoints = [
-            ((center_lat + 0.01, center_lon + 0.01), (center_lat - 0.02, center_lon + 0.01)),
-            ((center_lat + 0.02, center_lon - 0.01), (center_lat + 0.01, center_lon - 0.02)),
-        ]
-
-    # 2. Evaluate candidate areas
-    ranked_areas: List[Dict[str, Any]] = []
-    for area_name, (a_lat, a_lon) in candidate_areas.items():
-        total_commute_km = 0.0
-        for (f_lat, f_lon), (l_lat, l_lon) in daily_endpoints:
-            leg_out = haversine_distance_km(a_lat, a_lon, f_lat, f_lon)
-            leg_return = haversine_distance_km(l_lat, l_lon, a_lat, a_lon)
-            total_commute_km += (leg_out + leg_return)
-
-        daily_avg_km = total_commute_km / max(1, len(daily_endpoints))
-        daily_commute_min = _estimate_transit_minutes(daily_avg_km)
-
-        ranked_areas.append({
-            "area_name": area_name,
-            "lat": a_lat,
-            "lon": a_lon,
-            "total_commute_km": round(total_commute_km, 2),
-            "estimated_daily_commute_minutes": daily_commute_min,
-            "reason": f"Average {daily_commute_min} mins daily commute to stops. Minimizes round-trip dead mileage.",
-            "is_estimate": True,
-        })
-
-    # Rank ascending by commute time
-    ranked_areas.sort(key=lambda x: x["estimated_daily_commute_minutes"])
-    top_3 = ranked_areas[:3]
-
-    return {
-        "trip_id": trip_id,
-        "recommended_areas": top_3,
-        "methodology": "Total daily commute sum over days: (area to first stop + last stop back to area). Straight-line estimate.",
-    }
+        raise HTTPException(404, 'Trip not found')
+    location = resolve_trip_location(destination_id=trip['destination_id'],destination_name=trip['destination_name'],
+        lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+    areas = areas_for_destination(trip['destination_id'],location.get('lat'),location.get('lon'))
+    with get_connection() as conn:
+        stops = conn.execute('SELECT ia.latitude,ia.longitude FROM itinerary_activities ia JOIN itineraries i ON ia.itinerary_id=i.id WHERE i.trip_id=? AND ia.latitude IS NOT NULL AND ia.longitude IS NOT NULL',(trip_id,)).fetchall()
+    plan = load_trip_plan(trip_id)
+    if not stops and plan:
+        stops = [(b.place.lat,b.place.lon) for d in plan.days for b in d.blocks if b.place]
+    lat = sum(r[0] for r in stops)/len(stops) if stops else location.get('lat')
+    lon = sum(r[1] for r in stops)/len(stops) if stops else location.get('lon')
+    for area in areas:
+        dist = haversine_distance_km(lat,lon,area['lat'],area['lon'])
+        area.update(distance_to_centroid_km=round(dist,2), total_commute_km=round(dist*2,2),
+            estimated_daily_commute_minutes=_estimate_transit_minutes(dist*2), is_estimate=True,
+            reason=f"{dist:.1f} km from your itinerary centre. Indicative - no live listings.")
+    areas.sort(key=lambda a:a['distance_to_centroid_km'])
+    return {'trip_id':trip_id,'recommended_areas':areas[:3], 'centroid':{'lat':lat,'lon':lon},
+            'methodology':'Top curated neighbourhoods by distance to itinerary centroid; indicative, not live listings.'}
 
 
 @router.get("/search")
@@ -190,6 +114,8 @@ def search_accommodations_pre_trip(
     budget: Optional[float] = Query(25000.0),
     duration_days: int = Query(4),
     limit: int = Query(15, le=30),
+    accommodation_tier: str = Query('mid_range'),
+    radius_meters: int = Query(12000, ge=1000, le=40000),
 ):
     """Option A: Pre-trip search for accommodations near destination with real names and coordinates."""
     target_lat = lat
@@ -219,8 +145,10 @@ def search_accommodations_pre_trip(
                 pass
 
     if target_lat is None or target_lon is None:
-        target_lat = 26.9124  # Jaipur default center
-        target_lon = 75.7873
+        raise HTTPException(422, 'Select a destination with valid coordinates.')
+    from app.providers.geo import is_in_india
+    if not is_in_india(target_lat,target_lon):
+        raise HTTPException(422, 'Accommodation search is available only within India.')
 
     total_budget = float(budget or 25000.0)
     nights = max(1, duration_days - 1)
@@ -231,7 +159,7 @@ def search_accommodations_pre_trip(
         lon=target_lon,
         trip_id="pre_trip",
         estimated_nightly_budget=nightly_budget,
-        limit=limit,
+        limit=limit, tier=accommodation_tier, radius_meters=radius_meters, destination_id=destination_id,
     )
 
     resolved_name = destination_name or dest_meta.get("name") or (destination_id.replace("_", " ").title() if destination_id else "Selected Destination")
@@ -243,7 +171,7 @@ def search_accommodations_pre_trip(
         "estimated_nightly_budget_inr": nightly_budget,
         "options": stays,
         "count": len(stays),
-        "note": "Actual properties without fabricated rates. Budget band is estimated from total trip budget.",
+        "note": "Indicative - no live listings when offline. Areas are neighbourhood recommendations, not hotels. All prices are indicative per room per night.",
     }
 
 
@@ -260,10 +188,13 @@ def get_hotel_options(
     if not trip:
         raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found")
 
-    dest_id = trip["destination_id"]
-    dest_meta = next((d for d in DESTINATIONS if d.get("id") == dest_id), {})
-    target_lat = lat if lat is not None else dest_meta.get("lat", 28.6139)
-    target_lon = lon if lon is not None else dest_meta.get("lon", 77.2090)
+    dest_id = trip['destination_id']
+    from app.providers.geo import resolve_trip_location
+    loc = resolve_trip_location(destination_id=dest_id,destination_name=trip['destination_name'],
+        lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+    target_lat, target_lon = loc.get('lat'),loc.get('lon')
+    if target_lat is None or target_lon is None:
+        raise HTTPException(422,'Destination coordinates unavailable')
 
     # Compute nightly budget band: total_budget * stay_share / duration_nights
     total_budget = float(trip.get("total_budget") or 25000.0)
@@ -275,7 +206,7 @@ def get_hotel_options(
         lon=target_lon,
         trip_id=trip_id,
         estimated_nightly_budget=nightly_budget,
-        limit=limit,
+        limit=limit, tier=trip.get('accommodation_tier','mid_range'), destination_id=dest_id,
     )
 
     # Current chosen stay
@@ -296,6 +227,10 @@ def select_hotel(trip_id: str, stay: Stay):
     """Saves the user's chosen accommodation to core_stays."""
     if stay.trip_id != trip_id:
         stay.trip_id = trip_id
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(404,'Trip not found')
+    validate_stay_location(trip, stay.lat, stay.lon)
     save_stay(stay)
     return stay
 
@@ -333,6 +268,7 @@ def hotel_first_mode(trip_id: str, payload: HotelFirstRequest):
             h_lon = dest_meta.get("lon", 77.2090)
             h_addr = f"{payload.hotel_name}, {trip.get('destination_name', '')}"
 
+    validate_stay_location(trip,h_lat,h_lon)
     # Save to core_stays
     stay = Stay(
         stay_id=f"stay_custom_{uuid.uuid4().hex[:6]}",
@@ -427,6 +363,9 @@ def replan_trip_with_stay(trip_id: str):
     # 2. Re-generate trip plan using plan module
     from app.modules.plan import generate_trip_plan
     new_plan = generate_trip_plan(trip_id)
+    from app.itinerary_generator import generate_itinerary
+    with get_connection() as conn:
+        generate_itinerary(conn,trip['user_id'],trip_id)
 
     return {
         "status": "success",
@@ -435,3 +374,11 @@ def replan_trip_with_stay(trip_id: str):
         "plan": new_plan,
         "message": f"Itinerary successfully regenerated around {stay.name} as starting/ending anchor.",
     }
+
+
+def validate_stay_location(trip, lat, lon):
+    from app.providers.geo import resolve_trip_location, is_in_india
+    loc = resolve_trip_location(destination_id=trip.get('destination_id'),destination_name=trip.get('destination_name'),
+        lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+    if not is_in_india(lat,lon) or loc.get('lat') is None or haversine_distance_km(loc['lat'],loc['lon'],lat,lon)>40:
+        raise HTTPException(422, 'Choose a stay in India within 40 km of the destination centre.')

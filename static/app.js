@@ -815,9 +815,7 @@ async function handleProfileSubmit(e) {
     state.currentUser.has_profile = true;
     localStorage.setItem("rl_travel_user", JSON.stringify(state.currentUser));
     state.currentProfile = data;
-      if (window.TravelModules && window.TravelModules.refreshLockStatus) {
-        window.TravelModules.refreshLockStatus();
-      }
+
 
     renderDashboard(data);
     showView("dashboard");
@@ -875,7 +873,7 @@ async function renderDashboard(profile) {
 
   document.getElementById("dashExperience").textContent = (profile.travel_experience || "Occasional").replace("_", " ").title();
   document.getElementById("dashCompanions").textContent = (profile.companions || "Solo").replace("_", " ").title();
-  document.getElementById("dashBudget").textContent = (profile.budget_tier || "Balanced").replace("_", " ").title();
+  document.getElementById("dashBudget").textContent = humanLabel(profile.budget_tier || "Balanced");
   document.getElementById("dashClimate").textContent = (profile.preferred_climate || "Mild").replace("_", " ").title();
 
   // Goals chips
@@ -1184,7 +1182,7 @@ function renderRecommendationCard(item, category) {
             <i class="fa-regular fa-clock text-slate-400"></i> ${item.duration || '4–6 days'}
           </span>
           <span class="font-semibold text-slate-700">
-            ${item.budget_tier}
+            ${escapeHtml(humanLabel(item.budget_tier))}
           </span>
         </div>
 
@@ -1976,9 +1974,6 @@ async function submitPersonalProfile() {
     }
 
     renderPersonalResult(data);
-    if (window.TravelModules && window.TravelModules.refreshLockStatus) {
-      window.TravelModules.refreshLockStatus();
-    }
     // Refresh completeness status and unlock trip planner
     if (state.currentUser) {
       const statusRes = await fetch('/api/profile/' + state.currentUser.user_id + '/status');
@@ -2585,6 +2580,12 @@ async function loadUserTrips(preferredTripId = null) {
     const res = await fetch(`/api/trips/${state.currentUser.user_id}`);
     if (res.ok) {
       activeUserTrips = await res.json();
+      state.userTrips = activeUserTrips;
+      const tripLabelCounts = new Map();
+      activeUserTrips.forEach(trip => {
+        const label = tripSelectorLabel(trip);
+        tripLabelCounts.set(label, (tripLabelCounts.get(label) || 0) + 1);
+      });
       select.innerHTML = `<option value="">-- Select Planned Trip (${activeUserTrips.length}) --</option>`;
       activeUserTrips.forEach(t => {
         const opt = document.createElement("option");
@@ -2593,7 +2594,8 @@ async function loadUserTrips(preferredTripId = null) {
           opt.textContent = `${t.destination_name} (Unsupported - International) · ${t.duration_days}d`;
           opt.style.color = "#b45309";
         } else {
-          opt.textContent = `${t.destination_name} (${t.duration_days} days · ${t.start_date})`;
+          const label = tripSelectorLabel(t);
+          opt.textContent = tripLabelCounts.get(label) > 1 ? `${label} · #${t.id.slice(0, 6)}` : label;
         }
         select.appendChild(opt);
       });
@@ -2695,6 +2697,13 @@ function onCompanionTypeChanged(val) {
       travellersInput.value = "3";
     }
   }
+  const total = Number(travellersInput?.value || 1);
+  document.getElementById('tripAdultsInput').value = total;
+  document.getElementById('tripChildrenInput').value = val === 'family' ? 1 : 0;
+  document.getElementById('tripSeniorsInput').value = 0;
+  if (val === 'family') document.getElementById('tripAdultsInput').value = Math.max(1,total-1);
+  if (val === 'friends') document.getElementById('tripAdultsInput').value = Math.max(3,total);
+  syncTripPartyFromCounts();
 }
 
 function escapeHtml(str) {
@@ -2718,7 +2727,9 @@ function toggleBudgetBreakdownTable() {
   }
 }
 
+let budgetEstimateRequestSeq = 0;
 async function calculateTripMinimumBudget() {
+  const requestSeq = ++budgetEstimateRequestSeq;
   const destSelect = document.getElementById("tripDestSelect");
   if (!destSelect) return;
   const destId = destSelect.value;
@@ -2751,7 +2762,10 @@ async function calculateTripMinimumBudget() {
     accommodation_tier: accommodation,
     transit_pref: transport,
     travel_pace: pace,
-    include_shopping: includeShopping
+    include_shopping: includeShopping,
+    party: readTripParty(),
+    food_style: document.getElementById('tripDietarySelect').value,
+    start_date: startDate || null, end_date: endDate || null
   };
 
   try {
@@ -2762,6 +2776,7 @@ async function calculateTripMinimumBudget() {
     });
     if (!res.ok) return;
     const data = await res.json();
+    if (requestSeq !== budgetEstimateRequestSeq) return;
     state.activeBudgetEstimate = data;
 
     // Display minimum & recommended cards
@@ -2879,7 +2894,7 @@ function updateBudgetAllowanceLabels(numVal) {
       warningText.textContent = `Entered budget of ${formatINR(numVal)} is below the minimum viable estimated cost of ${formatINR(min)} (Shortfall: ${formatINR(Math.abs(diff))}). Transport, accommodation, or meal requirements cannot be met without cutting days or travellers.`;
     }
     if (tierBadge) {
-      tierBadge.textContent = "Insufficient Budget";
+      tierBadge.textContent = est.budget_band_labels?.insufficient || 'Below minimum';
       tierBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300";
     }
   } else {
@@ -2890,10 +2905,10 @@ function updateBudgetAllowanceLabels(numVal) {
     }
     if (tierBadge) {
       if (numVal < rec) {
-        tierBadge.textContent = "Budget-Conscious";
+        tierBadge.textContent = est.budget_band_labels?.budget_conscious || 'Budget-Conscious';
         tierBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-300";
       } else {
-        tierBadge.textContent = "Comfortable & Flexible";
+        tierBadge.textContent = est.budget_band_labels?.comfortable || 'Comfortable';
         tierBadge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300";
       }
     }
@@ -2901,6 +2916,9 @@ function updateBudgetAllowanceLabels(numVal) {
 }
 
 function toggleTripFormModal() {
+  editingTripId = null;
+  document.getElementById('tripEditOptions').classList.add('hidden');
+  document.getElementById('tripDestSelect').disabled = false;
   if (state.profileStatus && !state.profileStatus.complete) {
     const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : "applicable";
     alert(`Trip planning is locked until your mandatory travel profile is complete (${remaining} questions remaining). Please finish answering the questions first.`);
@@ -2961,6 +2979,7 @@ function toggleTripFormModal() {
     if (transitSel && tr) transitSel.value = tr;
   }
 
+  syncTripPartyFromChecks();
   openModal("tripFormModal");
 
   const destSelect = document.getElementById("tripDestSelect");
@@ -3004,7 +3023,7 @@ function toggleHotelWorkflowOption(opt) {
   }
 }
 
-async function searchHotelsForOptionA() {
+async function searchHotelsForOptionA(radiusMeters = 12000) {
   const destSelect = document.getElementById("tripDestSelect");
   const destId = destSelect ? destSelect.value : "";
   const destName = destSelect && destSelect.options[destSelect.selectedIndex] ? destSelect.options[destSelect.selectedIndex].text : "";
@@ -3030,7 +3049,7 @@ async function searchHotelsForOptionA() {
     const coordParams = coords && Number.isFinite(Number(coords.lat)) && Number.isFinite(Number(coords.lon))
       ? `&lat=${encodeURIComponent(coords.lat)}&lon=${encodeURIComponent(coords.lon)}`
       : "";
-    const res = await fetch(`/api/stay/search?destination_id=${encodeURIComponent(destId)}&destination_name=${encodeURIComponent(destName)}${coordParams}&budget=${budget}&duration_days=${days}&limit=10`);
+    const res = await fetch(`/api/stay/search?destination_id=${encodeURIComponent(destId)}&destination_name=${encodeURIComponent(destName)}${coordParams}&budget=${budget}&duration_days=${days}&radius_meters=${radiusMeters}&accommodation_tier=${encodeURIComponent(document.getElementById("tripAccomSelect").value)}&limit=10`);
     if (!res.ok) throw new Error("Could not find verified accommodations");
     const data = await res.json();
     renderOptionAHotels(data.options || []);
@@ -3047,7 +3066,7 @@ function renderOptionAHotels(options) {
   resultsEl.innerHTML = "";
 
   if (options.length === 0) {
-    resultsEl.innerHTML = `<div class="p-3 text-center text-xs text-slate-400">No properties found near this destination.</div>`;
+    resultsEl.innerHTML = `<div class="p-3 text-center text-xs text-slate-400">No stays or curated areas inside the selected radius. <button type="button" onclick="searchHotelsForOptionA(40000)" class="underline">Try within 40 km</button></div>`;
     return;
   }
 
@@ -3058,16 +3077,16 @@ function renderOptionAHotels(options) {
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-1.5">
           <span class="font-bold text-slate-800 text-xs truncate">${escapeHtml(h.name)}</span>
-          <span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 capitalize">${escapeHtml(h.stay_type || 'hotel')}</span>
+          <span class="text-[9px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 capitalize">${escapeHtml(h.tier_label || humanLabel(h.stay_type || 'hotel'))}</span>
         </div>
-        <p class="text-[10px] text-slate-400 truncate">${escapeHtml(h.address || 'Central location')}</p>
+        <p class="text-[10px] text-slate-400 whitespace-normal">${escapeHtml(stayDescription(h))}</p>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
         <a href="${escapeHtml(h.external_search_url)}" target="_blank" rel="noopener noreferrer" class="px-2 py-1 text-[10px] rounded border border-slate-200 text-slate-500 hover:bg-slate-50">
-          Rates <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i>
+          Find hotels here <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i>
         </a>
         <button type="button" class="selectHotelOptBtn px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition">
-          Select Hotel
+          ${h.kind === "area" ? "Use area as base" : "Select Hotel"}
         </button>
       </div>
     `;
@@ -3144,7 +3163,8 @@ async function handleTripCreateSubmit(e) {
   const hasElderly = document.getElementById("tripHasElderlyCheck")?.checked || false;
   const dietaryStyle = document.getElementById("tripDietarySelect")?.value || "all";
   const tripNotes = document.getElementById("tripNotesInput")?.value.trim() || "";
-  const tripPrefs = { dietary: dietaryStyle, notes: tripNotes };
+  const tripPrefs = { dietary: dietaryStyle, food_style: dietaryStyle, notes: tripNotes,
+    include_shopping: document.getElementById('tripIncludeShoppingCheck').checked, party: readTripParty() };
 
   // Validate destination
   const isGeo = destId.startsWith("geo_");
@@ -3188,6 +3208,18 @@ async function handleTripCreateSubmit(e) {
     const hotelAddr = document.getElementById("selectedHotelAddress")?.value.trim() || null;
     const hotelType = document.getElementById("selectedHotelType")?.value.trim() || null;
 
+    if (editingTripId) {
+      const result = await TravelModules.api(`/api/trips/${editingTripId}?user_id=${encodeURIComponent(state.currentUser.user_id)}`, {
+        method:'PATCH', body:{start_date:startDate,end_date:endDate,party:readTripParty(),companions:compRadio,
+          total_budget:budget,travel_pace:pace,accommodation_tier:accom,transit_pref:transit,
+          departure_location:departureLocation,trip_preferences:tripPrefs,
+          regeneration_mode:document.getElementById('tripRegenerationMode').value}
+      });
+      editingTripId = null;
+      closeModal('tripFormModal');
+      await loadUserTrips(result.id);
+      return;
+    }
     // Dynamic trip planning route if a dynamic location is selected or geocoded
     if (selectedDynamicLocation && (destId.startsWith("geo_") || selectedDynamicLocation.name === destName || destId.includes((selectedDynamicLocation.city || "").toLowerCase()))) {
       const planRes = await fetch(`/api/places/plan-dynamic`, {
@@ -3208,7 +3240,8 @@ async function handleTripCreateSubmit(e) {
           travel_pace: pace,
           radius_meters: currentDynamicRadius || 15000,
           departure_location: departureLocation,
-          companions: compRadio,
+          party: readTripParty(),
+        companions: compRadio,
           has_children: hasChildren,
           has_elderly: hasElderly,
           trip_preferences: tripPrefs,
@@ -3255,6 +3288,7 @@ async function handleTripCreateSubmit(e) {
         travel_pace: pace,
         specific_interests: [],
         departure_location: departureLocation,
+        party: readTripParty(),
         companions: compRadio,
         has_children: hasChildren,
         has_elderly: hasElderly,
@@ -3378,6 +3412,7 @@ function getWorkspaceContext() {
     user: state.currentUser,
     userId: state.currentUser ? state.currentUser.user_id : null,
     tripId: currentPlannedTripId,
+    workspaceMode: currentWorkspaceMode,
     trips: state.userTrips || [],
     api: (window.TravelModules && window.TravelModules.api) ? window.TravelModules.api : api
   };
@@ -3406,25 +3441,24 @@ function renderPrepWorkspace() {
 }
 
 function renderLiveTripWorkspace() {
+  document.getElementById('workspacePostContainer').innerHTML='';
   const container = document.getElementById("workspaceLiveContainer");
   if (!container) return;
   const ctx = getWorkspaceContext();
   if (window.TravelModules && window.TravelModules.live && typeof window.TravelModules.live.render === "function") {
     window.TravelModules.live.render(container, ctx);
   } else {
-    container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading live companion...</div>`;
+    container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading live trip...</div>`;
   }
 }
 
 function renderPostTripWorkspace() {
+  document.getElementById('workspaceLiveContainer').innerHTML='';
   const container = document.getElementById("workspacePostContainer");
   if (!container) return;
   const ctx = getWorkspaceContext();
   if (window.TravelModules && window.TravelModules.live && typeof window.TravelModules.live.render === "function") {
-    window.TravelModules.live.render(container, ctx).then(() => {
-      const postBtn = container.querySelector("#liveTabPost");
-      if (postBtn) postBtn.click();
-    });
+    window.TravelModules.live.render(container, ctx);
   } else {
     container.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading post-trip feedback...</div>`;
   }
@@ -3507,13 +3541,7 @@ function renderItinerary(itin) {
   const compBadge = document.getElementById("itinCompanionsBadge");
   if (compBadge) {
     if (currentTrip) {
-      let compLabel = "Solo Explorer";
-      if (currentTrip.companions === "partner" || currentTrip.companions === "couple") compLabel = "👫 Couple";
-      else if (currentTrip.companions === "friends") compLabel = "👥 Friends Trip";
-      else if (currentTrip.companions === "family") compLabel = "👨‍👩‍👧 Family";
-      else if (currentTrip.companions === "solo") compLabel = "🎒 Solo";
-      if (currentTrip.has_children) compLabel += " (with Kids)";
-      if (currentTrip.has_elderly) compLabel += " (Senior-Friendly)";
+      const compLabel = currentTrip.party_label || `${currentTrip.travellers_count} traveller(s)`;
       compBadge.textContent = compLabel;
       compBadge.classList.remove("hidden");
     } else {
@@ -3530,6 +3558,10 @@ function renderItinerary(itin) {
     }
   }
 
+  renderCostBreakdown(itin.cost_estimate);
+  if (window.TravelModules?.itinerary_editor) {
+    window.TravelModules.itinerary_editor.render(document.getElementById('workspaceEditorContainer'), getWorkspaceContext());
+  }
   // Ensure Pre-trip daily itinerary tab is active
   switchWorkspaceMode("pre");
   switchPreSubtab("itin");
@@ -3873,7 +3905,7 @@ async function loadItineraryLiveWeather(tripCtx) {
     if (ctxObj.startDate) params.set("start_date", ctxObj.startDate);
     if (ctxObj.endDate) params.set("end_date", ctxObj.endDate);
 
-    const wRes = await fetch(`/api/weather/live?${params.toString()}`);
+    const wRes = await fetch(`/api/prep/${encodeURIComponent(ctxObj.tripId || currentPlannedTripId)}/weather`);
     if (_weatherRequestSeq !== reqSeq) return;
     if (!wRes.ok) {
       setUnavailable();
@@ -3901,7 +3933,9 @@ async function loadItineraryLiveWeather(tripCtx) {
     const refNote = !isForecast && wData.reference_period ? ` · Climate avg (${wData.reference_period})` : "";
 
     if (detailsEl) {
-      detailsEl.textContent = `${resolvedLoc}${dateLabel}${rain}${wind}${refNote}`;
+      detailsEl.textContent = `${resolvedLoc}${dateLabel}${rain}${wind}${refNote}. ${wData.message || ''}`;
+      let chips = document.getElementById('tripWeatherDaily');
+      if (chips) chips.innerHTML = (wData.daily || []).map(d => `<span class="inline-block rounded border px-2 py-1 text-[10px]">${escapeHtml(d.date)} · ${d.rain_probability_pct >= 40 ? '🌧' : '☀'} ${d.temp_min_c}–${d.temp_max_c}°C · ${d.rain_probability_pct}% rain · ${escapeHtml(d.label)}</span>`).join(' ');
     }
 
     if (badgeEl) {
@@ -3910,7 +3944,7 @@ async function loadItineraryLiveWeather(tripCtx) {
         badgeEl.textContent = `Current Forecast · Open-Meteo${cacheSuffix}`;
         badgeEl.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200";
       } else {
-        badgeEl.textContent = `Historical Climate Estimate · Open-Meteo Archive${cacheSuffix}`;
+        badgeEl.textContent = wData.source === 'offline-estimate' ? wData.label : `Historical Climate Estimate · ${wData.label}`;
         badgeEl.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200";
       }
     }
@@ -3923,3 +3957,80 @@ async function loadItineraryLiveWeather(tripCtx) {
 }
 
 
+
+// Shared planner presentation helpers.
+let editingTripId = null;
+function humanLabel(value) {
+  const labels = {mid_range:'Mid-range', boutique:'Boutique & Heritage', boutique_hotel:'Boutique & Heritage',
+    resort:'Luxury', budget_hostel:'Hostel', public_transit:'Public transit', cab_rental:'Private cab', partner:'Couple'};
+  return labels[value] || String(value || '').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+}
+function stayDescription(stay) {
+  const bands = Object.values(stay.price_bands || {}).map(b => `${b.label}: ${formatINR(b.min_inr)}–${formatINR(b.max_inr)}`).join('; ');
+  return `${stay.label || 'Rates require confirmation'} · ${stay.distance_km ?? '?'} km${bands ? ' · Per room/night: '+bands : ''}`;
+}
+function tripSelectorLabel(trip) {
+  const start = new Date(trip.start_date+'T00:00:00');
+  const end = new Date(trip.end_date+'T00:00:00');
+  const dateText = `${start.getDate()}–${end.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`;
+  return `${trip.destination_name.replace(/\s*\([^)]*\)/g,'')} - ${dateText} - ${trip.travellers_count} traveller${trip.travellers_count===1?'':'s'} - ${formatINR(trip.total_budget)} · ${humanLabel(trip.status || 'planned')}`;
+}
+function readTripParty() {
+  return {adults:Math.max(1,Number(document.getElementById('tripAdultsInput').value)||1),
+    children:Math.max(0,Number(document.getElementById('tripChildrenInput').value)||0),
+    seniors:Math.max(0,Number(document.getElementById('tripSeniorsInput').value)||0)};
+}
+function syncTripPartyFromCounts() {
+  const party=readTripParty(), total=party.adults+party.children+party.seniors;
+  document.getElementById('tripTravellersInput').value=total;
+  document.getElementById('tripHasChildrenCheck').checked=party.children>0;
+  document.getElementById('tripHasElderlyCheck').checked=party.seniors>0;
+  const type=party.children || party.seniors ? 'family' : total===1 ? 'solo' : total===2 ? 'partner' : 'friends';
+  const radio=document.querySelector(`input[name="tripCompanionsRadio"][value="${type}"]`);
+  if(radio) radio.checked=true;
+  calculateTripMinimumBudget();
+}
+function syncTripPartyFromTotal() {
+  const total=Math.max(1,Number(document.getElementById('tripTravellersInput').value)||1);
+  document.getElementById('tripAdultsInput').value=total;
+  document.getElementById('tripChildrenInput').value=0;
+  document.getElementById('tripSeniorsInput').value=0;
+  syncTripPartyFromCounts();
+}
+function syncTripPartyFromChecks() {
+  document.getElementById('tripChildrenInput').value=document.getElementById('tripHasChildrenCheck').checked?Math.max(1,readTripParty().children):0;
+  document.getElementById('tripSeniorsInput').value=document.getElementById('tripHasElderlyCheck').checked?Math.max(1,readTripParty().seniors):0;
+  syncTripPartyFromCounts();
+}
+function renderCostBreakdown(cost) {
+  const element=document.getElementById('tripCostBreakdown');
+  if(!cost || !element) return;
+  element.innerHTML=`<strong>Indicative estimate — not live prices</strong><div>${escapeHtml(cost.budget_message)} · ${formatINR(cost.per_person_per_day)} per person/day</div>`+
+    Object.entries(cost.cost_breakdown).map(([key,value])=>`<span class="inline-block mr-3">${escapeHtml(humanLabel(key))}: ${formatINR(value.per_party)} (${formatINR(value.per_person)}/person)</span>`).join('')+
+    `<details><summary>Planning assumptions</summary><div>${escapeHtml(JSON.stringify(cost.assumptions))}</div></details>`;
+}
+async function editSelectedTrip() {
+  const trip=activeUserTrips.find(t=>t.id===currentPlannedTripId);
+  if(!trip) return;
+  toggleTripFormModal();
+  editingTripId=trip.id;
+  document.getElementById('tripEditOptions').classList.remove('hidden');
+  const fields={tripDestSelect:trip.destination_id,tripStartDateInput:trip.start_date,tripEndDateInput:trip.end_date,
+    tripBudgetInput:trip.total_budget,tripPaceSelect:trip.travel_pace,tripTransitSelect:trip.transit_pref,
+    tripAccomSelect:trip.accommodation_tier,tripDepartureInput:trip.departure_location,
+    tripDietarySelect:trip.trip_preferences?.food_style || trip.trip_preferences?.dietary || 'all',
+    tripNotesInput:trip.trip_preferences?.notes || '',tripAdultsInput:trip.party?.adults || trip.travellers_count,
+    tripChildrenInput:trip.party?.children || 0,tripSeniorsInput:trip.party?.seniors || 0};
+  for(const [id,value] of Object.entries(fields)) document.getElementById(id).value=value;
+  document.getElementById('tripDestSelect').disabled=true;
+  document.getElementById('tripIncludeShoppingCheck').checked=!!trip.trip_preferences?.include_shopping;
+  syncTripPartyFromCounts();
+}
+async function deleteSelectedTrip() {
+  if(!currentPlannedTripId || !confirm('Delete this trip, itinerary and trip feedback? Your learned preferences will be kept.')) return;
+  try {
+    await TravelModules.api(`/api/trips/${currentPlannedTripId}?user_id=${encodeURIComponent(state.currentUser.user_id)}`,{method:'DELETE'});
+    currentPlannedTripId=null;
+    await loadUserTrips();
+  } catch(error) { alert(error.message); }
+}

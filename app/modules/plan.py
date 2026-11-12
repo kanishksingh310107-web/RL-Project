@@ -452,24 +452,17 @@ def generate_trip_plan(trip_id: str):
         day_plans.append(d_plan)
         current_pool = remaining
 
-        # Accumulate spending
-        for b in d_plan.blocks:
-            if b.block_type == "activity" and b.place and b.place.cost_amount:
-                actual_spent_by_category["activities"] += b.place.cost_amount
-            elif b.block_type == "travel" and b.travel_leg and b.travel_leg.estimated_cost:
-                actual_spent_by_category["transport"] += b.travel_leg.estimated_cost
-            elif b.block_type == "meal":
-                actual_spent_by_category["food"] += 450.0  # estimated meal cost in INR
-            elif b.block_type == "shopping":
-                actual_spent_by_category["shopping"] += 600.0
-
-    # 9. Build Budget Ledger
-    budget_ledger, overall_status = build_budget_ledger(
-        total_budget=total_budget,
-        profile=profile,
-        actual_spent=actual_spent_by_category,
-        currency=trip.get("currency") or "INR",
-    )
+    # Shared model is authoritative for all components of the planning ledger.
+    from app.core.cost_model import estimate_cost
+    cost = estimate_cost(trip)
+    from app.core.schemas import BudgetLine
+    budget_ledger = []
+    for category, values in cost['cost_breakdown'].items():
+        allocated = total_budget * values['per_party'] / max(cost['total'],1)
+        budget_ledger.append(BudgetLine(category=category, allocated_amount=round(allocated,2),
+            estimated_spent=values['per_party'],currency='INR',status='red' if cost['total']>total_budget else 'green',
+            notes='Indicative planning assumption, not a live price'))
+    overall_status = 'red' if cost['total']>total_budget else 'green'
 
     # 10. Assemble and Save TripPlan
     trip_plan = TripPlan(

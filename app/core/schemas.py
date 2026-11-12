@@ -132,6 +132,12 @@ class BudgetLine(BaseModel):
 
 class Stay(BaseModel):
     """Accommodation selection or recommendation."""
+    kind: str = 'accommodation'
+    distance_km: Optional[float] = None
+    tier: Optional[str] = None
+    tier_label: Optional[str] = None
+    price_bands: Dict[str, Any] = {}
+    label: Optional[str] = None
     stay_id: str
     trip_id: str
     name: str

@@ -31,14 +31,10 @@ MODE_SPEEDS: Dict[str, float] = {
 }
 
 # Rough cost bands (INR per km, team assumption, not measured)
-MODE_COST_PER_KM: Dict[str, float] = {
-    "walk": 0.0,
-    "auto": 18.0,
-    "cab": 26.0,
-    "rental_car": 32.0,
-    "scooter": 8.0,
-    "bus_metro": 5.0,
-}
+from app.core.assumptions import LOCAL_LEG_RATE_INR as MODE_COST_PER_KM
+from app.core.assumptions import (RENTAL_DAY_INR, RENTAL_INCLUDED_KM, RENTAL_EXTRA_KM_INR,
+    CAB_PICKUP_INR, PUBLIC_BOARDING_INR, PUBLIC_CONNECTOR_KM_INR)
+from app.core.cost_model import leg_cost_inr
 
 
 def choose_best_mode(
@@ -119,10 +115,7 @@ def estimate_travel_leg(
     duration_min = max(5, int(round(raw_minutes)))
 
     # Rough cost estimate
-    cost_per_km = MODE_COST_PER_KM.get(mode, 20.0)
-    estimated_cost = round(dist_km * cost_per_km + (50.0 if mode in ("auto", "cab") else 0.0), 2)
-    if mode == "walk":
-        estimated_cost = 0.0
+    estimated_cost = leg_cost_inr(dist_km,mode)
 
     return TravelLeg(
         from_place_id=from_place_id,
@@ -140,38 +133,6 @@ def estimate_travel_leg(
     )
 
 
-def compare_daily_transit_styles(
-    total_day_distance_km: float,
-    number_of_trips: int,
-) -> Dict[str, Any]:
-    """Compares 3 daily transit styles: day rental with driver, cab per trip, public transit."""
-    # 1. Day rental with dedicated driver (fixed daily rate + fuel estimate)
-    # team assumption, not measured: typical full-day 8hr/80km sedan rental in urban India
-    day_rental_cost = 2500.0 + max(0.0, total_day_distance_km - 80.0) * 16.0
-
-    # 2. Point-to-point cabs (base fare + per km per trip)
-    cab_cost = number_of_trips * 60.0 + total_day_distance_km * MODE_COST_PER_KM["cab"]
-
-    # 3. Public transit / auto mix
-    public_cost = number_of_trips * 25.0 + total_day_distance_km * 12.0
-
-    return {
-        "day_rental_with_driver": {
-            "style_name": "Full-day Chauffeur / Rental",
-            "estimated_cost_inr": round(day_rental_cost, 2),
-            "convenience": "high",
-            "description": "Vehicle reserved for the day; no wait times between stops.",
-        },
-        "cab_per_trip": {
-            "style_name": "Point-to-Point Cabs",
-            "estimated_cost_inr": round(cab_cost, 2),
-            "convenience": "moderate",
-            "description": "Book a cab per leg; wait times depend on local availability.",
-        },
-        "public_and_auto": {
-            "style_name": "Auto-Rickshaw & Public Transit",
-            "estimated_cost_inr": round(public_cost, 2),
-            "convenience": "budget",
-            "description": "Economical mix of local auto-rickshaws, metro, and short walks.",
-        },
-    }
+def compare_daily_transit_styles(total_day_distance_km,number_of_trips):
+    from app.core.cost_model import daily_transit_options
+    return daily_transit_options(total_day_distance_km,number_of_trips)

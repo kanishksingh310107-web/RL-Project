@@ -230,13 +230,20 @@ def get_timed_itinerary_view(trip_id: str):
                 "timeline": timeline_blocks
             })
 
-        return {
-            "trip": trip,
-            "itinerary": itinerary,
-            "trip_status": trip_status,
-            "has_itinerary": True,
-            "days": days_output
-        }
+        from app.core.cost_model import estimate_cost
+        cost = estimate_cost(trip,activities)
+        from app.itinerary_generator import get_itinerary_details
+        shared = get_itinerary_details(conn,trip['user_id'],trip_id)
+        for day in days_output:
+            daily = next((d for d in shared['days'] if d['day_number']==day['day_number']),None)
+            day['total_cost'] = daily['total_cost'] if daily else 0
+            for block in day['timeline']:
+                if block['type']=='transit':
+                    block['cost_estimate'] = round(cost['cost_breakdown']['local_transit']['per_party']/cost['days'],2)
+                if block['type']=='meal':
+                    block['cost_estimate'] = round(cost['cost_breakdown']['food']['per_party']/cost['days'],2)
+        return {"trip": trip, "itinerary": itinerary,"cost_estimate":cost,
+            "trip_status": trip_status, "has_itinerary": True,"days": days_output}
 
 
 @router.post("/{trip_id}/finalize")
@@ -324,7 +331,7 @@ def swap_itinerary_activity(
         """, (
             rep_data["id"], rep_data["name"], rep_data["category"], rep_data["description"],
             rep_data["name"], rep_data["neighborhood"], rep_data["latitude"], rep_data["longitude"],
-            rep_data["duration_minutes"], rep_data["cost_amount"],
+            rep_data["duration_minutes"], __import__("app.core.cost_model",fromlist=["activity_fee_inr"]).activity_fee_inr(rep_data),
             itinerary_id, activity_id
         ))
         conn.commit()

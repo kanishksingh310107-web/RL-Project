@@ -534,7 +534,9 @@
 
         <!-- Unified Trip Workspace (Pre-Trip, Live Trip, Post-Trip) -->
         <div id="itineraryDisplayContainer" class="hidden space-y-5">
-          <!-- Active Trip Banner with Companion & Trip Specs -->
+          <div class="flex gap-2"><button type="button" onclick="editSelectedTrip()" class="px-3 py-1 border rounded-lg text-xs">Edit trip</button><button type="button" onclick="deleteSelectedTrip()" class="px-3 py-1 border rounded-lg text-xs text-rose-600">Delete trip</button></div>
+          <div id="tripCostBreakdown" class="p-3 border rounded-xl text-xs space-y-2"></div>
+          <!-- Active trip banner -->
           <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-2xl shadow flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <div class="flex flex-wrap items-center gap-2 mb-1.5">
@@ -607,13 +609,13 @@
                     <div class="text-[10px] text-slate-500" id="itinWeatherDetails">Open-Meteo Weather API</div>
                   </div>
                 </div>
-                <div id="itinWeatherSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                <div id="tripWeatherDaily" class="flex flex-wrap gap-1"></div><div id="itinWeatherSourceBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
                   source: api
                 </div>
               </div>
 
               <!-- Day-by-Day Timeline Accordion / Tabs -->
-              <div id="itineraryDaysContainer" class="space-y-6">
+              <details class="border rounded-xl p-3"><summary class="cursor-pointer text-xs font-bold">Edit schedule: swap, remove, reschedule or switch days</summary><div id="workspaceEditorContainer"></div></details><div id="itineraryDaysContainer" class="space-y-6">
                 <!-- Populated via JavaScript -->
               </div>
             </div>
@@ -1223,6 +1225,7 @@
       </div>
 
       <form id="tripCreateForm" onsubmit="handleTripCreateSubmit(event)" class="mt-4 space-y-4 text-xs">
+        <div id="tripEditOptions" class="hidden"><label>After saving <select id="tripRegenerationMode" class="border rounded p-2"><option value="keep_accepted">Keep accepted activities and regenerate the rest</option><option value="everything">Regenerate everything</option></select></label></div>
         <!-- 1. DESTINATION & UNIFIED LOCATION DISCOVERY -->
         <div class="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
           <label class="block font-semibold text-slate-800 flex items-center justify-between">
@@ -1301,7 +1304,7 @@
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Departure City / Location</label>
             <div class="flex gap-2">
-              <input type="text" id="tripDepartureInput" value="Delhi" placeholder="e.g. Mumbai, Delhi, Bengaluru" class="flex-1 px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs">
+              <input type="text" id="tripDepartureInput" onchange="calculateTripMinimumBudget()" value="Delhi" placeholder="e.g. Mumbai, Delhi, Bengaluru" class="flex-1 px-3 py-2 border border-slate-300 rounded-xl bg-white text-xs">
             </div>
             <!-- Quick Chips -->
             <div class="flex flex-wrap gap-1 mt-1.5">
@@ -1318,14 +1321,14 @@
           <div class="grid grid-cols-2 gap-3 pt-1">
             <div>
               <label class="block font-semibold text-slate-700 mb-1">Start Date</label>
-              <input type="date" id="tripStartDateInput" required onchange="updateTripDurationPreview()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+              <input type="date" id="tripStartDateInput" required onchange="updateTripDurationPreview(); calculateTripMinimumBudget()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
             </div>
             <div>
               <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
                 <span>End Date</span>
                 <span id="tripDurationBadge" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100">4 Days</span>
               </label>
-              <input type="date" id="tripEndDateInput" required onchange="updateTripDurationPreview()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+              <input type="date" id="tripEndDateInput" required onchange="updateTripDurationPreview(); calculateTripMinimumBudget()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
             </div>
           </div>
         </div>
@@ -1336,7 +1339,7 @@
             <label class="block font-semibold text-slate-800">Who are you travelling with?</label>
             <div class="flex items-center gap-1.5">
               <span class="text-[11px] text-slate-500">Party Size:</span>
-              <input type="number" id="tripTravellersInput" min="1" max="15" value="2" class="w-16 px-2 py-1 border border-slate-300 rounded-lg text-center font-bold bg-white">
+              <input type="number" id="tripTravellersInput" onchange="syncTripPartyFromTotal()" min="1" max="15" value="2" class="w-16 px-2 py-1 border border-slate-300 rounded-lg text-center font-bold bg-white">
             </div>
           </div>
 
@@ -1372,17 +1375,22 @@
             </label>
           </div>
 
+          <div class="grid grid-cols-3 gap-2">
+            <label>Adults<input id="tripAdultsInput" type="number" min="1" max="15" value="2" onchange="syncTripPartyFromCounts()" class="w-full border rounded p-1"></label>
+            <label>Children<input id="tripChildrenInput" type="number" min="0" max="14" value="0" onchange="syncTripPartyFromCounts()" class="w-full border rounded p-1"></label>
+            <label>Seniors<input id="tripSeniorsInput" type="number" min="0" max="14" value="0" onchange="syncTripPartyFromCounts()" class="w-full border rounded p-1"></label>
+          </div>
           <!-- Specific Needs: Children & Elderly -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-indigo-100/60">
             <label class="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" id="tripHasChildrenCheck" class="rounded text-indigo-600 focus:ring-indigo-500">
+              <input type="checkbox" id="tripHasChildrenCheck" onchange="syncTripPartyFromChecks()" class="rounded text-indigo-600 focus:ring-indigo-500">
               <div>
                 <span class="font-semibold text-slate-800 text-[11px] block">Children in Party (&lt; 12 yrs)</span>
                 <span class="text-[10px] text-slate-500 block">Filters adult nightlife; adds kid-friendly stops & buffers</span>
               </div>
             </label>
             <label class="flex items-center gap-2 p-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" id="tripHasElderlyCheck" class="rounded text-indigo-600 focus:ring-indigo-500">
+              <input type="checkbox" id="tripHasElderlyCheck" onchange="syncTripPartyFromChecks()" class="rounded text-indigo-600 focus:ring-indigo-500">
               <div>
                 <span class="font-semibold text-slate-800 text-[11px] block">Seniors / Elderly in Party</span>
                 <span class="text-[10px] text-slate-500 block">Avoids steep treks & rocky stairs; prioritizes accessible transit</span>
@@ -1404,6 +1412,11 @@
             </button>
           </div>
 
+          <div class="grid grid-cols-2 gap-3">
+            <div>Minimum sensible budget: <strong id="bareMinimumBudgetDisplay">—</strong><div id="bareMinSubtext"></div></div>
+            <div>Chosen tier recommendation: <strong id="recommendedBudgetDisplay">—</strong><div id="recommendedSubtext"></div></div>
+          </div>
+          <div class="flex justify-between text-[10px]"><span id="sliderMinBound"></span><span id="sliderMaxBound"></span><span id="budgetToggleIcon"></span></div>
           <!-- Shopping checkbox toggle -->
           <div class="flex items-center justify-between pt-1 text-[11px] text-slate-600">
             <label class="flex items-center gap-2 cursor-pointer">
@@ -1516,7 +1529,7 @@
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Accommodation Tier</label>
             <select id="tripAccomSelect" onchange="calculateTripMinimumBudget()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
-              <option value="boutique" selected>Boutique & Heritage</option>
+              <option value="hostel">Hostel</option><option value="budget">Budget</option><option value="mid_range">Mid-range</option><option value="boutique" selected>Boutique & Heritage</option>
               <option value="resort">Luxury Resorts & Villas</option>
               <option value="apartment">Homestays / Serviced Apartments</option>
               <option value="budget_hostel">Hostels & Budget Stays</option>
@@ -1558,7 +1571,7 @@
           <!-- OPTION A Container (Shown only when Option A radio is chosen) -->
           <div id="hotelOptionAContainer" class="hidden space-y-2 pt-2 border-t border-slate-200">
             <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold text-slate-700">Search Verified Accommodations Near Destination:</span>
+              <span class="text-[11px] font-bold text-slate-700">Search Accommodations & Recommended Stay Areas:</span>
               <button type="button" onclick="searchHotelsForOptionA()" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-xs">
                 <i class="fa-solid fa-magnifying-glass"></i> Find Verified Hotels
               </button>
@@ -1595,7 +1608,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Trip Food Style</label>
-            <select id="tripDietarySelect" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
+            <select id="tripDietarySelect" onchange="calculateTripMinimumBudget()" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white">
               <option value="all" selected>All / Multi-Cuisine</option>
               <option value="vegetarian">Pure Vegetarian Only</option>
               <option value="jain">Jain Friendly (No root veg)</option>
@@ -1697,6 +1710,7 @@
 
   <script src="/static/app.js"></script>
   <script src="/static/modules/loader.js"></script>
+  <script src="/static/modules/itinerary_editor.js"></script>
   <script src="/static/modules/stay.js"></script>
   <script src="/static/modules/prep.js"></script>
   <script src="/static/modules/live.js"></script>

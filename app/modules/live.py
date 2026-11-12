@@ -387,7 +387,8 @@ def get_today_itinerary(
         except Exception:
             target_day = 1
     if target_day is None:
-        target_day = 1
+        from app.services.trip_weather import today_india
+        target_day = (today_india()-datetime.strptime(trip['start_date'],'%Y-%m-%d').date()).days+1
     target_day = max(1, min(total_days, target_day))
 
     try:
@@ -473,7 +474,15 @@ def get_today_itinerary(
                     "alerts": alerts_map.get(act_id, [])
                 })
 
+    from app.core.cost_model import estimate_cost
+    cost = estimate_cost(trip, raw_activities)
+    from app.services.trip_weather import weather_for_trip
+    weather = weather_for_trip(trip)
+    budget_alerts = [] if cost['budget_difference'] >= 0 else [{'type':'budget','message':cost['budget_message']}]
     return {
+        "cost_estimate": cost,
+        "budget_alerts": budget_alerts,
+        "weather": weather,
         "trip_id": trip_id,
         "destination_name": trip.get("destination_name"),
         "day_number": target_day,
@@ -829,7 +838,8 @@ def execute_replan(trip_id: str, req: ReplanExecuteRequest):
             raise HTTPException(status_code=404, detail="Replacement activity not found in destination catalog")
 
         rep_act = dict(rep_row)
-        new_cost = float(rep_act.get("cost_amount") or rep_act.get("estimated_cost", 0.0))
+        from app.core.cost_model import activity_fee_inr
+        new_cost = activity_fee_inr(rep_act)
 
         # 1. Feedback for old activity (marked modified, trip-specific to preserve permanent policy)
         process_activity_feedback(
@@ -875,15 +885,6 @@ def execute_replan(trip_id: str, req: ReplanExecuteRequest):
             row_id
         ))
 
-        # Update total cost
-        cursor.execute("""
-            UPDATE itineraries
-            SET total_estimated_cost = (
-                SELECT COALESCE(SUM(cost_estimate), 0.0) FROM itinerary_activities WHERE itinerary_id = ?
-            ), updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (itin["id"], itin["id"]))
-
         # 3. Update live activity status
         cursor.execute("""
             INSERT INTO live_activity_status (trip_id, activity_id, status, notes, updated_at)
@@ -902,6 +903,8 @@ def execute_replan(trip_id: str, req: ReplanExecuteRequest):
 
         conn.commit()
 
+        from app.itinerary_generator import get_itinerary_details
+        get_itinerary_details(conn,trip['user_id'],trip_id)
         # 4. Snapshot historical 24-dim context vector for new activity
         _preserve_or_get_activity_context(conn, itin["id"], rep_act["id"], trip["user_id"], trip, {
             "day_number": day_num,
@@ -934,6 +937,9 @@ def complete_trip(trip_id: str, req: CompleteTripRequest):
         """, (trip_id, trip["user_id"], trip.get("duration_days", 1)))
         conn.commit()
 
+        conn.execute("UPDATE trips SET status='completed' WHERE id=?",(trip_id,))
+        conn.execute("UPDATE itineraries SET status='completed' WHERE trip_id=?",(trip_id,))
+        conn.commit()
         cursor.execute("SELECT * FROM live_trip_state WHERE trip_id = ?", (trip_id,))
         row = cursor.fetchone()
         return {
@@ -1277,12 +1283,12 @@ def get_live_weather_alerts(trip_id: str):
             "provenance": {"source": "unavailable", "is_live": False, "is_estimate": False},
         }
 
-    from app.providers.weather import get_weather_forecast
-    forecast = get_weather_forecast(lat, lon, days=7)
+    from app.services.trip_weather import weather_for_trip
+    forecast = weather_for_trip(trip)
     daily_list = forecast.get("daily_forecast") or []
     first_day = daily_list[0] if daily_list else {}
-    sunrise = first_day.get("sunrise", "06:18 AM")
-    sunset = first_day.get("sunset", "18:25 PM")
+    sunrise = first_day.get("sunrise")
+    sunset = first_day.get("sunset")
 
     return {
         "trip_id": trip_id,
@@ -1291,8 +1297,8 @@ def get_live_weather_alerts(trip_id: str):
         "coordinates": {"lat": lat, "lon": lon},
         "sunrise": sunrise,
         "sunset": sunset,
-        "golden_hour_morning": "06:18 - 07:15 AM",
-        "golden_hour_evening": "17:30 - 18:25 PM",
+        "golden_hour_morning": None,
+        "golden_hour_evening": None,
         "forecast": forecast,
         "provenance": forecast.get("provenance", {
             "source": "open-meteo",

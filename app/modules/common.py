@@ -17,7 +17,16 @@ def _decode(row) -> Dict[str, Any]:
 def get_trip(trip_id: str) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
         r = conn.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
-        return _decode(r) if r else None
+        if not r:
+            return None
+        trip = _decode(r)
+        from app.core.party import normalize_party, party_type, party_label
+        trip['party'] = normalize_party(trip)
+        trip['companions'] = trip['party_type'] = party_type(trip['party'])
+        trip['party_label'] = party_label(trip['party'])
+        trip['has_children'] = bool(trip['party']['children'])
+        trip['has_elderly'] = bool(trip['party']['seniors'])
+        return trip
 
 def get_user_context(user_id: str) -> Dict[str, Any]:
     """Whatever the user has told us so far, unified into structured dict and answer lookup."""

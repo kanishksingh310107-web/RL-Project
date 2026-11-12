@@ -45,6 +45,8 @@ TravelModules.register("itinerary_editor", {
       try {
         const res = await ctx.api(`/api/trip-actions/${tripId}/timed-view`);
         state.data = res;
+        if (typeof renderCostBreakdown === 'function') renderCostBreakdown(res.cost_estimate);
+        if (res.cost_estimate) document.getElementById('itinTotalCostDisplay').textContent=formatINR(res.cost_estimate.total);
       } catch (err) {
         state.error = err.message || "Failed to load itinerary";
       } finally {

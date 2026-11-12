@@ -1,5 +1,5 @@
 // Pre-trip Preparation Module UI (Person A)
-// Plugs into Travel Companion via TravelModules.register("prep", ...)
+// Plugs into the planner via TravelModules.register("prep", ...)
 
 (function () {
   function escapeHtml(str) {
@@ -72,13 +72,7 @@
         packingByCat[cat].push(item);
       });
 
-      const weatherSourceBadge = weather.source === "open-meteo"
-        ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
-             <i class="fa-solid fa-cloud-sun mr-1"></i> Live forecast (Open-Meteo)
-           </span>`
-        : `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
-             <i class="fa-solid fa-chart-line mr-1"></i> Offline estimate – not a live forecast
-           </span>`;
+      const weatherSourceBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800">${escapeHtml(weather.label || 'Weather unavailable')}</span>`;
 
       const luggageBadge = packing.user_luggage_tier === "carry_on"
         ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
@@ -91,6 +85,8 @@
       container.innerHTML = `
         <div class="space-y-6 text-slate-800 text-sm">
 
+          <div class="text-xs text-slate-600">${escapeHtml(weather.message || '')}</div>
+          <div class="flex flex-wrap gap-1">${(weather.daily || []).map(d=>`<span class="border rounded px-2 py-1 text-[10px]">${escapeHtml(d.date)} · ${d.temp_min_c}–${d.temp_max_c}°C · ${d.rain_probability_pct}% rain · ${escapeHtml(d.label)}</span>`).join('')}</div>
           <!-- 1. WEATHER & CLIMATE CARD -->
           <div class="bg-gradient-to-br from-slate-50 to-indigo-50/40 p-4 rounded-xl border border-slate-200 shadow-sm">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">

@@ -8,6 +8,9 @@ import math
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
+from app.core.cost_model import activity_fee_inr
+from app.core.assumptions import FALLBACK_CATEGORY_PRICE_INR
+
 from app.rl_planner import (
     LinUCBPolicy, load_user_policy, extract_context_vector,
     is_activity_safe_and_valid, CANONICAL_ARMS
@@ -83,8 +86,15 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             trip["duration_days"]
         ))
 
+    cursor.execute('UPDATE itineraries SET total_days=? WHERE id=?',(trip['duration_days'],itinerary_id))
     # 3. Load user profile, LinUCB policy, and candidates
     user_profile = _load_user_profile(conn, user_id)
+    from app.core.party import normalize_party
+    party = normalize_party(trip)
+    user_profile['has_children'] = bool(party['children'])
+    user_profile['has_elderly'] = bool(party['seniors'])
+    if party['seniors']:
+        user_profile['walking_tolerance'] = 'low'
     policy = load_user_policy(conn, user_id)
     trip_exclusions = _get_trip_exclusions(conn, trip_id)
 
@@ -92,8 +102,19 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     candidate_rows = cursor.fetchall()
     all_candidates = [dict(r) for r in candidate_rows]
 
+    if not all_candidates:
+        from app.providers.geo import resolve_trip_location, haversine_distance_km
+        from app.activity_data import CURATED_ACTIVITIES
+        centre = resolve_trip_location(destination_id=trip['destination_id'],destination_name=trip['destination_name'],
+            lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+        curated_ids = {a['id'] for a in CURATED_ACTIVITIES}
+        if centre.get('lat') is not None:
+            all_candidates = [dict(r) for r in cursor.execute('SELECT * FROM destination_activities') if r['id'] in curated_ids
+                and r['latitude'] is not None and r['longitude'] is not None
+                and haversine_distance_km(centre['lat'],centre['lon'],r['latitude'],r['longitude']) <= 40]
+
     # Integrate Live Places (Overpass API) and Places API dynamically if DB has few or no activities
-    if len(all_candidates) < 8:
+    if not all_candidates:
         try:
             from app.services.live_api_service import get_live_places_around, search_geocoding
             dest_name = trip.get("destination_name", "")
@@ -123,7 +144,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                     }
                     can_cat = cat_map.get(cat_raw, "culture_history")
                     dur_mins = int((p.get("typical_duration_hours") or 1.5) * 60)
-                    cost = 250.0 if can_cat == "culture_history" else (450.0 if can_cat == "food_dining" else 150.0)
+                    cost = FALLBACK_CATEGORY_PRICE_INR.get(can_cat,FALLBACK_CATEGORY_PRICE_INR["other"])
                     cursor.execute("""
                         INSERT OR IGNORE INTO destination_activities (
                             id, destination_id, name, category, neighborhood,
@@ -160,7 +181,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             pass
 
     # Fallback to local places_service if still < 8
-    if len(all_candidates) < 8:
+    if not all_candidates:
         try:
             from app.services.places_service import get_places_for_destination
             places_res = get_places_for_destination(trip["destination_id"])
@@ -177,7 +198,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                     }
                     can_cat = cat_map.get(cat_raw, "culture_history")
                     dur_mins = int((p.get("typical_duration_hours") or 1.5) * 60)
-                    cost = 250.0 if can_cat == "culture_history" else (450.0 if can_cat == "food_dining" else 150.0)
+                    cost = FALLBACK_CATEGORY_PRICE_INR.get(can_cat,FALLBACK_CATEGORY_PRICE_INR["other"])
                     cursor.execute("""
                         INSERT OR IGNORE INTO destination_activities (
                             id, destination_id, name, category, neighborhood,
@@ -214,6 +235,15 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             pass
 
     if not all_candidates:
+        # Resolve catalogue aliases by actual destination centre, never text alone.
+        from app.providers.geo import resolve_trip_location, haversine_distance_km
+        loc = resolve_trip_location(destination_id=trip['destination_id'], destination_name=trip['destination_name'],
+            lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+        if loc.get('lat') is not None:
+            all_candidates = [dict(r) for r in cursor.execute('SELECT * FROM destination_activities')
+                if r['latitude'] is not None and r['longitude'] is not None and
+                haversine_distance_km(loc['lat'],loc['lon'],r['latitude'],r['longitude']) <= 30]
+    if not all_candidates:
         # Fallback dummy candidate if no specific activities in DB for unseeded destinations
         all_candidates = [{
             "id": f"{trip['destination_id']}_city_walk",
@@ -221,8 +251,8 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             "name": f"Historic Walking Exploration of {trip['destination_name']}",
             "category": "culture_history",
             "neighborhood": "Central Old Town",
-            "latitude": 35.0,
-            "longitude": 135.0,
+            "latitude": trip.get("destination_lat"),
+            "longitude": trip.get("destination_lon"),
             "duration_minutes": 120,
             "cost_tier": "free",
             "cost_amount": 0.0,
@@ -237,6 +267,23 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             "data_source": "estimated"
         }]
 
+    from app.providers.geo import resolve_trip_location, haversine_distance_km
+    location = resolve_trip_location(destination_id=trip['destination_id'],destination_name=trip['destination_name'],
+        lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+    if location.get('lat') is not None:
+        # Multi-city catalogue destinations are planned around the chosen centre.
+        # Long-distance excursions require a separate destination/trip.
+        all_candidates = [c for c in all_candidates if c.get('latitude') is not None and c.get('longitude') is not None
+            and haversine_distance_km(location['lat'],location['lon'],c['latitude'],c['longitude']) <= 40]
+    from app.activity_data import CURATED_ACTIVITIES
+    for candidate in all_candidates:
+        if (candidate.get('neighborhood') or '').startswith('Central '):
+            nearest = min(CURATED_ACTIVITIES,key=lambda a:haversine_distance_km(candidate['latitude'],candidate['longitude'],a['latitude'],a['longitude']))
+            distance = haversine_distance_km(candidate['latitude'],candidate['longitude'],nearest['latitude'],nearest['longitude'])
+            candidate['neighborhood'] = nearest['neighborhood'] if distance <= 5 else 'Near ' + candidate['name']
+    prefs = trip.get('trip_preferences_json') or '{}'
+    prefs = json.loads(prefs) if isinstance(prefs,str) else prefs
+    anchor = prefs.get('stay_anchor')
     # 4. Group candidates by neighborhood to enable realistic geographical clustering
     neighborhoods = sorted(list(set(c["neighborhood"] for c in all_candidates)))
 
@@ -257,7 +304,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
 
     for day_idx in range(1, trip["duration_days"] + 1):
         day_date = (start_dt + timedelta(days=day_idx - 1)).strftime("%Y-%m-%d")
-        day_neighborhood = neighborhoods[(day_idx - 1) % len(neighborhoods)]
+        day_neighborhood = neighborhoods[(day_idx - 1) % len(neighborhoods)] if neighborhoods else "No nearby activities"
 
         day_activities = []
         used_activity_ids_today = set()
@@ -297,6 +344,21 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             if not valid_candidates:
                 continue
 
+            # Enforce a real-distance cluster before policy scoring (12 km
+            # maximum between every pair of stops); meals may use another area.
+            if day_activities:
+                valid_candidates = [c for c in valid_candidates if all(
+                    c.get('latitude') is not None and a.get('latitude') is not None and
+                    haversine_distance_km(c['latitude'],c['longitude'],a['latitude'],a['longitude']) <= 12
+                    for a in day_activities)]
+            if not valid_candidates:
+                continue
+            if party['children']:
+                valid_candidates = [c for c in valid_candidates if not any(t in str(c.get('tags','')).lower() for t in ('nightclub','nightlife','bar_crawl','alcohol'))]
+            if party['seniors']:
+                valid_candidates = [c for c in valid_candidates if c.get('physical_intensity') not in ('high','strenuous')]
+            if not valid_candidates:
+                continue
             # LinUCB Scoring
             scored_candidates = []
             for c in valid_candidates:
@@ -312,6 +374,8 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                 )
                 score, exploitation, exploration = policy.predict_score(arm_id, context_x)
 
+                if anchor and not preceding_act and c.get('latitude') is not None:
+                    score -= haversine_distance_km(anchor['lat'],anchor['lon'],c['latitude'],c['longitude']) * .1
                 # Small neighborhood clustering bonus
                 if c["neighborhood"] == day_neighborhood:
                     score += 0.25
@@ -333,8 +397,13 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                     transit_text = f"15-20 min transit from {preceding_act['neighborhood']} to {chosen_act['neighborhood']}"
                     transit_mins = 18
             else:
-                transit_text = f"Depart from lodging to {chosen_act['neighborhood']}"
-                transit_mins = 15
+                if anchor:
+                    distance = haversine_distance_km(anchor['lat'],anchor['lon'],chosen_act['latitude'],chosen_act['longitude'])
+                    transit_mins = max(5,round(distance*1.35/25*60+5))
+                    transit_text = f"From {anchor['name']} to {chosen_act['neighborhood']} ({distance:.1f} km straight-line estimate)"
+                else:
+                    transit_text = f"Depart from lodging to {chosen_act['neighborhood']}"
+                    transit_mins = 15
 
             # Tailored explanation with explicit "Because you said..." attribution
             because_reasons = []
@@ -364,7 +433,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                 why_text += " (LinUCB exploration candidate)"
 
             act_record_id = str(uuid.uuid4())
-            cost_val = float(chosen_act.get("cost_amount", 0.0))
+            cost_val = activity_fee_inr(chosen_act)
             total_itinerary_cost += cost_val
 
             cursor.execute("""
@@ -423,6 +492,8 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             preceding_act = chosen_act
             order_idx += 1
 
+        actual_areas = list(dict.fromkeys(a['neighborhood'] for a in day_activities if a.get('neighborhood')))
+        day_neighborhood = ' & '.join(actual_areas) or 'Free time near your stay'
         day_models.append({
             "day_number": day_idx,
             "date": day_date,
@@ -451,7 +522,8 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
         allow_live_geocode=False,
     )
 
-    return {
+    from app.core.cost_model import apply_itinerary_cost
+    return apply_itinerary_cost(conn, {
         "id": itinerary_id,
         "trip_id": trip_id,
         "user_id": user_id,
@@ -466,11 +538,11 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
         "total_days": trip["duration_days"],
         "status": "active",
         "total_estimated_cost": total_itinerary_cost,
-        "summary_notes": f"Generated via LinUCB Contextual Bandit policy for {trip['travellers_count']} traveler(s) at {trip['travel_pace']} pace.",
+        "summary_notes": f"Generated via LinUCB for {trip['travellers_count']} traveller(s). Activities stay within 40 km of the selected destination centre; separate cities require separate trips.",
         "days": day_models,
         "created_at": str(datetime.now()),
         "updated_at": str(datetime.now())
-    }
+    })
 
 def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str, Any]]:
     """Fetches full structured itinerary with all activities."""
@@ -562,7 +634,12 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
         allow_live_geocode=False,
     )
 
-    return {
+    for day in days_dict.values():
+        areas = list(dict.fromkeys(a['neighborhood'] for a in day['activities'] if a.get('neighborhood')))
+        day['neighborhood'] = ' & '.join(areas) or 'Free time near your stay'
+        day['theme'] = 'Exploring ' + day['neighborhood'] if areas else 'Free time near your stay'
+    from app.core.cost_model import apply_itinerary_cost
+    return apply_itinerary_cost(conn, {
         "id": itin_id,
         "trip_id": row[1],
         "user_id": row[2],
@@ -581,7 +658,7 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
         "days": list(days_dict.values()),
         "created_at": str(row[8]),
         "updated_at": str(row[9])
-    }
+    })
 
 def get_slot_alternatives(conn, user_id: str, itinerary_id: str, activity_id: str) -> List[Dict[str, Any]]:
     """Finds top 3 candidate replacements for an activity when user requests MODIFY."""
@@ -614,38 +691,13 @@ def get_slot_alternatives(conn, user_id: str, itinerary_id: str, activity_id: st
     all_scheduled = cursor.fetchall()
     scheduled_map = {r[2]: {"day_number": r[0], "time_slot": r[1], "title": r[3]} for r in all_scheduled}
 
-    cursor.execute("SELECT * FROM destination_activities WHERE destination_id = ?", (dest_id,))
-    all_candidates = [dict(r) for r in cursor.fetchall()]
-
-    # If few candidates in DB, populate from Places API
-    if len(all_candidates) < 6:
-        try:
-            from app.services.places_service import get_places_for_destination
-            places_res = get_places_for_destination(dest_id)
-            if places_res and places_res.get("places"):
-                for p in places_res["places"]:
-                    p_id = p.get("place_id") or f"{dest_id}_{p['name'].lower().replace(' ', '_')[:20]}"
-                    cat_map = {"culture": "culture_history", "nature": "nature_outdoors", "food": "food_dining"}
-                    can_cat = cat_map.get(p.get("category", "culture"), "culture_history")
-                    cursor.execute("""
-                        INSERT OR IGNORE INTO destination_activities (
-                            id, destination_id, name, category, neighborhood,
-                            latitude, longitude, duration_minutes, cost_tier,
-                            cost_amount, physical_intensity, crowd_level,
-                            opening_time, closing_time, tags, avoidance_triggers,
-                            description, photo_url, data_source
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        p_id, dest_id, p["name"], can_cat, "Local Area",
-                        p.get("lat") or 0.0, p.get("lon") or 0.0, 90, "budget", 250.0,
-                        "moderate", "moderate", "09:00", "18:00", "[]", "[]",
-                        f"Visit {p['name']}.", None, places_res.get("source", "places_service")
-                    ))
-                conn.commit()
-                cursor.execute("SELECT * FROM destination_activities WHERE destination_id = ?", (dest_id,))
-                all_candidates = [dict(r) for r in cursor.fetchall()]
-        except Exception:
-            pass
+    from app.providers.geo import resolve_trip_location, haversine_distance_km
+    trip = dict(cursor.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone())
+    location = resolve_trip_location(destination_id=dest_id,destination_name=trip['destination_name'],
+        lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+    all_candidates = [dict(r) for r in cursor.execute('SELECT * FROM destination_activities') if r['latitude'] is not None
+        and r['longitude'] is not None and location.get('lat') is not None
+        and haversine_distance_km(location['lat'],location['lon'],r['latitude'],r['longitude'])<=40]
 
     fresh_candidates = []
     switch_candidates = []

@@ -1000,6 +1000,8 @@ def create_trip(user_id: str, payload: TripCreate):
         duration = (end_d - start_d).days + 1
         if duration < 1:
             raise ValueError("End date must be on or after start date")
+        if duration > 366:
+            raise ValueError('Trip must last at most 366 days')
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
 
@@ -1045,6 +1047,16 @@ def create_trip(user_id: str, payload: TripCreate):
         dest_match = DESTINATIONS_BY_ID.get(payload.destination_id) or next((d for d in DESTINATIONS if d["id"] == payload.destination_id), None)
         dest_name = dest_match["name"] if dest_match else payload.destination_id.replace("_", " ").title()
 
+    # Serialize duplicate check/create with SQLite's writer lock, below. The
+    # canonical party is part of the identity; different parties remain distinct.
+    with get_connection() as conn:
+        rows = conn.execute("SELECT * FROM trips WHERE user_id=? AND destination_id=? AND start_date=? AND end_date=? AND created_at >= datetime('now','-5 minutes')", (user_id,payload.destination_id,payload.start_date,payload.end_date)).fetchall()
+        from app.core.party import normalize_party
+        for row in rows:
+            if normalize_party(dict(row)) == payload.party.model_dump():
+                existing = _hydrate_trip_row(dict(row))
+                existing['message'] = 'This trip already exists; selected the existing trip.'
+                return TripResponse(**existing)
     trip_id = str(uuid.uuid4())
     # Calculate realistic minimum budget reference
     min_budget_data = calculate_minimum_trip_budget(
@@ -1058,6 +1070,10 @@ def create_trip(user_id: str, payload: TripCreate):
         accommodation_tier=payload.accommodation_tier or "boutique",
         transit_pref=payload.transit_pref or "public_transit",
         travel_pace=payload.travel_pace or "balanced",
+        party=payload.party.model_dump(),
+        food_style=(payload.trip_preferences or {}).get('food_style') or (payload.trip_preferences or {}).get('dietary'),
+        include_shopping=(payload.trip_preferences or {}).get('include_shopping',False),
+        destination_lat=payload.destination_lat,destination_lon=payload.destination_lon,
     )
     bare_min = min_budget_data["bare_minimum_budget"]
     rec_budget = min_budget_data["recommended_budget"]
@@ -1077,6 +1093,8 @@ def create_trip(user_id: str, payload: TripCreate):
     # Option A: Save pre-selected stay into core_stays if provided
     stay_obj_id = payload.stay_id
     if payload.stay_name and payload.stay_lat is not None and payload.stay_lon is not None:
+        from app.modules.stay import validate_stay_location
+        validate_stay_location(payload.model_dump(),payload.stay_lat,payload.stay_lon)
         from app.core.schemas import Stay, Provenance
         from app.core.stores import save_stay
         stay_obj_id = stay_obj_id or f"stay_pre_{uuid.uuid4().hex[:6]}"
@@ -1095,7 +1113,6 @@ def create_trip(user_id: str, payload: TripCreate):
                 notes="Selected before itinerary generation",
             ),
         )
-        save_stay(stay_obj)
         trip_prefs_dict["stay_anchor"] = {
             "stay_id": stay_obj.stay_id,
             "name": stay_obj.name,
@@ -1117,6 +1134,14 @@ def create_trip(user_id: str, payload: TripCreate):
     resolved_loc = loc_info.get("resolved_location") or dest_name
 
     with get_connection() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        from app.core.party import normalize_party
+        duplicate_rows = conn.execute("SELECT * FROM trips WHERE user_id=? AND destination_id=? AND start_date=? AND end_date=? AND created_at >= datetime('now','-5 minutes')",(user_id,payload.destination_id,payload.start_date,payload.end_date)).fetchall()
+        for duplicate in duplicate_rows:
+            if normalize_party(dict(duplicate)) == payload.party.model_dump():
+                result = _hydrate_trip_row(dict(duplicate))
+                result['message'] = 'This trip already exists; selected the existing trip.'
+                return TripResponse(**result)
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO trips (
@@ -1156,6 +1181,8 @@ def create_trip(user_id: str, payload: TripCreate):
         cursor.execute("SELECT * FROM trips WHERE id = ?", (trip_id,))
         row = cursor.fetchone()
         t_dict = _hydrate_trip_row(dict(row))
+        if payload.stay_name and payload.stay_lat is not None and payload.stay_lon is not None:
+            save_stay(stay_obj)
         if payload.stay_name:
             t_dict["stay_id"] = stay_obj_id
             t_dict["stay_name"] = payload.stay_name
@@ -1192,6 +1219,15 @@ def _hydrate_trip_row(d: Dict[str, Any]) -> Dict[str, Any]:
             d["destination_lon"] = loc_info.get("lon")
         if not d.get("resolved_location"):
             d["resolved_location"] = loc_info.get("resolved_location") or d.get("destination_name")
+    from app.core.party import normalize_party, party_type, party_label
+    from app.core.cost_model import estimate_cost
+    d['party'] = normalize_party(d)
+    d['party_type'] = d['companions'] = party_type(d['party'])
+    d['party_label'] = party_label(d['party'])
+    d['travellers_count'] = sum(d['party'].values())
+    d['cost_estimate'] = estimate_cost(d)
+    d['cost_breakdown'] = d['cost_estimate']['cost_breakdown']
+    d['assumptions'] = d['cost_estimate']['assumptions']
     return d
 
 
@@ -1204,7 +1240,7 @@ def get_user_trips(user_id: str):
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM trips WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+        cursor.execute("SELECT * FROM trips WHERE user_id = ? ORDER BY start_date DESC, created_at DESC", (user_id,))
         rows = cursor.fetchall()
         return [TripResponse(**_hydrate_trip_row(dict(r))) for r in rows]
 
@@ -1223,6 +1259,103 @@ def get_trip_detail(trip_id: str):
 # ==============================================================================
 # REALISTIC MINIMUM TRIP BUDGET ENDPOINTS
 # ==============================================================================
+
+@router.patch('/trips/{trip_id}', response_model=TripResponse)
+def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
+    from pydantic import ValidationError
+    from app.core.party import normalize_party, party_type
+    allowed = {'start_date','end_date','party','travellers_count','companions','total_budget',
+               'travel_pace','transit_pref','accommodation_tier','departure_location',
+               'trip_preferences','food_style','notes','regeneration_mode'}
+    unknown = set(payload)-allowed
+    if unknown:
+        raise HTTPException(422, 'Unsupported edit fields: '+', '.join(sorted(unknown)))
+    mode = payload.get('regeneration_mode', 'keep_accepted')
+    if mode not in ('keep_accepted','everything'):
+        raise HTTPException(422, 'Choose keep_accepted or everything for regeneration_mode.')
+    with get_connection() as conn:
+        row = conn.execute('SELECT * FROM trips WHERE id=? AND user_id=?',(trip_id,user_id)).fetchone()
+        if not row:
+            raise HTTPException(404, 'Trip not found or unauthorized')
+        current = _hydrate_trip_row(dict(row))
+        merged = dict(current, **{k:v for k,v in payload.items() if k in TripCreate.model_fields})
+        prefs = dict(current.get('trip_preferences') or {}, **(payload.get('trip_preferences') or {}))
+        for key in ('food_style','notes'):
+            if key in payload:
+                prefs[key] = payload[key]
+        merged['trip_preferences'] = prefs
+        if 'party' in payload and 'companions' not in payload:
+            merged['companions'] = party_type(payload['party'])
+        elif 'travellers_count' in payload and 'party' not in payload:
+            merged['party'] = None
+            prefs.pop('party', None)
+            if 'companions' not in payload:
+                merged['companions'] = None
+        try:
+            updated = TripCreate.model_validate(merged)
+            start = datetime.strptime(updated.start_date, '%Y-%m-%d')
+            end = datetime.strptime(updated.end_date, '%Y-%m-%d')
+            duration = (end-start).days+1
+            if duration < 1 or duration > 366:
+                raise ValueError('Trip must last between 1 and 366 days.')
+            if updated.total_budget < 0:
+                raise ValueError('Budget cannot be negative.')
+        except (ValidationError, ValueError) as exc:
+            raise HTTPException(422, str(exc))
+        existing = conn.execute('SELECT id FROM itineraries WHERE trip_id=?',(trip_id,)).fetchone()
+        accepted = []
+        if existing and mode == 'keep_accepted':
+            accepted = [dict(r) for r in conn.execute("SELECT * FROM itinerary_activities WHERE itinerary_id=? AND status='accepted'",(existing[0],))]
+            if any(a['day_number'] > duration for a in accepted):
+                raise HTTPException(422, 'An accepted activity falls outside the new dates. Move it first or regenerate everything.')
+        conn.execute('''UPDATE trips SET start_date=?, end_date=?, duration_days=?, travellers_count=?,
+            companions=?,has_children=?,has_elderly=?,total_budget=?,travel_pace=?,transit_pref=?,
+            accommodation_tier=?,departure_location=?,trip_preferences_json=?,status='planned' WHERE id=?''',
+            (updated.start_date,updated.end_date,duration,updated.travellers_count,updated.companions,
+             int(updated.has_children),int(updated.has_elderly),updated.total_budget,updated.travel_pace,
+             updated.transit_pref,updated.accommodation_tier,updated.departure_location,
+             json.dumps(updated.trip_preferences),trip_id))
+        # Derived snapshots are invalid after preferences/dates change.
+        for table in ('core_plans','core_trip_prefs','prep_reminders'):
+            conn.execute(f'DELETE FROM {table} WHERE trip_id=?',(trip_id,))
+        conn.commit()
+        if existing:
+            from app.itinerary_generator import generate_itinerary, get_itinerary_details
+            generate_itinerary(conn,user_id,trip_id)
+            conn.execute('UPDATE itineraries SET total_days=? WHERE id=?',(duration,existing[0]))
+            for activity in accepted:
+                conn.execute('DELETE FROM itinerary_activities WHERE itinerary_id=? AND (activity_id=? OR (day_number=? AND order_index=?))',
+                             (existing[0],activity['activity_id'],activity['day_number'],activity['order_index']))
+                keys = list(activity)
+                conn.execute(f"INSERT INTO itinerary_activities ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})",[activity[k] for k in keys])
+            conn.commit()
+            get_itinerary_details(conn,user_id,trip_id)
+        result = _hydrate_trip_row(dict(conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone()))
+        result['message'] = 'Trip updated; accepted activities kept.' if mode == 'keep_accepted' else 'Trip updated; itinerary regenerated.'
+        return TripResponse(**result)
+
+
+@router.delete('/trips/{trip_id}')
+def delete_trip(trip_id: str, user_id: str = Query(...)):
+    with get_connection() as conn:
+        if not conn.execute('SELECT id FROM trips WHERE id=? AND user_id=?',(trip_id,user_id)).fetchone():
+            raise HTTPException(404, 'Trip not found or unauthorized')
+        itinerary_ids = [r[0] for r in conn.execute('SELECT id FROM itineraries WHERE trip_id=?',(trip_id,))]
+        for itinerary_id in itinerary_ids:
+            conn.execute('DELETE FROM live_activity_contexts WHERE itinerary_id=?',(itinerary_id,))
+        # Discover trip-owned module tables without touching user-level learned
+        # policies or Thompson priors. Alerts precede their condition parents.
+        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        tables.sort(key=lambda t: (t == 'live_conditions', t == 'itineraries', t == 'trips'))
+        for table in tables:
+            if table == 'trips':
+                continue
+            columns = {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
+            if 'trip_id' in columns:
+                conn.execute(f'DELETE FROM "{table}" WHERE trip_id=?',(trip_id,))
+        conn.execute('DELETE FROM trips WHERE id=?',(trip_id,))
+        conn.commit()
+    return {'status':'deleted','trip_id':trip_id,'message':'Trip deleted. Learned policy retained.'}
 
 @router.post("/budget/estimate-minimum", response_model=MinimumBudgetResponse)
 def estimate_minimum_budget(payload: MinimumBudgetRequest):
@@ -1249,6 +1382,9 @@ def estimate_minimum_budget(payload: MinimumBudgetRequest):
         travel_pace=payload.travel_pace or "balanced",
         include_shopping=payload.include_shopping,
         profile=user_profile,
+        party=payload.party.model_dump() if payload.party else None,
+        food_style=payload.food_style,
+        destination_lat=payload.destination_lat, destination_lon=payload.destination_lon,
     )
     return MinimumBudgetResponse(**data)
 
@@ -1354,7 +1490,7 @@ def submit_activity_feedback(user_id: str, payload: ActivityFeedbackRequest):
                     """, (
                         rep_data["id"], rep_data["name"], rep_data["category"], rep_data["description"],
                         rep_data["name"], rep_data["neighborhood"], rep_data["latitude"], rep_data["longitude"],
-                        rep_data["duration_minutes"], rep_data["cost_amount"],
+                        rep_data["duration_minutes"], __import__("app.core.cost_model",fromlist=["activity_fee_inr"]).activity_fee_inr(rep_data),
                         payload.itinerary_id, payload.activity_id
                     ))
                     conn.commit()

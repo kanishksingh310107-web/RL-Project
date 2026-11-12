@@ -53,24 +53,25 @@
 
   // Main render entrypoint
   async function render(container, ctx) {
+    activeSubtab = ctx.workspaceMode === 'post' ? 'post' : 'during';
     if (!ctx.tripId) {
       container.innerHTML = `
         <div class="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
           <i class="fa-solid fa-compass text-slate-400 text-3xl mb-3"></i>
           <h3 class="font-semibold text-slate-700">No Trip Selected</h3>
-          <p class="text-xs text-slate-500 mt-1">Please plan or select an active trip in the companion dropdown above.</p>
+          <p class="text-xs text-slate-500 mt-1">Please plan or select an active trip in the planner trip selector.</p>
         </div>
       `;
       return;
     }
 
-    container.innerHTML = `<div class="py-8 text-center text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading live companion data…</div>`;
+    container.innerHTML = `<div class="py-8 text-center text-sm text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading live trip data…</div>`;
 
     try {
       tripState = await ctx.api(`/api/live/${ctx.tripId}/state?user_id=${ctx.userId}`).catch(() => ({
         is_completed: 0, current_day: 1
       }));
-      todayData = await ctx.api(`/api/live/${ctx.tripId}/today?day=${currentDay}&user_id=${ctx.userId}`).catch(() => null);
+      todayData = await ctx.api(`/api/live/${ctx.tripId}/today?user_id=${ctx.userId}`).catch(() => null);
     } catch (err) {
       container.innerHTML = `<div class="p-4 bg-rose-50 text-rose-700 rounded-lg text-sm">Failed to load live trip: ${err.message}</div>`;
       return;
@@ -87,6 +88,7 @@
       return;
     }
 
+    currentDay = todayData.day_number || 1;
     renderView(container, ctx);
   }
 
@@ -97,18 +99,6 @@
     container.innerHTML = `
       <!-- Subtab Navigation -->
       <div class="flex border-b border-slate-200 mb-4 justify-between items-center">
-        <div class="flex gap-2">
-          <button id="liveTabDuring" class="px-3 py-2 text-xs font-semibold border-b-2 ${activeSubtab === "during" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"} flex items-center gap-1.5 transition">
-            <i class="fa-solid fa-compass"></i>
-            <span>During-Trip Support</span>
-          </button>
-          <button id="liveTabPost" class="px-3 py-2 text-xs font-semibold border-b-2 ${activeSubtab === "post" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"} flex items-center gap-1.5 transition">
-            <i class="fa-solid fa-graduation-cap"></i>
-            <span>Post-Trip Evaluation & Learning</span>
-            ${isCompleted ? '<span class="w-2 h-2 rounded-full bg-emerald-500 inline-block ml-1"></span>' : ''}
-          </button>
-        </div>
-
         <div class="flex items-center gap-2">
           ${!isCompleted ? `
             <button id="btnCompleteTripHeader" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-2.5 py-1 rounded transition flex items-center gap-1">
@@ -126,8 +116,6 @@
       <div id="liveSubtabContent"></div>
     `;
 
-    document.getElementById("liveTabDuring").onclick = () => { activeSubtab = "during"; renderView(container, ctx); };
-    document.getElementById("liveTabPost").onclick = () => { activeSubtab = "post"; renderView(container, ctx); };
 
     const completeBtn = document.getElementById("btnCompleteTripHeader");
     if (completeBtn) {
@@ -136,8 +124,7 @@
         try {
           await ctx.api(`/api/live/${ctx.tripId}/complete`, { method: "POST", body: { user_id: ctx.userId } });
           tripState.is_completed = 1;
-          activeSubtab = "post";
-          render(container, ctx);
+          switchWorkspaceMode('post');
         } catch (e) {
           alert("Error completing trip: " + e.message);
         }
@@ -179,6 +166,8 @@
     }
 
     box.innerHTML = `
+      ${(todayData.budget_alerts || []).map(a=>`<div class="p-3 mb-2 rounded bg-amber-50 text-amber-800 text-xs">${escapeHtml(a.message)}</div>`).join('')}
+      ${todayData.weather ? `<div class="p-2 mb-2 border rounded text-xs">${escapeHtml(todayData.weather.label || 'Weather unavailable')} · ${todayData.weather.summary?.temp_min_c ?? '?'}–${todayData.weather.summary?.temp_max_c ?? '?'}°C · ${escapeHtml(todayData.weather.message || '')}</div>` : ''}
       <!-- Day Selector & Simulation Banner -->
       <div class="flex flex-wrap items-center justify-between gap-2 mb-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
         <div class="flex items-center gap-1.5 flex-wrap">
@@ -837,7 +826,7 @@
     `;
   }
 
-  // Register in Travel Companion system
+  // Register in planner
   if (window.TravelModules && window.TravelModules.register) {
     TravelModules.register("live", { render });
   } else {

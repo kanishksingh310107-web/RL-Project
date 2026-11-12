@@ -2737,10 +2737,52 @@ CURATED_ACTIVITIES: List[Dict[str, Any]] = [
         'tags': ['food_dining', 'thali', 'cultural', 'dinner']}
 ]
 
+# Additional offline city coverage. Coordinates are indicative POI centres;
+# no opening hours, fees or accessibility claims are presented as verified.
+for _id, _dest, _name, _area, _lat, _lon in [
+ ('pune_shaniwar_wada','pune_india','Shaniwar Wada','Shaniwar Peth, Pune',18.5196,73.8553),
+ ('pune_aga_khan_palace','pune_india','Aga Khan Palace','Kalyani Nagar, Pune',18.5523,73.9015),
+ ('pune_saras_baug','pune_india','Saras Baug','Saras Baug, Pune',18.5018,73.8528),
+ ('mysuru_palace','mysuru_india','Mysuru Palace','Palace precinct, Mysuru',12.3051,76.6551),
+ ('mysuru_devaraja_market','mysuru_india','Devaraja Market','Devaraja Mohalla, Mysuru',12.3107,76.6520),
+ ('pondicherry_promenade','pondicherry_india','Promenade Beach','White Town, Puducherry',11.9339,79.8368),
+ ('pondicherry_botanical_garden','pondicherry_india','Botanical Garden','Orleanpet, Puducherry',11.9290,79.8226),
+]:
+    CURATED_ACTIVITIES.append(dict(id=_id,destination_id=_dest,name=_name,neighborhood=_area,
+        latitude=_lat,longitude=_lon,category='culture_history',duration_minutes=90,cost_tier='unknown',
+        cost_amount=None,physical_intensity='low',crowd_level='unknown',opening_time=None,closing_time=None,
+        tags=['curated','indicative_coordinates'],avoidance_triggers=[],data_source='curated',
+        description='Curated local place. Confirm opening hours, entry fees and accessibility before visiting.'))
+
+for _activity in CURATED_ACTIVITIES:
+    _activity['area'] = _activity['neighborhood']
+    _dest = _activity['destination_id']
+    _lat, _lon = _activity['latitude'], _activity['longitude']
+    _city_names = {'jaipur_rajasthan_india':'Jaipur','udaipur_india':'Udaipur',
+        'ladakh_leh_india':'Leh','varanasi_kashi_india':'Varanasi','hampi_karnataka_india':'Hampi',
+        'amritsar_punjab_india':'Amritsar','rann_of_kutch_india':'Kutch',
+        'kyoto_japan':'Kyoto','tokyo_japan':'Tokyo','santorini_greece':'Santorini','swiss_alps':'Swiss Alps'}
+    _city = _city_names.get(_dest)
+    if _dest == 'manali_spiti_india': _city = 'Spiti' if _lat > 32.5 else 'Manali'
+    elif _dest == 'kerala_alleppey_india': _city = 'Munnar' if _lat > 10 else 'Alappuzha'
+    elif _dest == 'ooty_coorg_india': _city = 'Madikeri' if _lon < 76 else 'Ooty'
+    elif _dest == 'darjeeling_sikkim_india': _city = 'Gangtok' if _lat > 27.2 else 'Darjeeling'
+    elif _dest == 'meghalaya_shillong_india': _city = 'Sohra' if _lat < 25.4 else 'Shillong'
+    elif _dest == 'rishikesh_haridwar_india': _city = 'Haridwar' if _lat < 30.04 else 'Rishikesh'
+    elif _dest == 'agra_braj_india': _city = 'Vrindavan' if _lat > 27.4 else 'Fatehpur Sikri' if _lon < 77.8 else 'Agra'
+    elif _dest == 'south_goa_india': _city = 'South Goa'
+    elif _dest == 'andaman_havelock_india': _city = 'Havelock Island'
+    _activity['city'] = _city or _activity['neighborhood']
+
+
 def seed_curated_activities(conn):
     """Seed curated activities into destination_activities table."""
     import json
     cursor = conn.cursor()
+    columns = {r[1] for r in cursor.execute('PRAGMA table_info(destination_activities)')}
+    for column in ('city','area'):
+        if column not in columns:
+            cursor.execute(f'ALTER TABLE destination_activities ADD COLUMN {column} TEXT')
     for a in CURATED_ACTIVITIES:
         cursor.execute("""
             INSERT OR IGNORE INTO destination_activities (
@@ -2771,4 +2813,6 @@ def seed_curated_activities(conn):
             a.get("photo_url"),
             a.get("data_source", "curated")
         ))
+    for a in CURATED_ACTIVITIES:
+        cursor.execute('UPDATE destination_activities SET city=?,area=? WHERE id=?', (a['city'],a['area'],a['id']))
     conn.commit()

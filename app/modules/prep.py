@@ -194,48 +194,9 @@ CLIMATE_ESTIMATES: Dict[Tuple[str, int], Tuple[float, float, float, bool]] = {
 def fetch_open_meteo(
     lat: float, lon: float, start_date: str, end_date: str
 ) -> Optional[Dict[str, Any]]:
-    """Fetches real weather forecast from Open-Meteo.
-    Returns None on any network error, timeout, non-200 code, or malformed data.
-    """
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "daily": [
-            "temperature_2m_max",
-            "temperature_2m_min",
-            "wind_speed_10m_max",
-            "precipitation_probability_max",
-        ],
-        "timezone": "auto",
-        "start_date": start_date,
-        "end_date": end_date,
-    }
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            resp = client.get(url, params=params)
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            daily = data.get("daily", {})
-            t_min = daily.get("temperature_2m_min")
-            t_max = daily.get("temperature_2m_max")
-            winds = daily.get("wind_speed_10m_max")
-            precip = daily.get("precipitation_probability_max")
-
-            if not (t_min and t_max):
-                return None
-
-            return {
-                "temp_min_c": float(min(t_min)),
-                "temp_max_c": float(max(t_max)),
-                "wind_kmh": float(max(winds)) if winds else 15.0,
-                "rain_expected": bool(any((p or 0) >= 30 for p in (precip or []))),
-                "daily_details": daily,
-            }
-    except Exception:
-        # Fall back cleanly without crashing
-        return None
+    """Compatibility entry point; all normal calls use the shared service."""
+    from app.services.trip_weather import weather_for_dates
+    return weather_for_dates(lat,lon,start_date,end_date)
 
 
 def get_offline_weather(
@@ -262,77 +223,26 @@ def get_offline_weather(
 
 
 def get_weather_for_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
-    """Retrieves live Open-Meteo forecast for trip coordinates & dates, or falls back to climate estimate."""
-    dest_id = trip.get("destination_id", "")
-    dest_name = trip.get("destination_name", "")
-    start_date = trip.get("start_date", "")
-    end_date = trip.get("end_date", "")
-
-    coords = None
-    resolved_loc = trip.get("resolved_location") or dest_name or dest_id
-    if trip.get("destination_lat") is not None and trip.get("destination_lon") is not None:
-        coords = (float(trip["destination_lat"]), float(trip["destination_lon"]))
-    elif dest_id in DESTINATION_COORDS:
-        coords = DESTINATION_COORDS[dest_id]
-    else:
-        from app.providers.geo import resolve_trip_location
-        loc_info = resolve_trip_location(
-            destination_id=dest_id,
-            destination_name=dest_name,
-            resolved_location=trip.get("resolved_location"),
-            allow_live_geocode=False,
-        )
-        if loc_info.get("lat") is not None and loc_info.get("lon") is not None:
-            coords = (float(loc_info["lat"]), float(loc_info["lon"]))
-        if loc_info.get("resolved_location"):
-            resolved_loc = loc_info["resolved_location"]
-
-    live_data = None
-    if coords and start_date and end_date:
-        try:
-            live_data = fetch_open_meteo(coords[0], coords[1], start_date, end_date)
-        except Exception:
-            live_data = None
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-
-    if live_data:
-        return {
-            "source": "open-meteo",
-            "fetched_at": now_iso,
-            "label": "Live forecast (Open-Meteo)",
-            "weather_type": "forecast",
-            "summary": {
-                "temp_min_c": live_data["temp_min_c"],
-                "temp_max_c": live_data["temp_max_c"],
-                "wind_kmh": live_data["wind_kmh"],
-                "rain_expected": live_data["rain_expected"],
-            },
-            "coordinates": coords,
-            "destination_id": dest_id,
-            "resolved_location": resolved_loc,
-            "start_date": start_date,
-            "end_date": end_date,
-        }
-
-    offline = get_offline_weather(dest_id, start_date)
-    return {
-        "source": "offline-estimate",
-        "fetched_at": now_iso,
-        "label": "Offline estimate – not a live forecast",
-        "weather_type": "historical_climate_estimate",
-        "summary": {
-            "temp_min_c": offline["temp_min_c"],
-            "temp_max_c": offline["temp_max_c"],
-            "wind_kmh": offline["wind_kmh"],
-            "rain_expected": offline["rain_expected"],
-        },
-        "coordinates": coords,
-        "destination_id": dest_id,
-        "resolved_location": resolved_loc,
-        "start_date": start_date,
-        "end_date": end_date,
-    }
+    from app.services.trip_weather import weather_for_trip, weather_for_dates
+    from app.providers.geo import resolve_trip_location
+    location = resolve_trip_location(destination_id=trip.get('destination_id'),destination_name=trip.get('destination_name'),
+        lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+    if location.get('lat') is None:
+        return weather_for_trip(trip)
+    try:
+        result = fetch_open_meteo(location['lat'],location['lon'],trip['start_date'],trip['end_date'])
+    except Exception:
+        result = None
+    if result and 'summary' in result:
+        return dict(result,resolved_location=location.get('resolved_location'))
+    if result and 'temp_min_c' in result:
+        # Backward-compatible aggregate adapter. No production provider supplies
+        # this shape; retained for existing injected weather adapters.
+        return {'source':'open-meteo','label':'Live forecast (Open-Meteo)',
+            'fetched_at':datetime.now(timezone.utc).isoformat(),'weather_type':'forecast',
+            'coordinates':(location['lat'],location['lon']),'summary':{key:result[key]
+                for key in ('temp_min_c','temp_max_c','wind_kmh','rain_expected')}}
+    return weather_for_trip(trip)
 
 
 @router.get("/{trip_id}/weather")
@@ -650,6 +560,14 @@ def build_packing_list(
             "quantity": "Trip supply + 2-3 days backup",
         })
 
+    from app.core.party import normalize_party
+    party = normalize_party(trip)
+    if party['children']:
+        items.append({'name':'Child essentials: spare clothes, snacks and comfort item', 'category':'Family',
+            'reason':f"For {party['children']} child traveller(s)", 'quantity':str(party['children'])})
+    if party['seniors']:
+        items.append({'name':'Accessibility aids and personal essentials', 'category':'Family',
+            'reason':f"For {party['seniors']} senior traveller(s); confirm individual needs", 'quantity':str(party['seniors'])})
     # 4. ELECTRONICS & CORE DOCUMENTS
     items.append({
         "name": "Universal travel plug adapter & USB cables",
@@ -674,6 +592,8 @@ def build_packing_list(
         "trip_id": trip["id"],
         "destination_name": trip["destination_name"],
         "trip_length_days": days,
+        "cost_estimate": __import__('app.core.cost_model', fromlist=['estimate_cost']).estimate_cost(trip),
+        "party": trip.get('party'),
         "weather_summary": summary,
         "weather_source": weather.get("source"),
         "weather_label": weather.get("label"),
@@ -1006,6 +926,7 @@ def list_trip_reminders(trip_id: str, seed: Optional[int] = Query(None)):
         ).fetchall()
         priors = get_user_bandit_priors(conn, user_id)
 
+    shared_weather = get_weather_for_trip(trip)
     thetas = sample_bandit_preferences(priors, seed=seed)
 
     reminders = []
@@ -1013,6 +934,10 @@ def list_trip_reminders(trip_id: str, seed: Optional[int] = Query(None)):
         d = dict(r)
         cat = d["category"]
         d["bandit_score"] = round(thetas.get(cat, 0.5), 4)
+        if cat == 'weather':
+            d['weather'] = shared_weather
+            summary = shared_weather.get('summary',{})
+            d['text'] = f"{shared_weather.get('label','Weather unavailable')}: {summary.get('temp_min_c','?')}–{summary.get('temp_max_c','?')}°C. {shared_weather.get('message','')}"
         reminders.append(d)
 
     # Sort logic:

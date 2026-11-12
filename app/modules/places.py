@@ -67,6 +67,7 @@ def init_tables(conn: sqlite3.Connection):
 
 
 class PlanDynamicTripRequest(BaseModel):
+    party: Optional[Dict[str, int]] = None
     user_id: str
     city_name: Optional[str] = None
     city: Optional[str] = None
@@ -437,118 +438,23 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
                 a.provenance.source
             ))
             
-        # 4. Create Trip
-        trip_id = str(uuid.uuid4())
-        start_date = payload.start_date
-        duration = payload.duration_days
-        end_date = payload.end_date
-
-        if not duration and start_date and end_date:
-            try:
-                dt_s = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
-                dt_e = datetime.datetime.strptime(end_date, "%Y-%m-%d").date()
-                duration = max(1, (dt_e - dt_s).days + 1)
-            except Exception:
-                duration = 3
-
-        if not duration:
-            duration = 3
-
-        if not end_date:
-            try:
-                dt = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
-                end_date = (dt + datetime.timedelta(days=duration - 1)).strftime("%Y-%m-%d")
-            except ValueError:
-                end_date = start_date
-
-        pace_pref = payload.travel_pace or payload.pace_preference or "balanced"
-        accom_pref = payload.accommodation_tier or "balanced"
-        transit_pref = payload.transit_pref or "public_transit"
-
-        # Calculate realistic minimum budget reference
-        min_budget_data = calculate_minimum_trip_budget(
-            destination_id=dest_id,
-            destination_name=dest_name,
-            departure_location=payload.departure_location or "Delhi",
-            start_date=start_date,
-            end_date=end_date,
-            duration_days=duration,
-            travellers_count=payload.travellers_count or 1,
-            accommodation_tier=accom_pref,
-            transit_pref=transit_pref,
-            travel_pace=pace_pref,
-        )
-        bare_min = min_budget_data["bare_minimum_budget"]
-        rec_budget = min_budget_data["recommended_budget"]
-
-        trip_prefs_dict = dict(payload.trip_preferences or {})
-        trip_prefs_dict["bare_minimum_budget"] = bare_min
-        trip_prefs_dict["recommended_budget"] = rec_budget
-        trip_prefs_dict["budget_categories"] = min_budget_data["categories"]
-        if payload.total_budget is not None and payload.total_budget < bare_min:
-            shortfall = round(bare_min - payload.total_budget, 2)
-            trip_prefs_dict["budget_shortfall"] = shortfall
-            trip_prefs_dict["budget_warning"] = (
-                f"Budget Warning: Selected budget of ₹{payload.total_budget:,.0f} is below the realistic "
-                f"minimum estimated cost of ₹{bare_min:,.0f}. Shortfall: ₹{shortfall:,.0f}."
-            )
-
-        # Option A: Prepare pre-selected stay anchor if provided (persisted after outer connection closes)
-        stay_obj = None
-        if payload.stay_name and payload.stay_lat is not None and payload.stay_lon is not None:
-            from app.core.schemas import Stay, Provenance
-            stay_obj_id = payload.stay_id or f"stay_pre_{uuid.uuid4().hex[:6]}"
-            stay_obj = Stay(
-                stay_id=stay_obj_id,
-                trip_id=trip_id,
-                name=payload.stay_name,
-                stay_type=payload.stay_type or "hotel",
-                lat=payload.stay_lat,
-                lon=payload.stay_lon,
-                address=payload.stay_address,
-                provenance=Provenance(source="user_selected_pre_plan", is_live=True),
-            )
-            trip_prefs_dict["stay_anchor"] = {
-                "stay_id": stay_obj_id,
-                "name": payload.stay_name,
-                "lat": payload.stay_lat,
-                "lon": payload.stay_lon,
-            }
-
-        cursor.execute("""
-            INSERT INTO trips (
-                id, user_id, destination_id, destination_name,
-                destination_lat, destination_lon, resolved_location,
-                start_date, end_date, duration_days, travellers_count,
-                total_budget, currency, accommodation_tier, transit_pref,
-                travel_pace, specific_interests, departure_location,
-                companions, has_children, has_elderly, trip_preferences_json,
-                status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INR', ?, ?, ?, '[]', ?, ?, ?, ?, ?, 'planning', CURRENT_TIMESTAMP)
-        """, (
-            trip_id,
-            payload.user_id,
-            dest_id,
-            dest_name,
-            lat,
-            lon,
-            dest_name,
-            start_date,
-            end_date,
-            duration,
-            payload.travellers_count or 1,
-            payload.total_budget or 25000.0,
-            accom_pref,
-            transit_pref,
-            pace_pref,
-            payload.departure_location or "Delhi",
-            payload.companions or "solo",
-            1 if payload.has_children else 0,
-            1 if payload.has_elderly else 0,
-            json.dumps(trip_prefs_dict)
-        ))
+        # Use the canonical trip path for validation, party, deduplication and stays.
         conn.commit()
-
+        from app.api import create_trip
+        from app.models import TripCreate
+        from pydantic import ValidationError
+        start_date = payload.start_date
+        end_date = payload.end_date or (datetime.date.fromisoformat(start_date)+datetime.timedelta(days=(payload.duration_days or 3)-1)).isoformat()
+        values = payload.model_dump(exclude_unset=True)
+        values.update(destination_id=dest_id,destination_name=dest_name,destination_lat=lat,destination_lon=lon,
+                      start_date=start_date,end_date=end_date,travel_pace=payload.travel_pace or payload.pace_preference)
+        try:
+            created = create_trip(payload.user_id, TripCreate.model_validate(values))
+        except ValidationError as exc:
+            raise HTTPException(422,str(exc))
+        trip_id = created.id
+        duration = created.duration_days
+        stay_obj = None  # canonical create_trip already persisted any preselected anchor
         # 5. Generate LinUCB day-by-day Itinerary
         generate_itinerary(conn, user_id=payload.user_id, trip_id=trip_id)
 
@@ -581,7 +487,9 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
             "end_date": end_date,
             "duration_days": duration,
             "departure_location": payload.departure_location or "Delhi",
-            "companions": payload.companions or "solo",
+            "companions": created.companions,
+            "party": created.party.model_dump(),
+            "party_label": created.party_label,
             "has_children": bool(payload.has_children),
             "has_elderly": bool(payload.has_elderly),
             "trip_preferences": payload.trip_preferences or {}

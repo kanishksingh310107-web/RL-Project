@@ -420,7 +420,7 @@ def discover_places_india(
     if not is_in_india(lat, lon):
         raise ValueError(f"Coordinates ({lat}, {lon}) are outside India. Discovery is supported only within India.")
 
-    cache_key = f"geo:discover_places:{round(lat, 4)}:{round(lon, 4)}:{radius_meters}:{limit}:{categories or 'all'}"
+    cache_key = f"geo:v2:discover_places:{round(lat, 4)}:{round(lon, 4)}:{radius_meters}:{limit}:{categories or 'all'}"
     cached = get_cached(cache_key)
     if cached:
         return [Place.model_validate(p) for p in cached]
@@ -455,6 +455,8 @@ def discover_places_india(
 
                     p_lat = float(props.get("lat", lat))
                     p_lon = float(props.get("lon", lon))
+                    if not is_in_india(p_lat, p_lon) or haversine_distance_km(lat, lon, p_lat, p_lon) > radius_meters / 1000:
+                        continue
                     dedup_key = (p_name.strip().lower(), round(p_lat, 4), round(p_lon, 4))
                     if dedup_key in seen:
                         continue
@@ -522,7 +524,7 @@ def discover_places_india(
         dist = haversine_distance_km(lat, lon, act_lat, act_lon)
         
         # If activity is within reasonable vicinity (or first few if very distant)
-        if dist <= (radius_meters / 1000.0) * 1.5 or len(places) < 8:
+        if dist <= radius_meters / 1000.0:
             dedup_key = (act["name"].strip().lower(), round(act_lat, 4), round(act_lon, 4))
             if dedup_key not in seen:
                 seen.add(dedup_key)
@@ -861,7 +863,7 @@ def get_places_by_category(
     Category may be one of the 7 canonical arms, or 'accommodation', 'pharmacy', 'hospital', 'atm'.
     Falls back to curated activities offline.
     """
-    cache_key = f"geo:places:{round(lat, 4)}:{round(lon, 4)}:{category}:{limit}"
+    cache_key = f"geo:v2:places:{round(lat, 4)}:{round(lon, 4)}:{category}:{radius_meters}:{limit}"
     cached = get_cached(cache_key)
     if cached:
         return [Place.model_validate(p) for p in cached]
@@ -925,14 +927,17 @@ def get_places_by_category(
         except Exception:
             pass
 
+    # Facilities must never fall back to attractions.
+    if category not in CANONICAL_TO_GEOAPIFY_CATEGORIES or category in ('accommodation', 'pharmacy', 'hospital', 'atm'):
+        return []
     # Offline Fallback from Curated Catalogue
     from app.activity_data import CURATED_ACTIVITIES
     curated_matches = [
         a for a in CURATED_ACTIVITIES
         if a.get("category") == category or category == "all"
     ]
-    if not curated_matches:
-        curated_matches = CURATED_ACTIVITIES[:limit]
+    curated_matches = [a for a in curated_matches if haversine_distance_km(lat, lon,
+        float(a.get('latitude', a.get('lat', 0))), float(a.get('longitude', a.get('lon', 0)))) <= radius_meters / 1000]
 
     places = []
     for a in curated_matches[:limit]:
@@ -941,8 +946,8 @@ def get_places_by_category(
             name=a["name"],
             category=a["category"],
             destination_id=a.get("destination_id"),
-            lat=float(a.get("lat", lat)),
-            lon=float(a.get("lon", lon)),
+            lat=float(a.get("latitude", a.get("lat", lat))),
+            lon=float(a.get("longitude", a.get("lon", lon))),
             neighbourhood=a.get("neighborhood"),
             typical_duration_minutes=a.get("duration_minutes"),
             cost_amount=a.get("cost_amount"),
@@ -959,79 +964,79 @@ def get_places_by_category(
     return places
 
 
-def get_accommodations(
-    lat: float,
-    lon: float,
-    trip_id: str = "default_trip",
-    estimated_nightly_budget: Optional[float] = None,
-    limit: int = 15
-) -> List[Stay]:
-    """Retrieve candidate accommodations near a coordinate.
-    
-    NEVER returns a live price (none exists on free APIs).
-    Carries an external search link and estimated budget band.
+def get_accommodations(lat, lon, trip_id="default_trip", estimated_nightly_budget=None,
+                       limit=15, radius_meters=12000, tier="mid_range", destination_id=None):
+    """Validated live accommodations or explicitly labelled curated stay areas.
+
+    Geoapify star classifications are used only when supplied. Unknown tiers are
+    clearly labelled, never claimed to match the requested room price.
     """
-    cache_key = f"geo:stays:{round(lat, 4)}:{round(lon, 4)}:{limit}"
-    cached = get_cached(cache_key)
-    if cached:
-        return [Stay.model_validate(s) for s in cached]
-
-    places = get_places_by_category(lat, lon, "accommodation", radius_meters=12000, limit=limit)
-    stays: List[Stay] = []
-
-    for p in places:
-        encoded_q = urllib.parse.quote(f"{p.name} hotels")
-        ext_url = f"https://www.google.com/travel/hotels?q={encoded_q}"
-        stay = Stay(
-            stay_id=f"stay_{p.id}",
-            trip_id=trip_id,
-            name=p.name,
-            stay_type="mid_range",
-            lat=p.lat,
-            lon=p.lon,
-            address=p.address,
-            neighbourhood=p.neighbourhood,
-            stars=None,  # unknown = None, NEVER 0
-            estimated_nightly_budget=estimated_nightly_budget,  # budget band, not a price
-            external_search_url=ext_url,
-            phone=p.phone,
-            website=p.website,
-            provenance=Provenance(
-                source=p.provenance.source,
-                is_live=p.provenance.is_live,
-                is_estimate=True,
-                notes="hotel options without prices; search link opens external site"
-            )
-        )
-        stays.append(stay)
-
+    from app.core.cost_model import canonical_tier
+    from app.core.assumptions import TIER_LABELS, STAY_RATES_INR
+    from app.data.stay_areas import areas_for_destination
+    tier = canonical_tier(tier)
+    if not is_in_india(lat, lon):
+        return []
+    key = f"geo:stays:v3:{lat:.4f}:{lon:.4f}:{radius_meters}:{tier}:{estimated_nightly_budget}:{limit}"
+    cached = get_cached(key)
+    if cached is not None:
+        return [Stay.model_validate(dict(row, trip_id=trip_id)) for row in cached]
+    stays = []
+    if is_geoapify_configured() and can_call_geoapify():
+        try:
+            record_geoapify_call()
+            response = requests.get('https://api.geoapify.com/v2/places', params={
+                'categories': 'accommodation', 'filter': f'circle:{lon},{lat},{radius_meters}',
+                'bias': f'proximity:{lon},{lat}', 'limit': min(100, limit*3), 'apiKey': get_geoapify_key()},
+                timeout=PROVIDER_HTTP_TIMEOUT_SECONDS)
+            if response.ok:
+                for feature in response.json().get('features', []):
+                    p = feature.get('properties') or {}
+                    categories = p.get('categories') or []
+                    if not any(c == 'accommodation' or c.startswith('accommodation.') for c in categories):
+                        continue
+                    if str(p.get('country_code', '')).lower() != 'in' or not p.get('name'):
+                        continue
+                    a,b = p.get('lat'),p.get('lon')
+                    if a is None or b is None or not is_in_india(a,b):
+                        continue
+                    distance = haversine_distance_km(lat,lon,a,b)
+                    if distance > radius_meters/1000:
+                        continue
+                    stars = (p.get('accommodation') or {}).get('stars') or p.get('stars')
+                    stars = float(stars) if stars else None
+                    known_tier = 'luxury' if stars and stars >= 5 else 'boutique' if stars and stars >= 4 else 'mid_range' if stars and stars >= 3 else None
+                    if known_tier and known_tier != tier:
+                        continue
+                    if known_tier and estimated_nightly_budget is not None and STAY_RATES_INR[known_tier][0] > estimated_nightly_budget:
+                        continue
+                    stays.append(Stay(stay_id='stay_'+str(p.get('place_id',len(stays))), trip_id=trip_id,
+                        name=p['name'], stay_type=known_tier or 'hotel', tier=known_tier,
+                        tier_label=TIER_LABELS.get(known_tier, 'Tier unverified'), lat=a,lon=b,
+                        distance_km=round(distance,2),address=p.get('formatted'),
+                        neighbourhood=p.get('suburb') or p.get('district'), stars=stars,
+                        estimated_nightly_budget=estimated_nightly_budget,
+                        external_search_url='https://www.google.com/maps/search/?api=1&query='+urllib.parse.quote(p['name']+' '+str(a)+','+str(b)),
+                        label='Live place listing; rates and tier require confirmation',
+                        provenance=Provenance(source='geoapify',is_live=True,is_estimate=True,
+                            notes='Listing only, not a live price. Filtered by known tier; unknown tiers retained for verification.')))
+        except Exception:
+            pass
+    stays.sort(key=lambda s: (s.tier is None, s.distance_km))
     if not stays:
-        # Generic offline types fallback
-        generic_types = [
-            ("Budget Guesthouse / Homestay", "budget_guesthouse"),
-            ("Comfort Boutique Hotel", "boutique_hotel"),
-            ("Heritage Resort & Spa", "resort"),
-        ]
-        for idx, (t_name, t_code) in enumerate(generic_types):
-            stays.append(Stay(
-                stay_id=f"stay_generic_{idx}",
-                trip_id=trip_id,
-                name=t_name,
-                stay_type=t_code,
-                lat=lat,
-                lon=lon,
-                estimated_nightly_budget=estimated_nightly_budget,
-                external_search_url="https://www.google.com/travel/hotels",
-                provenance=Provenance(
-                    source="curated_catalogue",
-                    is_live=False,
-                    is_estimate=True,
-                    notes="offline estimate generic stay type"
-                )
-            ))
-
-    set_cached(cache_key, [s.model_dump() for s in stays], TTL_PLACES_SECONDS)
-    return stays
+        for i, area in enumerate(areas_for_destination(destination_id,lat,lon)):
+            distance = haversine_distance_km(lat,lon,area['lat'],area['lon'])
+            if distance > radius_meters/1000:
+                continue
+            stays.append(Stay(stay_id=f'area_{destination_id or str(lat)}_{i}', trip_id=trip_id,
+                name=area['area_name'],kind='area',stay_type=tier,tier=tier,tier_label=TIER_LABELS[tier],
+                lat=area['lat'],lon=area['lon'],estimated_nightly_budget=estimated_nightly_budget,neighbourhood=area['area_name'],distance_km=round(distance,2),
+                price_bands=area['price_bands'],label=area['label'],external_search_url=area['external_search_url'],
+                provenance=Provenance(source='curated_catalogue',is_live=False,is_estimate=True,
+                    notes='Offline estimate. Indicative - no live listings; neighbourhood, not a hotel.')))
+    rows = [s.model_dump() for s in stays[:limit]]
+    set_cached(key, rows, TTL_PLACES_SECONDS)
+    return [Stay.model_validate(row) for row in rows]
 
 
 def calculate_travel_leg(

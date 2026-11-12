@@ -75,13 +75,18 @@ def test_no_price_field_in_accommodations():
         assert "google.com" in s.external_search_url
 
 
-def test_offline_fallback_labeled():
-    # Coordinate with zero live hotels triggers generic fallback
-    stays_fallback = get_accommodations(lat=1.0, lon=1.0, trip_id="trip_remote", limit=3)
+def test_offline_fallback_labeled(monkeypatch):
+    # Offline fallback is an Indian neighbourhood, never a fabricated hotel.
+    # Outside-India rejection is covered separately in planner regressions.
+    monkeypatch.setattr("app.providers.geo.is_geoapify_configured", lambda: False)
+    stays_fallback = get_accommodations(lat=26.9124, lon=75.7873, trip_id="trip_remote", limit=3)
     assert len(stays_fallback) > 0
     first = stays_fallback[0]
     assert first.provenance.is_live is False
     assert first.provenance.source == "curated_catalogue" or "offline" in str(first.provenance.notes).lower()
+    assert first.kind == "area"
+    assert first.label == "Indicative - no live listings"
+    assert first.distance_km <= 12
 
 
 def test_save_and_load_stay_contract():

@@ -6,6 +6,36 @@ and explicitly labelled 'team assumption, not measured'.
 """
 from typing import Dict, Any
 
+# Indicative INR planning assumptions, never live quotes. Room prices are per
+# room/night (hostels are conservatively budgeted as private/shared rooms).
+STAY_RATES_INR = {'hostel': (600, 900), 'budget': (1000, 1600),
+                  'mid_range': (2200, 3500), 'boutique': (4000, 6500),
+                  'luxury': (8000, 14000)}
+TIER_LABELS = {'hostel': 'Hostel', 'budget': 'Budget', 'mid_range': 'Mid-range',
+               'boutique': 'Boutique & Heritage', 'luxury': 'Luxury'}
+# At most two travellers per room, including children; conservative, no free beds.
+ROOM_OCCUPANCY = 2
+# Round-trip road distance uses CIRCUITY_FACTOR; per-person per-km and one-way
+# fare floors for public transit, taxi/car, scooter and walking (intercity by bus).
+INTERCITY_RATES_INR = {'public_transit': (1.8, 250), 'taxi': (7, 800),
+                       'rental_car': (6, 700), 'scooter': (3, 300), 'walking': (1.8, 250)}
+LOCAL_DAILY_INR = {'public_transit': 180, 'taxi': 900, 'rental_car': 750,
+                   'scooter': 350, 'walking': 60}
+# Meals, drinking water and snacks per person/day, scaled by stay tier.
+FOOD_DAILY_INR = {'street_food': 400, 'local': 650, 'all': 650,
+                  'vegetarian': 600, 'vegan': 700, 'fine_dining': 1500}
+FOOD_TIER_MULTIPLIER = {'hostel': 1, 'budget': 1.1, 'mid_range': 1.25,
+                        'boutique': 1.5, 'luxury': 2}
+INCIDENTALS_DAILY_INR = 90  # data, shoe storage and small necessary incidentals
+SHOPPING_INR = 1500  # optional per-person trip allowance
+CONTINGENCY_RATE = .10  # reserve on all planned expenses
+CHILD_ENTRY_FACTOR = .5  # indicative only; confirm actual ticket eligibility/ages
+SENIOR_ENTRY_FACTOR = 1.0  # no unverified senior concession assumed
+UNKNOWN_ENTRY_INR = 150  # only used when no catalogue ticket value is available
+LEGACY_USD_TO_INR = 83  # explicitly marked legacy catalogue currency conversion
+BUDGET_BAND_LABELS = {'insufficient': 'Below minimum',
+                      'budget_conscious': 'Budget-Conscious', 'comfortable': 'Comfortable'}
+
 # Transport speeds (km/h) across local Indian transit modes
 # team assumption, not measured: typical Indian pedestrian walking speed with stops
 SPEED_WALK_KMH: float = 4.5
@@ -161,3 +191,15 @@ PROVIDER_HTTP_TIMEOUT_SECONDS: float = 8.0
 CACHE_TTL_DAYS_PLACES: int = 7
 # team assumption, not measured: cache time-to-live in hours for dynamic weather forecasts
 CACHE_TTL_HOURS_WEATHER: int = 1
+
+# Indicative transport comparison assumptions; same shared model supplies leg
+# and daily option estimates. These are not quotes from cab/rental operators.
+LOCAL_LEG_RATE_INR = {'walk':0, 'auto':18, 'cab':26, 'rental_car':32, 'scooter':8, 'bus_metro':5}
+LOCAL_LEG_BASE_INR = 50
+RENTAL_DAY_INR = 2500
+RENTAL_INCLUDED_KM = 80
+RENTAL_EXTRA_KM_INR = 16
+CAB_PICKUP_INR = 60
+PUBLIC_BOARDING_INR = 25
+PUBLIC_CONNECTOR_KM_INR = 12
+FALLBACK_CATEGORY_PRICE_INR = {'culture_history':250, 'food_dining':450, 'other':150}

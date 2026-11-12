@@ -2,6 +2,30 @@
 import pytest
 from fastapi.testclient import TestClient
 
+
+@pytest.fixture(autouse=True)
+def prevent_unmocked_provider_network(monkeypatch):
+    """Keep tests deterministic; each live-provider test supplies its own mock.
+
+    Patch outbound transports, not TestClient's in-process ASGI transport.
+    This also prevents real Geoapify credit consumption during the test suite.
+    """
+    import requests
+    import httpx
+
+    def requests_offline(*args, **kwargs):
+        raise requests.ConnectionError('Unmocked provider network disabled in tests')
+
+    def urllib_offline(*args, **kwargs):
+        raise OSError('Unmocked provider network disabled in tests')
+
+    def httpx_offline(*args, **kwargs):
+        raise httpx.ConnectError('Unmocked provider network disabled in tests')
+
+    monkeypatch.setattr(requests.Session, 'request', requests_offline)
+    monkeypatch.setattr('urllib.request.urlopen', urllib_offline)
+    monkeypatch.setattr(httpx.HTTPTransport, 'handle_request', httpx_offline)
+
 @pytest.fixture(autouse=True)
 def isolate_test_db(tmp_path, monkeypatch):
     import app.database as database

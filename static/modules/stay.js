@@ -1,5 +1,5 @@
 // Stay and Accommodation Module UI (Person B)
-// Plugs into Travel Companion via TravelModules.register("stay", ...)
+// Plugs into the planner via TravelModules.register("stay", ...)
 
 (function () {
   function escapeHtml(str) {
@@ -238,17 +238,17 @@
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2">
                 <span class="text-xs font-bold text-slate-800">${escapeHtml(h.name)}</span>
-                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 capitalize">${escapeHtml(h.stay_type.replace('_', ' '))}</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 capitalize">${escapeHtml(h.tier_label || humanLabel(h.stay_type))}</span>
               </div>
-              <p class="text-xs text-slate-400 mt-0.5 truncate">${escapeHtml(h.address || 'Address provided upon booking')}</p>
+              <p class="text-xs text-slate-400 mt-0.5 whitespace-normal">${escapeHtml(stayDescription(h))}</p>
             </div>
             <div class="flex items-center gap-2">
               <a href="${escapeHtml(h.external_search_url)}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1">
-                <span>View Rates</span>
+                <span>Find hotels here</span>
                 <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
               </a>
               <button class="staySelectBtn px-3 py-1 text-xs font-bold rounded bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
-                Select Stay
+                ${h.kind === "area" ? "Use area as base" : "Select Stay"}
               </button>
             </div>
           `;

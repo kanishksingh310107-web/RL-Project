@@ -220,7 +220,9 @@ def extract_context_vector(
     x[21] = crowd_map.get(activity.get("crowd_level", "moderate"), 0.5)
 
     # Activity Cost
-    cost_amount = float(activity.get("cost_amount", 0.0))
+    from app.core.assumptions import UNKNOWN_ENTRY_INR
+    raw_cost = activity.get('cost_amount')
+    cost_amount = float(raw_cost) if raw_cost is not None else UNKNOWN_ENTRY_INR
     x[22] = min(1.0, cost_amount / 120.0)
 
     # Proximity bonus with preceding activity

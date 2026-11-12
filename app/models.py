@@ -1,5 +1,5 @@
 # Data models for auth and traveller profile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 
 # Auth models
@@ -258,7 +258,29 @@ class ShortlistResponse(BaseModel):
 # ADAPTIVE PRE-TRIP ITINERARY PLANNER MODELS
 # =============================================================
 
+class Party(BaseModel):
+    adults: int = Field(1, ge=1)
+    children: int = Field(0, ge=0)
+    seniors: int = Field(0, ge=0)
+
+
 class TripCreate(BaseModel):
+    party: Optional[Party] = None
+    @model_validator(mode='after')
+    def sync_party(self):
+        from app.core.party import normalize_party, party_type
+        explicitly_solo = 'companions' in self.model_fields_set and self.companions == 'solo'
+        composition = normalize_party(self.model_dump())
+        if explicitly_solo and (sum(composition.values()) > 1 or self.travellers_count > 1):
+            raise ValueError('Solo requires exactly one adult. Change the party type or traveller counts.')
+        self.party = Party(**composition)
+        self.travellers_count = sum(composition.values())
+        self.companions = party_type(composition)
+        self.has_children = composition['children'] > 0
+        self.has_elderly = composition['seniors'] > 0
+        self.trip_preferences = dict(self.trip_preferences or {}, party=composition)
+        return self
+
     destination_id: str
     destination_name: Optional[str] = None
     destination_lat: Optional[float] = None
@@ -267,7 +289,7 @@ class TripCreate(BaseModel):
     start_date: str # YYYY-MM-DD
     end_date: str # YYYY-MM-DD
     duration_days: Optional[int] = None
-    travellers_count: int = 1
+    travellers_count: int = Field(1, ge=1)
     companions: Optional[str] = "solo"
     has_children: Optional[bool] = False
     has_elderly: Optional[bool] = False
@@ -287,6 +309,17 @@ class TripCreate(BaseModel):
     stay_type: Optional[str] = None
 
 class TripResponse(BaseModel):
+    cost_breakdown: Dict[str, Any] = {}
+    assumptions: Dict[str, Any] = {}
+    confidence: str = 'indicative'
+
+    party: Optional[Party] = None
+    party_type: Optional[str] = None
+    party_label: Optional[str] = None
+    status: str = 'planned'
+    message: Optional[str] = None
+    cost_estimate: Optional[Dict[str, Any]] = None
+
     id: str
     user_id: str
     destination_id: str
@@ -348,6 +381,11 @@ class ItineraryDayModel(BaseModel):
     total_duration_minutes: int
 
 class ItineraryResponse(BaseModel):
+    cost_breakdown: Dict[str, Any] = {}
+    cost_estimate: Dict[str, Any] = {}
+    assumptions: Dict[str, Any] = {}
+    confidence: str = 'indicative'
+
     id: str
     trip_id: str
     user_id: str
@@ -423,13 +461,18 @@ class SliderConfig(BaseModel):
     step: float
 
 class MinimumBudgetRequest(BaseModel):
+    party: Optional[Party] = None
+    food_style: Optional[str] = None
+    destination_lat: Optional[float] = None
+    destination_lon: Optional[float] = None
+
     destination_id: Optional[str] = None
     destination_name: Optional[str] = None
     departure_location: Optional[str] = "Delhi"
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     duration_days: Optional[int] = None
-    travellers_count: int = 1
+    travellers_count: int = Field(1, ge=1)
     accommodation_tier: Optional[str] = "boutique"
     transit_pref: Optional[str] = "public_transit"
     travel_pace: Optional[str] = "balanced"
@@ -437,6 +480,12 @@ class MinimumBudgetRequest(BaseModel):
     user_id: Optional[str] = None
 
 class MinimumBudgetResponse(BaseModel):
+    budget_band_labels: Dict[str, str] = {}
+
+    cost_breakdown: Dict[str, Any] = {}
+    assumptions: Dict[str, Any] = {}
+    confidence: str = 'indicative'
+
     destination: Dict[str, Any]
     departure_location: str
     duration_days: int
