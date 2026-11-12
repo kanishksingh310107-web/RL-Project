@@ -35,6 +35,10 @@ app.include_router(registry_router)
 for _m in discover():
     app.include_router(_m.router)
 
+# C: register the runtime router and its itinerary editing guard.
+from app.modules.live import include_c_router
+include_c_router(app)
+
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -48,6 +52,7 @@ def startup():
     run_b_migration()
     # end B: schedule preferences migration
     init_module_tables()
+    __import__('app.db_migrations_c', fromlist=['migrate_c']).migrate_c()  # C: runtime schema
 
 @app.get("/")
 def home():
