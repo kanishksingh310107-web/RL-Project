@@ -261,6 +261,9 @@ class ShortlistResponse(BaseModel):
 class TripCreate(BaseModel):
     destination_id: str
     destination_name: Optional[str] = None
+    destination_lat: Optional[float] = None
+    destination_lon: Optional[float] = None
+    resolved_location: Optional[str] = None
     start_date: str # YYYY-MM-DD
     end_date: str # YYYY-MM-DD
     duration_days: Optional[int] = None
@@ -288,6 +291,9 @@ class TripResponse(BaseModel):
     user_id: str
     destination_id: str
     destination_name: str
+    destination_lat: Optional[float] = None
+    destination_lon: Optional[float] = None
+    resolved_location: Optional[str] = None
     start_date: str
     end_date: str
     duration_days: int
@@ -346,7 +352,13 @@ class ItineraryResponse(BaseModel):
     trip_id: str
     user_id: str
     title: str
+    destination_id: Optional[str] = None
     destination_name: str
+    destination_lat: Optional[float] = None
+    destination_lon: Optional[float] = None
+    resolved_location: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     total_days: int
     status: str
     total_estimated_cost: float

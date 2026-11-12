@@ -1453,6 +1453,8 @@ function planTripFromExplore() {
   }
 
   const d = currentExploredDestination;
+  selectedDynamicLocation = null;
+  clearTripCitySearch();
   closeModal("exploreModal");
   toggleTripFormModal();
 
@@ -1475,6 +1477,7 @@ function planTripFromExplore() {
       destSelect.add(opt, 0);
       destSelect.selectedIndex = 0;
     }
+    handleFeaturedDestinationChange(destSelect.value);
   }
 
   // Pre-fill budget if recommended budget available
@@ -2140,126 +2143,71 @@ async function runLiveAcademicBenchmark() {
 }
 
 // ==========================================
-// DYNAMIC INDIA LOCATION DISCOVERY & GPS ENGINE (MODE A & MODE B)
+// UNIFIED TRIP LOCATION SEARCH, GPS & NEARBY PLACE DISCOVERY
 // ==========================================
-let activeDynamicLocation = null;
 let selectedDynamicLocation = null;
+let activeTripCoords = null;
 let currentDynamicRadius = 15000;
-let _dynamicSearchTimer = null;
+let _citySearchTimer = null;
+let _lastCitySearchResults = [];
 
-function clearDynamicSearch() {
-  const input = document.getElementById("dynamicLocationSearchInput");
-  const suggestions = document.getElementById("dynamicLocationSuggestions");
-  const clearBtn = document.getElementById("dynamicClearBtn");
+const FEATURED_DESTINATION_COORDS = {
+  manali_spiti_india: { name: "Manali & Spiti Valley", city: "Manali", state: "Himachal Pradesh", lat: 32.2432, lon: 77.1892 },
+  rishikesh_haridwar_india: { name: "Rishikesh & Haridwar", city: "Rishikesh", state: "Uttarakhand", lat: 30.0869, lon: 78.2676 },
+  leh_ladakh_india: { name: "Leh Ladakh", city: "Leh", state: "Ladakh", lat: 34.1526, lon: 77.5771 },
+  varanasi_india: { name: "Varanasi", city: "Varanasi", state: "Uttar Pradesh", lat: 25.3176, lon: 82.9739 },
+  udaipur_mewar_india: { name: "Udaipur & Mewar", city: "Udaipur", state: "Rajasthan", lat: 24.5854, lon: 73.7125 },
+  jaipur_jodhpur_india: { name: "Jaipur & Jodhpur", city: "Jaipur", state: "Rajasthan", lat: 26.9124, lon: 75.7873 },
+  south_goa_india: { name: "South Goa", city: "South Goa", state: "Goa", lat: 15.2736, lon: 73.9580 },
+  kerala_alleppey_india: { name: "Munnar & Alleppey (Kerala)", city: "Alleppey", state: "Kerala", lat: 9.4981, lon: 76.3388 },
+  hampi_india: { name: "Hampi", city: "Hampi", state: "Karnataka", lat: 15.3350, lon: 76.4600 },
+  ooty_coorg_india: { name: "Ooty & Coorg", city: "Ooty", state: "Tamil Nadu & Karnataka", lat: 11.4102, lon: 76.6950 },
+  darjeeling_gangtok_india: { name: "Darjeeling & Gangtok", city: "Darjeeling", state: "West Bengal & Sikkim", lat: 27.0410, lon: 88.2663 },
+  meghalaya_shillong_india: { name: "Meghalaya (Shillong & Cherrapunji)", city: "Shillong", state: "Meghalaya", lat: 25.5788, lon: 91.8933 }
+};
+
+function clearTripCitySearch() {
+  const input = document.getElementById("tripCitySearchInput");
+  const resultsEl = document.getElementById("citySearchResults");
+  const clearBtn = document.getElementById("tripCityClearBtn");
   if (input) input.value = "";
-  if (suggestions) {
-    suggestions.classList.add("hidden");
-    suggestions.innerHTML = "";
+  if (resultsEl) {
+    resultsEl.classList.add("hidden");
+    resultsEl.innerHTML = "";
   }
   if (clearBtn) clearBtn.classList.add("hidden");
 }
 
 function handleRadiusChange(val) {
-  currentDynamicRadius = parseInt(val) || 15000;
-  if (activeDynamicLocation && activeDynamicLocation.lat && activeDynamicLocation.lon) {
-    fetchDynamicPlaces(activeDynamicLocation.lat, activeDynamicLocation.lon, currentDynamicRadius);
+  currentDynamicRadius = parseInt(val, 10) || 15000;
+  const coords = selectedDynamicLocation || activeTripCoords;
+  if (coords && coords.lat !== undefined && coords.lon !== undefined) {
+    fetchTripNearbyPlaces(coords.lat, coords.lon, currentDynamicRadius);
   }
 }
 
-function handleDynamicLocationSearch(val) {
-  clearTimeout(_dynamicSearchTimer);
-  const suggestions = document.getElementById("dynamicLocationSuggestions");
-  const clearBtn = document.getElementById("dynamicClearBtn");
-  if (!suggestions) return;
+function updateDestinationSourceBanner(loc, provenanceText, isLive) {
+  const sourceInfo = document.getElementById("destinationSourceInfo");
+  const sourceText = document.getElementById("destinationSourceText");
+  const provBadge = document.getElementById("destinationProvenanceBadge");
+  if (!sourceInfo || !sourceText) return;
 
-  const query = (val || "").trim();
-  if (clearBtn) {
-    if (query.length > 0) clearBtn.classList.remove("hidden");
-    else clearBtn.classList.add("hidden");
-  }
+  const latVal = Number(loc.lat ?? loc.latitude);
+  const lonVal = Number(loc.lon ?? loc.longitude);
+  const latStr = Number.isFinite(latVal) ? latVal.toFixed(3) : "--";
+  const lonStr = Number.isFinite(lonVal) ? lonVal.toFixed(3) : "--";
+  const displayName = loc.formatted || `${loc.name || loc.city}, ${loc.state || "India"}`;
 
-  if (query.length < 2) {
-    suggestions.classList.add("hidden");
-    suggestions.innerHTML = "";
-    return;
-  }
+  sourceInfo.classList.remove("hidden");
+  sourceText.textContent = `${displayName} (${latStr}° N, ${lonStr}° E)`;
 
-  _dynamicSearchTimer = setTimeout(async () => {
-    try {
-      suggestions.classList.remove("hidden");
-      suggestions.innerHTML = '<div class="p-3 text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Searching Indian locations via Geoapify...</div>';
-
-      const res = await fetch(`/api/places/search-locations?q=${encodeURIComponent(query)}&limit=6`);
-      if (!res.ok) throw new Error("Search request failed");
-      const data = await res.json();
-      const results = data.results || [];
-
-      if (results.length === 0) {
-        suggestions.innerHTML = '<div class="p-3 text-slate-500 text-xs">No matching Indian locations found. Please check spelling.</div>';
-        return;
-      }
-
-      suggestions.innerHTML = results.map(loc => {
-        const itemStr = JSON.stringify(loc).replace(/"/g, '&quot;');
-        const isLive = loc.provenance && loc.provenance.is_live;
-        const provBadge = isLive 
-          ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">Live Geoapify</span>'
-          : '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">Curated</span>';
-
-        return `
-          <div onclick="selectDynamicLocation(${itemStr})"
-               class="p-3 hover:bg-indigo-50 cursor-pointer flex items-center justify-between text-xs transition">
-            <div class="flex items-center gap-2.5">
-              <i class="fa-solid fa-location-dot text-indigo-600"></i>
-              <div>
-                <span class="font-bold text-slate-900 block">${loc.name}</span>
-                <span class="text-slate-500 text-[11px]">${loc.formatted || (loc.city + ', ' + loc.state)}</span>
-              </div>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-[10px] text-slate-400 font-mono">${loc.lat.toFixed(2)}°, ${loc.lon.toFixed(2)}°</span>
-              ${provBadge}
-            </div>
-          </div>
-        `;
-      }).join("");
-    } catch (err) {
-      console.warn("Location search error:", err);
-      suggestions.innerHTML = `<div class="p-3 text-rose-600 text-xs">${err.message || 'Error searching locations'}</div>`;
-    }
-  }, 300);
-}
-
-async function selectDynamicLocation(loc) {
-  const suggestions = document.getElementById("dynamicLocationSuggestions");
-  const input = document.getElementById("dynamicLocationSearchInput");
-  if (suggestions) suggestions.classList.add("hidden");
-  if (input) input.value = loc.formatted || `${loc.name}, ${loc.state}`;
-
-  activeDynamicLocation = loc;
-  selectedDynamicLocation = loc;
-  updateDynamicStatusBar(loc);
-  await fetchDynamicPlaces(loc.lat, loc.lon, currentDynamicRadius);
-}
-
-function updateDynamicStatusBar(loc) {
-  const bar = document.getElementById("dynamicLocationStatusBar");
-  const nameEl = document.getElementById("activeLocationName");
-  const coordsEl = document.getElementById("activeLocationCoords");
-  const provEl = document.getElementById("activeLocationProvenance");
-
-  if (!bar || !nameEl) return;
-  bar.classList.remove("hidden");
-  nameEl.textContent = loc.formatted || `${loc.name}, ${loc.state}`;
-  if (coordsEl) coordsEl.textContent = `(${loc.lat.toFixed(3)}° N, ${loc.lon.toFixed(3)}° E)`;
-  if (provEl) {
-    const isLive = loc.provenance && loc.provenance.is_live;
+  if (provBadge) {
     if (isLive) {
-      provEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
-      provEl.textContent = "Live Geoapify";
+      provBadge.className = "text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold";
+      provBadge.textContent = provenanceText || "Live Geoapify";
     } else {
-      provEl.className = "text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30";
-      provEl.textContent = "Curated Catalogue";
+      provBadge.className = "text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold";
+      provBadge.textContent = provenanceText || "Curated Catalogue";
     }
   }
 }
@@ -2273,7 +2221,7 @@ async function detectUserLocation() {
 
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Locating GPS...';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Locating...</span>';
   }
 
   navigator.geolocation.getCurrentPosition(
@@ -2289,22 +2237,26 @@ async function detectUserLocation() {
           throw new Error(data.detail || "Unable to resolve your GPS position.");
         }
 
-        const loc = data.location;
-        activeDynamicLocation = loc;
-        selectedDynamicLocation = loc;
-        const input = document.getElementById("dynamicLocationSearchInput");
-        if (input) input.value = loc.formatted || `${loc.name}, ${loc.city}`;
-
-        updateDynamicStatusBar(loc);
-        await fetchDynamicPlaces(lat, lon, currentDynamicRadius);
+        const loc = data.location || {
+          name: data.city || "Current Location",
+          city: data.city || "Current Location",
+          state: data.state || "India",
+          country: data.country || "India",
+          formatted: data.formatted,
+          lat: data.lat ?? lat,
+          lon: data.lon ?? lon,
+          provenance: data.provenance || {}
+        };
+        const isLive = Boolean(loc.provenance && loc.provenance.is_live);
+        await selectGeocodedCity(loc, isLive ? "geoapify" : "curated");
       } catch (err) {
         alert(err.message || "Failed to resolve your GPS location.");
-        const input = document.getElementById("dynamicLocationSearchInput");
+        const input = document.getElementById("tripCitySearchInput");
         if (input) input.focus();
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> <span>Use My Current Location</span>';
+          btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> <span>Use My Location</span>';
         }
       }
     },
@@ -2318,44 +2270,51 @@ async function detectUserLocation() {
         msg = "Location request timed out. Please try again or search manually.";
       }
       alert(msg);
-      const input = document.getElementById("dynamicLocationSearchInput");
+      const input = document.getElementById("tripCitySearchInput");
       if (input) input.focus();
 
       if (btn) {
         btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> <span>Use My Current Location</span>';
+        btn.innerHTML = '<i class="fa-solid fa-location-crosshairs"></i> <span>Use My Location</span>';
       }
     },
     { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
   );
 }
 
-async function fetchDynamicPlaces(lat, lon, radius) {
-  const area = document.getElementById("dynamicPlacesArea");
-  const grid = document.getElementById("dynamicPlacesGrid");
-  const countText = document.getElementById("discoveredCountText");
+async function fetchTripNearbyPlaces(lat, lon, radius) {
+  const area = document.getElementById("tripNearbyPlacesArea");
+  const grid = document.getElementById("tripNearbyPlacesGrid");
+  const countText = document.getElementById("tripDiscoveredCountText");
   if (!area || !grid) return;
 
+  const numLat = Number(lat);
+  const numLon = Number(lon);
+  if (!Number.isFinite(numLat) || !Number.isFinite(numLon)) {
+    area.classList.add("hidden");
+    return;
+  }
+
   area.classList.remove("hidden");
-  grid.innerHTML = '<div class="col-span-full py-8 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Fetching real-world places and scoring with LinUCB...</div>';
+  grid.innerHTML = '<div class="col-span-full py-4 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1.5 text-indigo-600"></i>Discovering nearby places &amp; scoring with LinUCB...</div>';
 
   try {
-    const userId = state.currentUser ? state.currentUser.user_id : '';
-    const res = await fetch(`/api/places/discover?lat=${lat}&lon=${lon}&radius_meters=${radius}&user_id=${encodeURIComponent(userId)}&limit=15`);
+    const userId = state.currentUser ? state.currentUser.user_id : "";
+    const res = await fetch(`/api/places/discover?lat=${numLat}&lon=${numLon}&radius_meters=${radius}&user_id=${encodeURIComponent(userId)}&limit=12`);
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to discover places");
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to discover nearby places");
     }
 
     const data = await res.json();
     const places = data.places || [];
 
     if (countText) {
-      countText.textContent = `${places.length} places discovered (${(radius / 1000).toFixed(0)} km radius)`;
+      countText.textContent = `${places.length} places (${(radius / 1000).toFixed(0)} km · feeds LinUCB planner)`;
     }
 
     if (places.length === 0) {
-      grid.innerHTML = '<div class="col-span-full py-8 text-center text-slate-400 text-xs">No attractions found within this radius. Try selecting a wider search radius.</div>';
+      grid.innerHTML = '<div class="col-span-full py-4 text-center text-slate-500 text-xs">No nearby attractions found in this radius. Try widening the discovery radius.</div>';
       return;
     }
 
@@ -2369,73 +2328,63 @@ async function fetchDynamicPlaces(lat, lon, radius) {
       scenic: "fa-mountain-sun"
     };
 
-    grid.innerHTML = places.map((p, idx) => {
-      const icon = armIcons[p.arm] || "fa-map-pin";
+    grid.innerHTML = places.map(p => {
+      const arm = p.arm || p.category || "culture_history";
+      const icon = armIcons[arm] || "fa-map-pin";
       const isLive = p.provenance && p.provenance.is_live;
       const provBadge = isLive
-        ? '<span class="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Live Geoapify</span>'
-        : '<span class="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">Curated</span>';
-
+        ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Live</span>'
+        : '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">Curated</span>';
       const distBadge = p.distance_km !== null && p.distance_km !== undefined
-        ? `<span class="text-[10px] text-slate-300 flex items-center gap-1"><i class="fa-solid fa-route text-indigo-400"></i> ${p.distance_km} km away</span>`
-        : '';
-
+        ? `<span><i class="fa-solid fa-route text-indigo-500 mr-1"></i>${p.distance_km} km</span>`
+        : "";
       const scoreBadge = p.score !== undefined
-        ? `<span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/30 text-indigo-200">LinUCB: ${p.score.toFixed(2)}</span>`
-        : '';
+        ? `<span class="font-mono px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">LinUCB ${Number(p.score).toFixed(2)}</span>`
+        : "";
 
       return `
-        <div class="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 flex flex-col justify-between space-y-3 transition">
-          <div class="space-y-2">
-            <div class="flex items-start justify-between gap-2">
-              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-white/10 text-slate-200">
-                <i class="fa-solid ${icon} text-indigo-400"></i> ${(p.arm || p.category).replace('_', ' ').toUpperCase()}
-              </span>
-              ${provBadge}
-            </div>
-            <div>
-              <h4 class="font-bold text-sm text-white">${p.name}</h4>
-              <p class="text-[11px] text-slate-300 mt-0.5">${p.neighbourhood || p.address || 'Local point of interest'}</p>
-            </div>
+        <div class="bg-white border border-slate-200 rounded-lg p-2.5 flex flex-col justify-between gap-1.5 text-[11px] shadow-2xs">
+          <div class="flex items-start justify-between gap-1.5">
+            <span class="inline-flex items-center gap-1 text-[9px] font-bold uppercase text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+              <i class="fa-solid ${icon}"></i> ${escapeHtml(arm.replace(/_/g, " "))}
+            </span>
+            ${provBadge}
           </div>
-
-          <div class="space-y-2 pt-2 border-t border-white/10 text-[11px]">
-            <div class="flex items-center justify-between">
-              ${distBadge}
-              ${scoreBadge}
-            </div>
-            ${p.match_reason ? `<div class="text-[10px] text-emerald-300 bg-emerald-950/40 border border-emerald-800/40 p-1.5 rounded"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>${p.match_reason}</div>` : ''}
-            ${p.opening_hours ? `<div class="text-[10px] text-slate-400"><i class="fa-regular fa-clock mr-1"></i>${p.opening_hours}</div>` : ''}
+          <div>
+            <div class="font-bold text-slate-800 leading-snug truncate" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
+            <div class="text-[10px] text-slate-500 truncate">${escapeHtml(p.neighbourhood || p.address || "Local attraction")}</div>
+          </div>
+          <div class="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+            ${distBadge}
+            ${scoreBadge}
           </div>
         </div>
       `;
     }).join("");
-
   } catch (err) {
-    grid.innerHTML = `<div class="col-span-full py-8 text-center text-rose-400 text-xs">${err.message || 'Failed to load places'}</div>`;
+    grid.innerHTML = `<div class="col-span-full py-4 text-center text-rose-500 text-xs">${escapeHtml(err.message || "Failed to load nearby places")}</div>`;
   }
 }
 
-function openPlanModalForActiveLocation() {
-  if (!activeDynamicLocation) {
-    alert("Please search an Indian location or detect your GPS position first.");
+async function handleFeaturedDestinationChange(destId) {
+  if (!destId) return;
+  if (destId.startsWith("geo_")) {
+    if (selectedDynamicLocation) {
+      await fetchTripNearbyPlaces(selectedDynamicLocation.lat, selectedDynamicLocation.lon, currentDynamicRadius);
+    }
     return;
   }
-  openTripModalWithLocation(activeDynamicLocation);
-}
 
-function openTripModalWithLocation(loc) {
-  selectGeocodedCity({
-    name: loc.name || loc.city,
-    city: loc.city,
-    admin1: loc.state,
-    country: "India",
-    latitude: loc.lat,
-    longitude: loc.lon,
-    formatted: loc.formatted
-  }, loc.provenance && loc.provenance.is_live ? "geoapify" : "curated");
+  selectedDynamicLocation = null;
+  clearTripCitySearch();
+  if (typeof clearOptionAHotel === "function") clearOptionAHotel();
 
-  openModal("tripFormModal");
+  const meta = FEATURED_DESTINATION_COORDS[destId];
+  if (meta) {
+    activeTripCoords = { ...meta };
+    updateDestinationSourceBanner(meta, "Curated Catalogue", false);
+    await fetchTripNearbyPlaces(meta.lat, meta.lon, currentDynamicRadius);
+  }
   calculateTripMinimumBudget();
 }
 
@@ -2468,13 +2417,17 @@ function isIndianTrip(trip) {
   return isIndianDestinationId(trip.destination_id);
 }
 
-let _citySearchTimer = null;
 async function handleCitySearchInput(val) {
   clearTimeout(_citySearchTimer);
   const resultsEl = document.getElementById("citySearchResults");
+  const clearBtn = document.getElementById("tripCityClearBtn");
   if (!resultsEl) return;
 
   const query = (val || "").trim();
+  if (clearBtn) {
+    clearBtn.classList.toggle("hidden", query.length === 0);
+  }
+
   if (query.length < 2) {
     resultsEl.classList.add("hidden");
     resultsEl.innerHTML = "";
@@ -2484,75 +2437,109 @@ async function handleCitySearchInput(val) {
   _citySearchTimer = setTimeout(async () => {
     try {
       resultsEl.classList.remove("hidden");
-      resultsEl.innerHTML = '<div class="p-2.5 text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Searching Open-Meteo...</div>';
-      
+      resultsEl.innerHTML = '<div class="p-2.5 text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Searching Indian cities &amp; destinations...</div>';
+
       const res = await fetch(`/api/places/search-locations?q=${encodeURIComponent(query)}&limit=6`);
+      if (!res.ok) throw new Error("Location search failed");
       const data = await res.json();
       const results = data.results || [];
-      const src = data.source || "api";
+      _lastCitySearchResults = results;
 
       if (results.length === 0) {
-        resultsEl.innerHTML = '<div class="p-2.5 text-slate-400 text-xs">No matching cities found. Try another spelling.</div>';
+        resultsEl.innerHTML = '<div class="p-2.5 text-slate-500 text-xs">No matching Indian locations found. Try another spelling.</div>';
         return;
       }
 
-      resultsEl.innerHTML = results.map(r => {
-        const itemStr = JSON.stringify(r).replace(/"/g, '&quot;');
+      resultsEl.innerHTML = results.map((loc, idx) => {
+        const isLive = Boolean(loc.provenance && loc.provenance.is_live);
+        const provBadge = isLive
+          ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">Live Geoapify</span>'
+          : '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">Curated</span>';
+        const latVal = Number(loc.lat ?? loc.latitude);
+        const lonVal = Number(loc.lon ?? loc.longitude);
+        const coordsText = Number.isFinite(latVal) && Number.isFinite(lonVal)
+          ? `${latVal.toFixed(2)}°, ${lonVal.toFixed(2)}°`
+          : "";
+        const subText = loc.formatted || `${loc.city || loc.name}, ${loc.state || "India"}`;
+
         return `
-          <div onclick="selectGeocodedCity(${itemStr}, '${src}')" 
-               class="p-2.5 hover:bg-emerald-50 cursor-pointer border-b border-slate-100 last:border-0 flex items-center justify-between text-xs">
-            <div>
-              <span class="font-bold text-slate-800">${r.name}</span>
-              <span class="text-slate-500 text-[11px] ml-1">${r.admin1 ? r.admin1 + ', ' : ''}${r.country}</span>
+          <div onclick="selectSearchedLocationIndex(${idx})"
+               class="p-2.5 hover:bg-emerald-50 cursor-pointer flex items-center justify-between gap-2 text-xs transition">
+            <div class="flex items-center gap-2 min-w-0">
+              <i class="fa-solid fa-location-dot text-emerald-600 shrink-0"></i>
+              <div class="min-w-0">
+                <span class="font-bold text-slate-800 block truncate">${escapeHtml(loc.name)}</span>
+                <span class="text-slate-500 text-[11px] block truncate">${escapeHtml(subText)}</span>
+              </div>
             </div>
-            <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">${src}</span>
+            <div class="flex items-center gap-1.5 shrink-0">
+              ${coordsText ? `<span class="text-[10px] text-slate-400 font-mono">${coordsText}</span>` : ""}
+              ${provBadge}
+            </div>
           </div>
         `;
       }).join("");
     } catch (e) {
-      console.warn("City search error:", e);
-      resultsEl.innerHTML = '<div class="p-2.5 text-rose-500 text-xs">Failed to search cities.</div>';
+      console.warn("Location search error:", e);
+      resultsEl.innerHTML = `<div class="p-2.5 text-rose-500 text-xs">${escapeHtml(e.message || "Failed to search locations.")}</div>`;
     }
   }, 300);
 }
 
-function selectGeocodedCity(item, src) {
+async function selectSearchedLocationIndex(idx) {
+  const loc = _lastCitySearchResults[idx];
+  if (!loc) return;
+  const isLive = Boolean(loc.provenance && loc.provenance.is_live);
+  await selectGeocodedCity(loc, isLive ? "geoapify" : (loc.provenance?.source || "curated"));
+}
+
+async function selectGeocodedCity(item, src) {
+  const latVal = Number(item.lat !== undefined ? item.lat : item.latitude);
+  const lonVal = Number(item.lon !== undefined ? item.lon : item.longitude);
+  const stateName = item.state || item.admin1 || "India";
+  const countryName = item.country || "India";
+  const cityName = item.city || item.name;
+  const displayName = item.name || cityName;
+  const isLive = Boolean((item.provenance && item.provenance.is_live) || src === "geoapify");
+
   selectedDynamicLocation = {
-    city: item.city || item.name,
-    state: item.state || item.admin1 || "India",
-    name: item.name,
-    lat: item.lat !== undefined ? item.lat : item.latitude,
-    lon: item.lon !== undefined ? item.lon : item.longitude,
-    formatted: item.formatted || `${item.name}, ${item.admin1 || 'India'}`
+    city: cityName,
+    state: stateName,
+    name: displayName,
+    lat: latVal,
+    lon: lonVal,
+    formatted: item.formatted || `${displayName}, ${stateName}`,
+    provenance: item.provenance || { source: src || "curated_catalogue", is_live: isLive }
   };
+  activeTripCoords = { ...selectedDynamicLocation };
+
   const destSelect = document.getElementById("tripDestSelect");
   const searchInput = document.getElementById("tripCitySearchInput");
+  const clearBtn = document.getElementById("tripCityClearBtn");
   const resultsEl = document.getElementById("citySearchResults");
-  const sourceInfo = document.getElementById("destinationSourceInfo");
-  const sourceText = document.getElementById("destinationSourceText");
 
   if (resultsEl) resultsEl.classList.add("hidden");
-  if (searchInput) searchInput.value = `${item.name}, ${item.admin1 || item.country}`;
+  if (searchInput) searchInput.value = item.formatted || `${displayName}, ${stateName}`;
+  if (clearBtn) clearBtn.classList.toggle("hidden", !(searchInput && searchInput.value));
 
-  const destId = `geo_${item.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${item.country.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-  const label = `${item.name}${item.admin1 ? ', ' + item.admin1 : ''} (${item.country})`;
+  const destId = `geo_${displayName.toLowerCase().replace(/[^a-z0-9]/g, "_")}_${countryName.toLowerCase().replace(/[^a-z0-9]/g, "_")}`;
+  const label = `${displayName}${stateName && stateName !== "India" ? ", " + stateName : ""} (${countryName})`;
 
-  // Add option to select if not present
-  let opt = Array.from(destSelect.options).find(o => o.value === destId);
-  if (!opt) {
-    opt = document.createElement("option");
-    opt.value = destId;
-    opt.textContent = label;
-    destSelect.insertBefore(opt, destSelect.firstChild);
+  if (destSelect) {
+    let opt = Array.from(destSelect.options).find(o => o.value === destId);
+    if (!opt) {
+      opt = document.createElement("option");
+      opt.value = destId;
+      opt.textContent = label;
+      destSelect.insertBefore(opt, destSelect.firstChild);
+    }
+    destSelect.value = destId;
   }
-  destSelect.value = destId;
 
-  if (sourceInfo && sourceText) {
-    sourceInfo.classList.remove("hidden");
-    const lat = item.latitude !== undefined ? item.latitude.toFixed(2) : '0';
-    const lon = item.longitude !== undefined ? item.longitude.toFixed(2) : '0';
-    sourceText.textContent = `Resolved via Open-Meteo Geocoding · [source: ${src}] (${lat}°, ${lon}°)`;
-  }
+  if (typeof clearOptionAHotel === "function") clearOptionAHotel();
+  updateDestinationSourceBanner(selectedDynamicLocation, isLive ? "Live Geoapify" : "Curated Catalogue", isLive);
+  await fetchTripNearbyPlaces(latVal, lonVal, currentDynamicRadius);
+  calculateTripMinimumBudget();
 }
 
 function showInternationalTripNotice(trip) {
@@ -2589,7 +2576,7 @@ function showInternationalTripNotice(trip) {
   `;
 }
 
-async function loadUserTrips() {
+async function loadUserTrips(preferredTripId = null) {
   if (!state.currentUser) return;
   const select = document.getElementById("userTripsSelect");
   if (!select) return;
@@ -2625,12 +2612,13 @@ async function loadUserTrips() {
       if (lockedState) lockedState.classList.add("hidden");
 
       if (activeUserTrips.length > 0) {
-        // Prioritize first valid Indian trip over legacy international ones
+        const preferred = preferredTripId ? activeUserTrips.find(t => t.id === preferredTripId) : null;
         const firstIndian = activeUserTrips.find(isIndianTrip);
-        currentPlannedTripId = firstIndian ? firstIndian.id : activeUserTrips[0].id;
+        currentPlannedTripId = preferred ? preferred.id : (firstIndian ? firstIndian.id : activeUserTrips[0].id);
         select.value = currentPlannedTripId;
         await loadTripItinerary(currentPlannedTripId);
       } else {
+        currentPlannedTripId = null;
         if (emptyState) emptyState.classList.remove("hidden");
         if (displayContainer) displayContainer.classList.add("hidden");
       }
@@ -2655,11 +2643,13 @@ function onTripSelectChanged(tripId) {
   if (lockedState) lockedState.classList.add("hidden");
 
   if (!tripId) {
+    currentPlannedTripId = null;
     if (emptyState) emptyState.classList.remove("hidden");
     if (displayContainer) displayContainer.classList.add("hidden");
     return;
   }
   currentPlannedTripId = tripId;
+  resetItineraryWeatherBanner();
   loadTripItinerary(tripId);
 }
 
@@ -2972,6 +2962,24 @@ function toggleTripFormModal() {
   }
 
   openModal("tripFormModal");
+
+  const destSelect = document.getElementById("tripDestSelect");
+  if (destSelect && destSelect.value) {
+    if (destSelect.value.startsWith("geo_") && selectedDynamicLocation) {
+      updateDestinationSourceBanner(
+        selectedDynamicLocation,
+        selectedDynamicLocation.provenance?.is_live ? "Live Geoapify" : "Curated Catalogue",
+        Boolean(selectedDynamicLocation.provenance?.is_live)
+      );
+      fetchTripNearbyPlaces(selectedDynamicLocation.lat, selectedDynamicLocation.lon, currentDynamicRadius);
+    } else if (FEATURED_DESTINATION_COORDS[destSelect.value]) {
+      const meta = FEATURED_DESTINATION_COORDS[destSelect.value];
+      activeTripCoords = { ...meta };
+      updateDestinationSourceBanner(meta, "Curated Catalogue", false);
+      fetchTripNearbyPlaces(meta.lat, meta.lon, currentDynamicRadius);
+    }
+  }
+
   calculateTripMinimumBudget();
 }
 
@@ -3018,7 +3026,11 @@ async function searchHotelsForOptionA() {
   if (resultsEl) resultsEl.innerHTML = "";
 
   try {
-    const res = await fetch(`/api/stay/search?destination_id=${encodeURIComponent(destId)}&destination_name=${encodeURIComponent(destName)}&budget=${budget}&duration_days=${days}&limit=10`);
+    const coords = selectedDynamicLocation || activeTripCoords || FEATURED_DESTINATION_COORDS[destId];
+    const coordParams = coords && Number.isFinite(Number(coords.lat)) && Number.isFinite(Number(coords.lon))
+      ? `&lat=${encodeURIComponent(coords.lat)}&lon=${encodeURIComponent(coords.lon)}`
+      : "";
+    const res = await fetch(`/api/stay/search?destination_id=${encodeURIComponent(destId)}&destination_name=${encodeURIComponent(destName)}${coordParams}&budget=${budget}&duration_days=${days}&limit=10`);
     if (!res.ok) throw new Error("Could not find verified accommodations");
     const data = await res.json();
     renderOptionAHotels(data.options || []);
@@ -3169,6 +3181,13 @@ async function handleTripCreateSubmit(e) {
   if (btn) btn.textContent = "Generating LinUCB Itinerary...";
 
   try {
+    const hotelName = document.getElementById("selectedHotelName")?.value.trim() || null;
+    const hotelLat = parseFloat(document.getElementById("selectedHotelLat")?.value) || null;
+    const hotelLon = parseFloat(document.getElementById("selectedHotelLon")?.value) || null;
+    const hotelId = document.getElementById("selectedHotelId")?.value.trim() || null;
+    const hotelAddr = document.getElementById("selectedHotelAddress")?.value.trim() || null;
+    const hotelType = document.getElementById("selectedHotelType")?.value.trim() || null;
+
     // Dynamic trip planning route if a dynamic location is selected or geocoded
     if (selectedDynamicLocation && (destId.startsWith("geo_") || selectedDynamicLocation.name === destName || destId.includes((selectedDynamicLocation.city || "").toLowerCase()))) {
       const planRes = await fetch(`/api/places/plan-dynamic`, {
@@ -3192,7 +3211,13 @@ async function handleTripCreateSubmit(e) {
           companions: compRadio,
           has_children: hasChildren,
           has_elderly: hasElderly,
-          trip_preferences: tripPrefs
+          trip_preferences: tripPrefs,
+          stay_id: hotelId,
+          stay_name: hotelName,
+          stay_lat: hotelLat,
+          stay_lon: hotelLon,
+          stay_address: hotelAddr,
+          stay_type: hotelType
         })
       });
       if (!planRes.ok) {
@@ -3201,21 +3226,15 @@ async function handleTripCreateSubmit(e) {
         return;
       }
       const planData = await planRes.json();
-      currentItinerary = planData.itinerary;
-      currentPlannedTripId = planData.trip ? planData.trip.id : null;
+      const createdTripId = planData.trip ? planData.trip.id : null;
+      currentPlannedTripId = createdTripId;
       closeModal("tripFormModal");
-      await loadUserTrips();
-      renderItinerary(currentItinerary);
+      await loadUserTrips(createdTripId);
       return;
     }
 
     // 1. Create Trip Record (Standard fixed catalog)
-    const hotelName = document.getElementById("selectedHotelName")?.value.trim() || null;
-    const hotelLat = parseFloat(document.getElementById("selectedHotelLat")?.value) || null;
-    const hotelLon = parseFloat(document.getElementById("selectedHotelLon")?.value) || null;
-    const hotelId = document.getElementById("selectedHotelId")?.value.trim() || null;
-    const hotelAddr = document.getElementById("selectedHotelAddress")?.value.trim() || null;
-    const hotelType = document.getElementById("selectedHotelType")?.value.trim() || null;
+    const curatedCoords = activeTripCoords || FEATURED_DESTINATION_COORDS[destId] || {};
 
     const tripRes = await fetch(`/api/trips/${state.currentUser.user_id}`, {
       method: "POST",
@@ -3223,6 +3242,9 @@ async function handleTripCreateSubmit(e) {
       body: JSON.stringify({
         destination_id: destId,
         destination_name: destName,
+        destination_lat: curatedCoords.lat ?? null,
+        destination_lon: curatedCoords.lon ?? null,
+        resolved_location: curatedCoords.formatted || destName,
         start_date: startDate,
         end_date: endDate,
         travellers_count: travellers,
@@ -3271,8 +3293,7 @@ async function handleTripCreateSubmit(e) {
     if (itinRes.ok) {
       currentItinerary = await itinRes.json();
       currentPlannedTripId = newTrip.id;
-      await loadUserTrips();
-      renderItinerary(currentItinerary);
+      await loadUserTrips(newTrip.id);
     } else {
       const errData = await itinRes.json();
       alert("Could not generate itinerary: " + formatApiError(errData, "Server error"));
@@ -3513,8 +3534,17 @@ function renderItinerary(itin) {
   switchWorkspaceMode("pre");
   switchPreSubtab("itin");
 
-  // Load and display live weather forecast with transparent source badge
-  loadItineraryLiveWeather(itin.destination_name);
+  // Load and display weather for this specific trip's resolved coordinates & dates
+  loadItineraryLiveWeather({
+    tripId: itin.trip_id || currentPlannedTripId,
+    destinationId: itin.destination_id || currentTrip?.destination_id || "",
+    destinationName: itin.destination_name || currentTrip?.destination_name || "",
+    resolvedLocation: itin.resolved_location || currentTrip?.resolved_location || itin.destination_name || currentTrip?.destination_name || "",
+    lat: itin.destination_lat ?? currentTrip?.destination_lat ?? null,
+    lon: itin.destination_lon ?? currentTrip?.destination_lon ?? null,
+    startDate: itin.start_date || currentTrip?.start_date || "",
+    endDate: itin.end_date || currentTrip?.end_date || ""
+  });
 
   daysContainer.innerHTML = "";
 
@@ -3756,51 +3786,139 @@ async function regenerateEntireItinerary() {
   }
 }
 
-async function loadItineraryLiveWeather(destName) {
+let _weatherRequestSeq = 0;
+
+function resetItineraryWeatherBanner() {
+  _weatherRequestSeq += 1;
+  const summaryEl = document.getElementById("itinWeatherSummary");
+  const detailsEl = document.getElementById("itinWeatherDetails");
+  const badgeEl = document.getElementById("itinWeatherSourceBadge");
+  if (summaryEl) summaryEl.textContent = "Checking weather...";
+  if (detailsEl) detailsEl.textContent = "";
+  if (badgeEl) {
+    badgeEl.textContent = "Loading...";
+    badgeEl.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200";
+  }
+}
+
+async function loadItineraryLiveWeather(tripCtx) {
   const card = document.getElementById("itinWeatherCard");
   const summaryEl = document.getElementById("itinWeatherSummary");
   const detailsEl = document.getElementById("itinWeatherDetails");
   const badgeEl = document.getElementById("itinWeatherSourceBadge");
-  if (!card || !destName) return;
+  if (!card || !tripCtx) return;
+
+  const ctxObj = typeof tripCtx === "string"
+    ? { destinationName: tripCtx, resolvedLocation: tripCtx }
+    : tripCtx;
+
+  const reqSeq = ++_weatherRequestSeq;
+  const resolvedLoc = ctxObj.resolvedLocation || ctxObj.destinationName || "Selected destination";
+  const dateLabel = ctxObj.startDate && ctxObj.endDate
+    ? ` (${ctxObj.startDate} to ${ctxObj.endDate})`
+    : (ctxObj.startDate ? ` (${ctxObj.startDate})` : "");
+
+  const setUnavailable = () => {
+    if (summaryEl) summaryEl.textContent = "Weather information unavailable";
+    if (detailsEl) detailsEl.textContent = `${resolvedLoc}${dateLabel}`;
+    if (badgeEl) {
+      badgeEl.textContent = "Unavailable";
+      badgeEl.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200";
+    }
+  };
 
   try {
     card.classList.remove("hidden");
-    summaryEl.textContent = `Fetching live forecast for ${destName}...`;
-    detailsEl.textContent = "Open-Meteo Weather API";
-    badgeEl.textContent = "source: loading...";
+    if (summaryEl) summaryEl.textContent = `Checking weather for ${resolvedLoc}...`;
+    if (detailsEl) detailsEl.textContent = `${resolvedLoc}${dateLabel}`;
+    if (badgeEl) {
+      badgeEl.textContent = "Loading...";
+      badgeEl.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200";
+    }
 
-    // 1. Resolve geocoding
-    const geoRes = await fetch(`/api/geo/search?q=${encodeURIComponent(destName)}`);
-    const geoData = await geoRes.json();
-    if (!geoData.results || geoData.results.length === 0) {
-      summaryEl.textContent = `Weather conditions favorable for travel`;
-      badgeEl.textContent = "source: offline-estimate";
+    let lat = ctxObj.lat;
+    let lon = ctxObj.lon;
+
+    if ((lat === null || lat === undefined || !Number.isFinite(Number(lat))) && ctxObj.destinationId && FEATURED_DESTINATION_COORDS[ctxObj.destinationId]) {
+      lat = FEATURED_DESTINATION_COORDS[ctxObj.destinationId].lat;
+      lon = FEATURED_DESTINATION_COORDS[ctxObj.destinationId].lon;
+    }
+
+    // Legacy trip fallback without stored coordinates: resolve strictly via India location search (never silent Manali)
+    if (lat === null || lat === undefined || lon === null || lon === undefined) {
+      const cleanQuery = (ctxObj.destinationName || "").split("(")[0].split(",")[0].trim();
+      if (cleanQuery.length >= 2) {
+        const locRes = await fetch(`/api/places/search-locations?q=${encodeURIComponent(cleanQuery)}&limit=1`);
+        if (locRes.ok) {
+          const locData = await locRes.json();
+          const first = (locData.results || [])[0];
+          if (first && first.lat !== undefined && first.lon !== undefined) {
+            lat = first.lat;
+            lon = first.lon;
+          }
+        }
+      }
+    }
+
+    if (_weatherRequestSeq !== reqSeq) return;
+    if (lat === null || lat === undefined || lon === null || lon === undefined || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) {
+      setUnavailable();
       return;
     }
-    const top = geoData.results[0];
-    const lat = top.latitude;
-    const lon = top.longitude;
 
-    // 2. Query live weather
-    const wRes = await fetch(`/api/weather/live?lat=${lat}&lon=${lon}`);
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lon)
+    });
+    if (ctxObj.startDate) params.set("start_date", ctxObj.startDate);
+    if (ctxObj.endDate) params.set("end_date", ctxObj.endDate);
+
+    const wRes = await fetch(`/api/weather/live?${params.toString()}`);
+    if (_weatherRequestSeq !== reqSeq) return;
+    if (!wRes.ok) {
+      setUnavailable();
+      return;
+    }
+
     const wData = await wRes.json();
-    const cur = wData.current || {};
-    const temp = cur.temperature !== undefined ? `${cur.temperature}°C` : "Mild";
-    const desc = cur.weather_description || "Pleasant";
-    const wind = cur.wind_speed ? ` · Wind ${cur.wind_speed} km/h` : "";
-    const humidity = cur.humidity ? ` · Humidity ${cur.humidity}%` : "";
-    
-    summaryEl.textContent = `${desc}, ${temp}`;
-    detailsEl.textContent = `${top.name}, ${top.admin1 || top.country}${wind}${humidity}`;
-    const src = wData.source || "api";
-    badgeEl.textContent = `Open-Meteo [source: ${src}]`;
-    badgeEl.className = src === "api" 
-      ? "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"
-      : "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200";
+    if (_weatherRequestSeq !== reqSeq) return;
+
+    if (!wData || wData.available === false || wData.weather_type === "unavailable" || wData.source === "unavailable") {
+      setUnavailable();
+      return;
+    }
+
+    const hasTemps = wData.temp_min_c !== undefined && wData.temp_max_c !== undefined;
+    const tempRange = hasTemps ? `${wData.temp_min_c}°C – ${wData.temp_max_c}°C` : "";
+    const desc = wData.weather_description || (wData.weather_type === "forecast" ? "Forecast" : "Seasonal Climate");
+    if (summaryEl) {
+      summaryEl.textContent = tempRange ? `${desc} · ${tempRange}` : desc;
+    }
+
+    const rain = wData.rain_probability !== undefined ? ` · Rain ${wData.rain_probability}%` : "";
+    const wind = wData.wind_kmh !== undefined ? ` · Wind ${wData.wind_kmh} km/h` : "";
+    const isForecast = wData.weather_type === "forecast" || wData.api_type === "open-meteo-forecast";
+    const refNote = !isForecast && wData.reference_period ? ` · Climate avg (${wData.reference_period})` : "";
+
+    if (detailsEl) {
+      detailsEl.textContent = `${resolvedLoc}${dateLabel}${rain}${wind}${refNote}`;
+    }
+
+    if (badgeEl) {
+      const cacheSuffix = wData.source === "cache" ? " · Cached" : "";
+      if (isForecast) {
+        badgeEl.textContent = `Current Forecast · Open-Meteo${cacheSuffix}`;
+        badgeEl.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200";
+      } else {
+        badgeEl.textContent = `Historical Climate Estimate · Open-Meteo Archive${cacheSuffix}`;
+        badgeEl.className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200";
+      }
+    }
   } catch (err) {
-    console.warn("Failed to load live weather:", err);
-    if (summaryEl) summaryEl.textContent = "Weather conditions favorable for travel";
-    if (badgeEl) badgeEl.textContent = "source: offline-estimate";
+    console.warn("Failed to load trip weather:", err);
+    if (_weatherRequestSeq === reqSeq) {
+      setUnavailable();
+    }
   }
 }
 

@@ -236,13 +236,50 @@ def search_locations_india(query: str, limit: int = 6) -> List[Dict[str, Any]]:
                     }
                 })
 
+    from app.data.india_destinations import INDIAN_DESTINATIONS, get_indian_destination
+    for d in INDIAN_DESTINATIONS:
+        d_name = d.get("name", "")
+        d_state = d.get("state", "India")
+        if q_lower in d_name.lower() or q_lower in d_state.lower() or q_lower in d.get("id", "").lower():
+            lat = float(d["lat"])
+            lon = float(d["lon"])
+            dedup_key = (round(lat, 3), round(lon, 3))
+            if dedup_key not in seen:
+                seen.add(dedup_key)
+                results.append({
+                    "id": d["id"],
+                    "name": d_name,
+                    "formatted": f"{d_name}, {d_state}, India",
+                    "city": d_name.split("(")[0].split("&")[0].strip(),
+                    "state": d_state,
+                    "country": "India",
+                    "lat": lat,
+                    "lon": lon,
+                    "provenance": {
+                        "source": "curated_catalogue",
+                        "fetched_at": datetime.now(timezone.utc).isoformat(),
+                        "is_live": False,
+                        "is_estimate": True,
+                        "notes": "offline estimate from curated Indian destinations"
+                    }
+                })
+
     from app.recommender import DESTINATIONS
     for d in DESTINATIONS:
         if d.get("country") == "India" or "india" in d.get("id", ""):
             d_name = d.get("name", "")
             if q_lower in d_name.lower():
-                lat = float(d.get("lat", 20.5937))
-                lon = float(d.get("lon", 78.9629))
+                lat_raw = d.get("lat")
+                lon_raw = d.get("lon")
+                if lat_raw is None or lon_raw is None:
+                    matched_ind = get_indian_destination(d["id"])
+                    if matched_ind:
+                        lat_raw = matched_ind.get("lat")
+                        lon_raw = matched_ind.get("lon")
+                if lat_raw is None or lon_raw is None:
+                    continue
+                lat = float(lat_raw)
+                lon = float(lon_raw)
                 dedup_key = (round(lat, 3), round(lon, 3))
                 if dedup_key not in seen:
                     seen.add(dedup_key)
@@ -567,51 +604,206 @@ def geocode_india(query: str) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
 
-    # Offline Fallback from Curated Catalogue and Indian Hubs
-    from app.recommender import DESTINATIONS
+    # Offline Fallback from Curated Destinations & Indian Hubs (with real coordinates)
     q_lower = clean_query.lower()
-    for d in DESTINATIONS:
+
+    from app.data.india_destinations import INDIAN_DESTINATIONS
+
+    def _curated_dest_result(d: Dict[str, Any]) -> Dict[str, Any]:
+        fallback = {
+            "name": d["name"],
+            "lat": float(d["lat"]),
+            "lon": float(d["lon"]),
+            "formatted": f"{d['name']}, {d.get('state', 'India')}, India",
+            "city": d["name"],
+            "state": d.get("state", "India"),
+            "provenance": {
+                "source": "curated_catalogue",
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "is_live": False,
+                "is_estimate": True,
+                "notes": "offline estimate from curated Indian destinations",
+            },
+        }
+        set_cached(cache_key, fallback, TTL_PLACES_SECONDS)
+        return fallback
+
+    def _hub_result(hub: Dict[str, Any]) -> Dict[str, Any]:
+        fallback = {
+            "name": hub["name"],
+            "lat": float(hub["lat"]),
+            "lon": float(hub["lon"]),
+            "formatted": hub.get("formatted", f"{hub['name']}, India"),
+            "city": hub["city"],
+            "state": hub.get("state", "India"),
+            "provenance": {
+                "source": "curated_catalogue",
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "is_live": False,
+                "is_estimate": True,
+                "notes": "offline estimate from curated Indian hubs",
+            },
+        }
+        set_cached(cache_key, fallback, TTL_PLACES_SECONDS)
+        return fallback
+
+    # 1. Primary destination name match (e.g., "Manali" -> "Manali & Spiti Valley")
+    for d in INDIAN_DESTINATIONS:
+        d_name = d.get("name", "").lower()
+        primary = d_name.split("(")[0].split("&")[0].strip()
+        if q_lower == d_name or q_lower == primary or q_lower == d.get("id", "").lower():
+            return _curated_dest_result(d)
+
+    # 2. Specific Indian offline hub match (e.g., "Jodhpur", "Pune", "Srinagar")
+    for hub in INDIAN_OFFLINE_HUBS:
+        h_name = hub["name"].lower()
+        h_city = hub["city"].lower()
+        if q_lower == h_name or q_lower == h_city or h_name in q_lower or h_city in q_lower:
+            return _hub_result(hub)
+
+    # 3. Secondary substring match against curated Indian destinations & hubs
+    for d in INDIAN_DESTINATIONS:
         d_name = d.get("name", "").lower()
         d_id = d.get("id", "").lower()
         if q_lower in d_name or q_lower in d_id or d_name in q_lower:
-            fallback = {
-                "name": d["name"],
-                "lat": float(d.get("lat", 20.5937)),
-                "lon": float(d.get("lon", 78.9629)),
-                "formatted": f"{d['name']}, India",
-                "city": d["name"],
-                "provenance": {
-                    "source": "curated_catalogue",
-                    "fetched_at": datetime.now(timezone.utc).isoformat(),
-                    "is_live": False,
-                    "is_estimate": True,
-                    "notes": "offline estimate from curated destinations"
-                }
-            }
-            set_cached(cache_key, fallback, TTL_PLACES_SECONDS)
-            return fallback
+            return _curated_dest_result(d)
 
     for hub in INDIAN_OFFLINE_HUBS:
-        if q_lower == hub["name"].lower() or q_lower == hub["city"].lower() or q_lower in hub["name"].lower() or hub["name"].lower() in q_lower:
-            fallback = {
-                "name": hub["name"],
-                "lat": float(hub["lat"]),
-                "lon": float(hub["lon"]),
-                "formatted": hub.get("formatted", f"{hub['name']}, India"),
-                "city": hub["city"],
-                "state": hub.get("state", "India"),
-                "provenance": {
-                    "source": "curated_catalogue",
-                    "fetched_at": datetime.now(timezone.utc).isoformat(),
-                    "is_live": False,
-                    "is_estimate": True,
-                    "notes": "offline estimate from curated Indian hubs"
-                }
-            }
-            set_cached(cache_key, fallback, TTL_PLACES_SECONDS)
-            return fallback
+        if q_lower in hub["name"].lower() or q_lower in hub["city"].lower():
+            return _hub_result(hub)
 
     return None
+
+
+CURATED_DESTINATION_COORDS: Dict[str, Dict[str, Any]] = {
+    "kyoto_japan": {"lat": 35.0116, "lon": 135.7681, "name": "Kyoto, Japan"},
+    "santorini_greece": {"lat": 36.3932, "lon": 25.4615, "name": "Santorini, Greece"},
+    "swiss_alps": {"lat": 46.5590, "lon": 7.9854, "name": "Swiss Alps, Switzerland"},
+    "rome_florence_italy": {"lat": 41.9028, "lon": 12.4964, "name": "Rome & Florence, Italy"},
+    "banff_canada": {"lat": 51.1784, "lon": -115.5708, "name": "Banff, Canada"},
+    "chiang_mai_thailand": {"lat": 18.7883, "lon": 98.9853, "name": "Chiang Mai, Thailand"},
+    "reykjavik_iceland": {"lat": 64.1466, "lon": -21.9426, "name": "Reykjavik, Iceland"},
+    "oaxaca_mexico": {"lat": 17.0732, "lon": -96.7266, "name": "Oaxaca, Mexico"},
+    "queenstown_nz": {"lat": -45.0312, "lon": 168.6626, "name": "Queenstown, New Zealand"},
+    "barcelona_spain": {"lat": 41.3879, "lon": 2.1699, "name": "Barcelona, Spain"},
+    "tokyo_japan": {"lat": 35.6762, "lon": 139.6503, "name": "Tokyo, Japan"},
+    "cape_town_south_africa": {"lat": -33.9249, "lon": 18.4241, "name": "Cape Town, South Africa"},
+    "jaipur_rajasthan_india": {"lat": 26.9124, "lon": 75.7873, "name": "Jaipur, Rajasthan, India"},
+    "varanasi_kashi_india": {"lat": 25.3176, "lon": 82.9739, "name": "Varanasi, Uttar Pradesh, India"},
+    "ladakh_leh_india": {"lat": 34.1526, "lon": 77.5771, "name": "Leh Ladakh, India"},
+    "udaipur_india": {"lat": 24.5854, "lon": 73.7125, "name": "Udaipur, Rajasthan, India"},
+    "hampi_karnataka_india": {"lat": 15.3350, "lon": 76.4600, "name": "Hampi, Karnataka, India"},
+    "andaman_havelock_india": {"lat": 11.9761, "lon": 92.9876, "name": "Havelock Island, Andaman, India"},
+    "amritsar_punjab_india": {"lat": 31.6340, "lon": 74.8723, "name": "Amritsar, Punjab, India"},
+    "rann_of_kutch_india": {"lat": 23.8344, "lon": 69.8396, "name": "Rann of Kutch, Gujarat, India"},
+    "agra_braj_india": {"lat": 27.1767, "lon": 78.0081, "name": "Agra, Uttar Pradesh, India"},
+    "darjeeling_sikkim_india": {"lat": 27.0410, "lon": 88.2663, "name": "Darjeeling & Sikkim, India"},
+}
+
+
+def resolve_trip_location(
+    destination_id: Optional[str] = None,
+    destination_name: Optional[str] = None,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    resolved_location: Optional[str] = None,
+    allow_live_geocode: bool = True,
+) -> Dict[str, Any]:
+    """Resolve exact coordinates and canonical location label for a trip.
+
+    Never falls back to another destination (such as Manali or Delhi). Returns None
+    coordinates if the location cannot be resolved.
+    """
+    label = resolved_location or destination_name or destination_id or ""
+
+    # 1. Explicit valid coordinates stored on trip or passed by caller
+    if lat is not None and lon is not None:
+        try:
+            f_lat = float(lat)
+            f_lon = float(lon)
+            if math.isfinite(f_lat) and math.isfinite(f_lon) and not (f_lat == 0.0 and f_lon == 0.0):
+                return {"lat": f_lat, "lon": f_lon, "resolved_location": label}
+        except (TypeError, ValueError):
+            pass
+
+    dest_id = (destination_id or "").strip()
+
+    # 2. Exact match in curated Indian destinations
+    if dest_id:
+        from app.data.india_destinations import DESTINATIONS_BY_ID
+        ind = DESTINATIONS_BY_ID.get(dest_id)
+        if ind and ind.get("lat") is not None and ind.get("lon") is not None:
+            ind_label = resolved_location or destination_name or f"{ind['name']}, {ind.get('state', 'India')}"
+            return {"lat": float(ind["lat"]), "lon": float(ind["lon"]), "resolved_location": ind_label}
+
+        # 3. Exact match in extended curated destination coordinates
+        cur = CURATED_DESTINATION_COORDS.get(dest_id)
+        if cur:
+            return {
+                "lat": float(cur["lat"]),
+                "lon": float(cur["lon"]),
+                "resolved_location": resolved_location or destination_name or cur["name"],
+            }
+
+        # 4. Cached dynamic destination coordinates
+        cached_loc = get_cached(f"geo:dest:{dest_id}")
+        if cached_loc and cached_loc.get("lat") is not None and cached_loc.get("lon") is not None:
+            return {
+                "lat": float(cached_loc["lat"]),
+                "lon": float(cached_loc["lon"]),
+                "resolved_location": resolved_location or cached_loc.get("name") or label,
+            }
+
+        # 5. Activity coordinates in destination_activities
+        try:
+            from app.database import get_connection
+            with get_connection() as conn:
+                row = conn.execute(
+                    """
+                    SELECT AVG(latitude), AVG(longitude)
+                    FROM destination_activities
+                    WHERE destination_id = ?
+                      AND latitude IS NOT NULL AND longitude IS NOT NULL
+                      AND NOT (latitude = 0.0 AND longitude = 0.0)
+                    """,
+                    (dest_id,),
+                ).fetchone()
+                if row and row[0] is not None and row[1] is not None:
+                    return {
+                        "lat": float(row[0]),
+                        "lon": float(row[1]),
+                        "resolved_location": label,
+                    }
+        except Exception:
+            pass
+
+    # 6. Geocode destination_name (or city derived from destination_id)
+    query_name = (destination_name or "").strip()
+    if not query_name and dest_id:
+        query_name = dest_id.replace("geo_", "").replace("_india", "").replace("_", " ").strip()
+
+    if query_name:
+        q_low = query_name.lower()
+        for hub in INDIAN_OFFLINE_HUBS:
+            h_name = hub["name"].lower()
+            h_city = hub["city"].lower()
+            if q_low == h_name or q_low == h_city or h_name in q_low or h_city in q_low:
+                return {
+                    "lat": float(hub["lat"]),
+                    "lon": float(hub["lon"]),
+                    "resolved_location": resolved_location or hub.get("formatted") or f"{hub['name']}, {hub.get('state', 'India')}",
+                }
+
+        if allow_live_geocode:
+            geo = geocode_india(query_name)
+            if geo and geo.get("lat") is not None and geo.get("lon") is not None:
+                return {
+                    "lat": float(geo["lat"]),
+                    "lon": float(geo["lon"]),
+                    "resolved_location": resolved_location or geo.get("formatted") or query_name,
+                }
+
+    return {"lat": None, "lon": None, "resolved_location": label}
 
 
 def reverse_geocode(lat: float, lon: float) -> Optional[str]:

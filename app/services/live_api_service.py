@@ -8,7 +8,7 @@ import time
 import socket
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.database import get_connection
@@ -35,9 +35,11 @@ def get_cached_api(cache_key: str) -> Optional[Tuple[Dict[str, Any], str, str]]:
             if not row:
                 return None
             res_json, src, fetched_at, ttl = row[0], row[1], row[2], row[3]
-            # Check expiration
-            fetch_dt = datetime.fromisoformat(fetched_at.replace("Z", ""))
-            if (datetime.now() - fetch_dt).total_seconds() > ttl:
+            # Check expiration (SQLite CURRENT_TIMESTAMP is UTC)
+            fetch_dt = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+            if fetch_dt.tzinfo is None:
+                fetch_dt = fetch_dt.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - fetch_dt).total_seconds() > ttl:
                 return None
             return json.loads(res_json), "cache", fetched_at
     except Exception:
@@ -143,11 +145,30 @@ def search_geocoding(query: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Offline fallback lookup
+    # Offline fallback lookup — never fall back silently to an unrelated city
     q_low = clean_q.lower()
     matches = [c for c in CURATED_OFFLINE_CITIES if q_low in c["name"].lower() or q_low in c.get("country", "").lower()]
-    if not matches and CURATED_OFFLINE_CITIES:
-        matches = [CURATED_OFFLINE_CITIES[0]]
+    if not matches:
+        try:
+            from app.providers.geo import INDIAN_OFFLINE_HUBS
+            for hub in INDIAN_OFFLINE_HUBS:
+                if (
+                    q_low in hub["name"].lower()
+                    or q_low in hub["city"].lower()
+                    or hub["name"].lower() in q_low
+                    or hub["city"].lower() in q_low
+                ):
+                    matches.append({
+                        "id": f"{hub['city'].lower().replace(' ', '_')}_india",
+                        "name": hub["name"],
+                        "country": "India",
+                        "admin1": hub.get("state", "India"),
+                        "latitude": round(float(hub["lat"]), 4),
+                        "longitude": round(float(hub["lon"]), 4),
+                        "timezone": "Asia/Kolkata",
+                    })
+        except Exception:
+            pass
 
     now_iso = datetime.now().isoformat()
     return {"query": clean_q, "results": matches, "source": "offline-estimate", "fetched_at": now_iso}
@@ -157,105 +178,191 @@ def search_geocoding(query: str) -> Dict[str, Any]:
 # 2. Open-Meteo Forecast & Climate / Historical API
 # ---------------------------------------------------------------------------
 
+def _safe_date_with_year(d_str: str, target_year: int) -> str:
+    """Shift a YYYY-MM-DD string to target_year, clamping Feb 29 if needed."""
+    try:
+        dt = datetime.strptime(d_str, "%Y-%m-%d").date()
+        month, day = dt.month, dt.day
+        if month == 2 and day == 29:
+            try:
+                return dt.replace(year=target_year).strftime("%Y-%m-%d")
+            except ValueError:
+                return f"{target_year}-02-28"
+        return dt.replace(year=target_year).strftime("%Y-%m-%d")
+    except Exception:
+        return f"{target_year}-{d_str[5:]}" if len(d_str) >= 10 else f"{target_year}-01-01"
+
+
 def get_live_weather(lat: float, lon: float, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Dict[str, Any]:
     """
-    Fetches real weather forecast (<= 16 days out) via Open-Meteo Forecast API,
-    or historical same-month climate averages (> 16 days out) via Open-Meteo Climate API.
-    Returns labeled data source ('api' | 'cache' | 'offline-estimate') and fetched_at.
+    Fetches real weather forecast (<= 15 days out) via Open-Meteo Forecast API,
+    or historical same-month climate averages (> 15 days out) via Open-Meteo Archive API.
+    Always uses the supplied (lat, lon) and trip date range.
+    Never returns another destination's weather; returns unavailable status if retrieval fails.
     """
+    import math
     now = datetime.now()
+    try:
+        f_lat = float(lat)
+        f_lon = float(lon)
+        if not (math.isfinite(f_lat) and math.isfinite(f_lon) and -90.0 <= f_lat <= 90.0 and -180.0 <= f_lon <= 180.0):
+            raise ValueError("Invalid coordinates")
+    except (TypeError, ValueError):
+        return {
+            "available": False,
+            "weather_type": "unavailable",
+            "weather_type_label": "Weather information unavailable",
+            "api_type": "unavailable",
+            "message": "Weather information unavailable",
+            "source": "unavailable",
+            "fetched_at": now.isoformat(),
+        }
+
     if not start_date:
         start_date = now.strftime("%Y-%m-%d")
     if not end_date:
         end_date = (now + timedelta(days=5)).strftime("%Y-%m-%d")
 
-    cache_key = f"weather_{lat:.2f}_{lon:.2f}_{start_date}_{end_date}"
+    # Ensure valid chronological order
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+        if end_dt < start_dt:
+            end_dt = start_dt
+            end_date = end_dt.strftime("%Y-%m-%d")
+        days_ahead = (start_dt - now.date()).days
+    except Exception:
+        start_dt = now.date()
+        end_dt = now.date() + timedelta(days=5)
+        start_date = start_dt.strftime("%Y-%m-%d")
+        end_date = end_dt.strftime("%Y-%m-%d")
+        days_ahead = 0
+
+    cache_key = f"weather:{f_lat:.4f}:{f_lon:.4f}:{start_date}:{end_date}"
     cached = get_cached_api(cache_key)
     if cached:
         data, src, ts = cached
         return {**data, "source": "cache", "fetched_at": ts}
 
-    now = datetime.now()
-    try:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        days_ahead = (start_dt.date() - now.date()).days
-    except Exception:
-        days_ahead = 5
+    from app.providers.weather import WMO_DESCRIPTIONS
 
     try:
-        # Trips within 16 days: Use Open-Meteo Forecast API
-        if 0 <= days_ahead <= 16:
+        # Trips starting within the 16-day forecast horizon: Open-Meteo Forecast API
+        if 0 <= days_ahead <= 15:
+            forecast_end = min(end_dt, now.date() + timedelta(days=15))
             api_url = (
-                f"https://api.open-meteo.com/v1/forecast?latitude={lat:.4f}&longitude={lon:.4f}"
-                f"&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max"
-                f"&timezone=auto"
+                f"https://api.open-meteo.com/v1/forecast?latitude={f_lat:.4f}&longitude={f_lon:.4f}"
+                f"&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max"
+                f"&start_date={start_date}&end_date={forecast_end.strftime('%Y-%m-%d')}&timezone=auto"
             )
             raw = _http_get_json(api_url, timeout=REQUEST_TIMEOUT_SECONDS)
-            daily = raw.get("daily", {})
-            t_max_list = daily.get("temperature_2m_max", [24.0])
-            t_min_list = daily.get("temperature_2m_min", [16.0])
-            rain_list = daily.get("precipitation_probability_max", [15])
-            wind_list = daily.get("wind_speed_10m_max", [12.0])
+            daily = raw.get("daily") or {}
+            t_max_list = [float(x) for x in (daily.get("temperature_2m_max") or []) if x is not None]
+            t_min_list = [float(x) for x in (daily.get("temperature_2m_min") or []) if x is not None]
+            rain_list = [float(x) for x in (daily.get("precipitation_probability_max") or []) if x is not None]
+            wind_list = [float(x) for x in (daily.get("wind_speed_10m_max") or []) if x is not None]
+            codes = [int(x) for x in (daily.get("weathercode") or []) if x is not None]
 
-            res = {
-                "temp_min_c": round(float(sum(t_min_list) / len(t_min_list)), 1),
-                "temp_max_c": round(float(sum(t_max_list) / len(t_max_list)), 1),
-                "rain_probability": round(float(sum(rain_list) / len(rain_list)), 1),
-                "wind_kmh": round(float(sum(wind_list) / len(wind_list)), 1),
-                "api_type": "open-meteo-forecast",
-                "days_ahead": days_ahead
-            }
-            now_iso = datetime.now().isoformat()
-            set_cached_api(cache_key, res, source="api", ttl_seconds=10800)  # 3 hours TTL
-            return {**res, "source": "api", "fetched_at": now_iso}
+            if t_max_list and t_min_list:
+                dominant_code = max(set(codes), key=codes.count) if codes else None
+                desc = WMO_DESCRIPTIONS.get(dominant_code, "Forecast") if dominant_code is not None else "Forecast"
+                res = {
+                    "available": True,
+                    "lat": round(f_lat, 4),
+                    "lon": round(f_lon, 4),
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "temp_min_c": round(min(t_min_list), 1),
+                    "temp_max_c": round(max(t_max_list), 1),
+                    "rain_probability": round(sum(rain_list) / len(rain_list), 1) if rain_list else 0.0,
+                    "wind_kmh": round(max(wind_list), 1) if wind_list else 0.0,
+                    "weather_code": dominant_code,
+                    "weather_description": desc,
+                    "weather_type": "forecast",
+                    "weather_type_label": "Current Forecast",
+                    "api_type": "open-meteo-forecast",
+                    "days_ahead": days_ahead,
+                }
+                now_iso = datetime.now().isoformat()
+                set_cached_api(cache_key, res, source="api", ttl_seconds=3600)
+                return {**res, "source": "api", "fetched_at": now_iso}
 
-        # Trips beyond 16 days: Use historical averages of same month in previous year
+        # Trips beyond 15 days or in the past: Historical archive climate for matching dates
+        if end_dt < now.date():
+            start_hist = start_date
+            end_hist = end_date
         else:
             last_year = now.year - 1
-            start_ly = f"{last_year}-{start_date[5:]}"
-            end_ly = f"{last_year}-{end_date[5:]}"
-            api_url = (
-                f"https://archive-api.open-meteo.com/v1/archive?latitude={lat:.4f}&longitude={lon:.4f}"
-                f"&start_date={start_ly}&end_date={end_ly}"
-                f"&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max"
-                f"&timezone=auto"
-            )
-            raw = _http_get_json(api_url, timeout=REQUEST_TIMEOUT_SECONDS)
-            daily = raw.get("daily", {})
-            t_max_list = daily.get("temperature_2m_max", [26.0])
-            t_min_list = daily.get("temperature_2m_min", [17.0])
-            precip_list = daily.get("precipitation_sum", [1.0])
-            wind_list = daily.get("wind_speed_10m_max", [11.0])
+            start_hist = _safe_date_with_year(start_date, last_year)
+            end_hist = _safe_date_with_year(end_date, last_year)
+            if end_hist < start_hist:
+                end_hist = start_hist
 
+        api_url = (
+            f"https://archive-api.open-meteo.com/v1/archive?latitude={f_lat:.4f}&longitude={f_lon:.4f}"
+            f"&start_date={start_hist}&end_date={end_hist}"
+            f"&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max"
+            f"&timezone=auto"
+        )
+        raw = _http_get_json(api_url, timeout=REQUEST_TIMEOUT_SECONDS)
+        daily = raw.get("daily") or {}
+        t_max_list = [float(x) for x in (daily.get("temperature_2m_max") or []) if x is not None]
+        t_min_list = [float(x) for x in (daily.get("temperature_2m_min") or []) if x is not None]
+        precip_list = [float(x) for x in (daily.get("precipitation_sum") or []) if x is not None]
+        wind_list = [float(x) for x in (daily.get("wind_speed_10m_max") or []) if x is not None]
+        codes = [int(x) for x in (daily.get("weathercode") or []) if x is not None]
+
+        if t_max_list and t_min_list:
+            dominant_code = max(set(codes), key=codes.count) if codes else None
+            desc = (
+                WMO_DESCRIPTIONS.get(dominant_code, "Historical climate pattern")
+                if dominant_code is not None
+                else "Historical climate pattern"
+            )
+            rain_pct = (
+                round((sum(1 for p in precip_list if p > 1.0) / len(precip_list)) * 100.0, 1)
+                if precip_list
+                else 0.0
+            )
             res = {
-                "temp_min_c": round(float(sum(t_min_list) / len(t_min_list)), 1),
-                "temp_max_c": round(float(sum(t_max_list) / len(t_max_list)), 1),
-                "rain_probability": 30.0 if any(p > 2.0 for p in precip_list) else 10.0,
-                "wind_kmh": round(float(sum(wind_list) / len(wind_list)), 1),
+                "available": True,
+                "lat": round(f_lat, 4),
+                "lon": round(f_lon, 4),
+                "start_date": start_date,
+                "end_date": end_date,
+                "reference_period": f"{start_hist} to {end_hist}",
+                "temp_min_c": round(sum(t_min_list) / len(t_min_list), 1),
+                "temp_max_c": round(sum(t_max_list) / len(t_max_list), 1),
+                "rain_probability": rain_pct,
+                "wind_kmh": round(sum(wind_list) / len(wind_list), 1) if wind_list else 0.0,
+                "weather_code": dominant_code,
+                "weather_description": desc,
+                "weather_type": "historical_climate_estimate",
+                "weather_type_label": "Historical Climate Estimate",
                 "api_type": "open-meteo-historical-archive",
-                "days_ahead": days_ahead
+                "days_ahead": days_ahead,
             }
             now_iso = datetime.now().isoformat()
-            set_cached_api(cache_key, res, source="api", ttl_seconds=604800)  # 7 days TTL
+            set_cached_api(cache_key, res, source="api", ttl_seconds=604800)
             return {**res, "source": "api", "fetched_at": now_iso}
 
     except Exception:
         pass
 
-    # Offline climatic estimate fallback based on latitude and month
-    month = int(start_date[5:7]) if len(start_date) >= 7 else 11
-    is_summer = month in [4, 5, 6, 7]
-    base_min = 20.0 if is_summer else 12.0
-    base_max = 32.0 if is_summer else 22.0
-    fallback = {
-        "temp_min_c": base_min,
-        "temp_max_c": base_max,
-        "rain_probability": 20.0,
-        "wind_kmh": 14.0,
-        "api_type": "offline-climatic-estimate",
-        "days_ahead": days_ahead
+    return {
+        "available": False,
+        "lat": round(f_lat, 4),
+        "lon": round(f_lon, 4),
+        "start_date": start_date,
+        "end_date": end_date,
+        "weather_type": "unavailable",
+        "weather_type_label": "Weather information unavailable",
+        "api_type": "unavailable",
+        "message": "Weather information unavailable",
+        "days_ahead": days_ahead,
+        "source": "unavailable",
+        "fetched_at": datetime.now().isoformat(),
     }
-    return {**fallback, "source": "offline-estimate", "fetched_at": datetime.now().isoformat()}
 
 
 # ---------------------------------------------------------------------------

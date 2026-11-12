@@ -1104,20 +1104,37 @@ def create_trip(user_id: str, payload: TripCreate):
             "address": stay_obj.address,
         }
 
+    from app.providers.geo import resolve_trip_location
+    loc_info = resolve_trip_location(
+        destination_id=payload.destination_id,
+        destination_name=dest_name,
+        lat=payload.destination_lat,
+        lon=payload.destination_lon,
+        resolved_location=payload.resolved_location,
+    )
+    dest_lat = loc_info.get("lat")
+    dest_lon = loc_info.get("lon")
+    resolved_loc = loc_info.get("resolved_location") or dest_name
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO trips (
-                id, user_id, destination_id, destination_name, start_date, end_date,
+                id, user_id, destination_id, destination_name,
+                destination_lat, destination_lon, resolved_location,
+                start_date, end_date,
                 duration_days, travellers_count, total_budget, currency,
                 accommodation_tier, transit_pref, travel_pace, specific_interests,
                 departure_location, companions, has_children, has_elderly, trip_preferences_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             trip_id,
             user_id,
             payload.destination_id,
             dest_name,
+            dest_lat,
+            dest_lon,
+            resolved_loc,
             payload.start_date,
             payload.end_date,
             duration,
@@ -1138,17 +1155,45 @@ def create_trip(user_id: str, payload: TripCreate):
 
         cursor.execute("SELECT * FROM trips WHERE id = ?", (trip_id,))
         row = cursor.fetchone()
-        t_dict = dict(row)
-        t_dict["specific_interests"] = json.loads(t_dict["specific_interests"]) if t_dict["specific_interests"] else []
-        t_dict["has_children"] = bool(t_dict.get("has_children", 0))
-        t_dict["has_elderly"] = bool(t_dict.get("has_elderly", 0))
-        if t_dict.get("trip_preferences_json"):
-            try: t_dict["trip_preferences"] = json.loads(t_dict["trip_preferences_json"])
-            except Exception: t_dict["trip_preferences"] = {}
+        t_dict = _hydrate_trip_row(dict(row))
         if payload.stay_name:
             t_dict["stay_id"] = stay_obj_id
             t_dict["stay_name"] = payload.stay_name
         return TripResponse(**t_dict)
+
+
+def _hydrate_trip_row(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize a trips SQLite row into a TripResponse-ready dict with resolved coordinates."""
+    d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
+    d["has_children"] = bool(d.get("has_children", 0))
+    d["has_elderly"] = bool(d.get("has_elderly", 0))
+    if d.get("trip_preferences_json"):
+        try:
+            d["trip_preferences"] = json.loads(d["trip_preferences_json"])
+            anchor = d["trip_preferences"].get("stay_anchor") if isinstance(d["trip_preferences"], dict) else None
+            if anchor:
+                d["stay_id"] = anchor.get("stay_id")
+                d["stay_name"] = anchor.get("name")
+        except Exception:
+            d["trip_preferences"] = {}
+    if d.get("destination_lat") is None or d.get("destination_lon") is None or not d.get("resolved_location"):
+        from app.providers.geo import resolve_trip_location
+        loc_info = resolve_trip_location(
+            destination_id=d.get("destination_id"),
+            destination_name=d.get("destination_name"),
+            lat=d.get("destination_lat"),
+            lon=d.get("destination_lon"),
+            resolved_location=d.get("resolved_location"),
+            allow_live_geocode=False,
+        )
+        if d.get("destination_lat") is None:
+            d["destination_lat"] = loc_info.get("lat")
+        if d.get("destination_lon") is None:
+            d["destination_lon"] = loc_info.get("lon")
+        if not d.get("resolved_location"):
+            d["resolved_location"] = loc_info.get("resolved_location") or d.get("destination_name")
+    return d
+
 
 @router.get("/trips/{user_id}", response_model=List[TripResponse])
 def get_user_trips(user_id: str):
@@ -1161,22 +1206,8 @@ def get_user_trips(user_id: str):
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM trips WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
         rows = cursor.fetchall()
-        result = []
-        for r in rows:
-            d = dict(r)
-            d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
-            d["has_children"] = bool(d.get("has_children", 0))
-            d["has_elderly"] = bool(d.get("has_elderly", 0))
-            if d.get("trip_preferences_json"):
-                try:
-                    d["trip_preferences"] = json.loads(d["trip_preferences_json"])
-                    anchor = d["trip_preferences"].get("stay_anchor") if isinstance(d["trip_preferences"], dict) else None
-                    if anchor:
-                        d["stay_id"] = anchor.get("stay_id")
-                        d["stay_name"] = anchor.get("name")
-                except Exception: d["trip_preferences"] = {}
-            result.append(TripResponse(**d))
-        return result
+        return [TripResponse(**_hydrate_trip_row(dict(r))) for r in rows]
+
 
 @router.get("/trips/detail/{trip_id}", response_model=TripResponse)
 def get_trip_detail(trip_id: str):
@@ -1187,19 +1218,7 @@ def get_trip_detail(trip_id: str):
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
-        d = dict(row)
-        d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
-        d["has_children"] = bool(d.get("has_children", 0))
-        d["has_elderly"] = bool(d.get("has_elderly", 0))
-        if d.get("trip_preferences_json"):
-            try:
-                d["trip_preferences"] = json.loads(d["trip_preferences_json"])
-                anchor = d["trip_preferences"].get("stay_anchor") if isinstance(d["trip_preferences"], dict) else None
-                if anchor:
-                    d["stay_id"] = anchor.get("stay_id")
-                    d["stay_name"] = anchor.get("name")
-            except Exception: d["trip_preferences"] = {}
-        return TripResponse(**d)
+        return TripResponse(**_hydrate_trip_row(dict(row)))
 
 # ==============================================================================
 # REALISTIC MINIMUM TRIP BUDGET ENDPOINTS

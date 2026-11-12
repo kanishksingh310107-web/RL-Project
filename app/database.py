@@ -125,6 +125,9 @@ def init_db():
                 user_id TEXT NOT NULL,
                 destination_id TEXT NOT NULL,
                 destination_name TEXT NOT NULL,
+                destination_lat REAL,
+                destination_lon REAL,
+                resolved_location TEXT,
                 start_date TEXT NOT NULL,
                 end_date TEXT NOT NULL,
                 duration_days INTEGER NOT NULL,
@@ -275,6 +278,12 @@ def init_db():
             cursor.execute("ALTER TABLE trips ADD COLUMN has_elderly INTEGER DEFAULT 0")
         if "trip_preferences_json" not in tr_cols:
             cursor.execute("ALTER TABLE trips ADD COLUMN trip_preferences_json TEXT DEFAULT '{}'")
+        if "destination_lat" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN destination_lat REAL")
+        if "destination_lon" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN destination_lon REAL")
+        if "resolved_location" not in tr_cols:
+            cursor.execute("ALTER TABLE trips ADD COLUMN resolved_location TEXT")
 
         # Lightweight schema migrations for existing SQLite databases
         cursor.execute("PRAGMA table_info(traveller_profiles)")

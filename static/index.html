@@ -418,80 +418,6 @@
         </div>
       </div>
 
-      <!-- DYNAMIC INDIA LOCATION EXPLORER & REAL-TIME PLACE DISCOVERY (MODE A & MODE B) -->
-      <div id="dynamicDiscoverySection" class="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/10">
-          <div>
-            <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 mb-2">
-              <i class="fa-solid fa-map-location-dot"></i> Dynamic India Discovery
-            </div>
-            <h2 class="text-xl sm:text-2xl font-bold">Discover Real Places Anywhere in India</h2>
-            <p class="text-xs text-slate-300 mt-1">
-              Search any Indian city, town, or tourist hub — or detect your GPS position to discover nearby attractions, heritage, dining & nature.
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button onclick="detectUserLocation()" id="gpsDetectBtn" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg shadow-emerald-900/30">
-              <i class="fa-solid fa-location-crosshairs"></i>
-              <span>Use My Current Location</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Search Bar & Radius Controls -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div class="md:col-span-3 relative">
-            <div class="relative">
-              <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400 text-xs"></i>
-              <input type="text" id="dynamicLocationSearchInput" placeholder="Search any city, town, or region in India (e.g. Pune, Srinagar, Munnar, Hampi, Coonoor)..."
-                class="w-full pl-9 pr-10 py-2.5 bg-white/10 hover:bg-white/15 focus:bg-white text-white focus:text-slate-900 placeholder:text-slate-400 border border-white/20 rounded-xl focus:ring-2 focus:ring-indigo-400 focus:outline-none text-xs transition"
-                autocomplete="off" oninput="handleDynamicLocationSearch(this.value)">
-              <button onclick="clearDynamicSearch()" id="dynamicClearBtn" class="hidden absolute right-3 top-3 text-slate-400 hover:text-white text-xs">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-            <!-- Autocomplete suggestions dropdown -->
-            <div id="dynamicLocationSuggestions" class="hidden absolute left-0 right-0 top-12 bg-white text-slate-900 border border-slate-200 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto text-xs divide-y divide-slate-100"></div>
-          </div>
-          <div class="flex items-center gap-2">
-            <select id="dynamicRadiusSelect" onchange="handleRadiusChange(this.value)" class="w-full bg-white/10 text-white border border-white/20 px-3 py-2.5 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400">
-              <option value="5000" class="text-slate-900">Within 5 km</option>
-              <option value="10000" class="text-slate-900">Within 10 km</option>
-              <option value="15000" selected class="text-slate-900">Within 15 km</option>
-              <option value="25000" class="text-slate-900">Within 25 km</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Status / Active Location Bar -->
-        <div id="dynamicLocationStatusBar" class="hidden flex flex-wrap items-center justify-between gap-3 p-3 bg-white/5 rounded-xl border border-white/10 text-xs">
-          <div class="flex items-center gap-2">
-            <i class="fa-solid fa-circle-check text-emerald-400"></i>
-            <span>Active Location: <strong id="activeLocationName" class="text-white">--</strong></span>
-            <span id="activeLocationCoords" class="text-[11px] text-slate-400 font-mono"></span>
-            <span id="activeLocationProvenance" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Live Geoapify</span>
-          </div>
-          <button onclick="openPlanModalForActiveLocation()" class="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white font-semibold text-xs rounded-lg transition flex items-center gap-1.5">
-            <i class="fa-solid fa-calendar-plus"></i>
-            <span>Plan Itinerary for this Location</span>
-          </button>
-        </div>
-
-        <!-- Discovered Places Grid -->
-        <div id="dynamicPlacesArea" class="hidden space-y-3">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
-              <h3 class="text-sm font-bold text-white">Discovered Real Places & LinUCB Personalized Recommendations</h3>
-            </div>
-            <span id="discoveredCountText" class="text-[11px] text-slate-400">0 places discovered</span>
-          </div>
-          <div id="dynamicPlacesGrid" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <!-- Populated by JS -->
-          </div>
-        </div>
-      </div>
-
       <!-- VIEW 3B: TRAVEL RECOMMENDATIONS (FEATURE TWO) -->
       <div id="recommendationsSection" class="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 space-y-7">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
@@ -1297,38 +1223,76 @@
       </div>
 
       <form id="tripCreateForm" onsubmit="handleTripCreateSubmit(event)" class="mt-4 space-y-4 text-xs">
-        <!-- 1. DESTINATION -->
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+        <!-- 1. DESTINATION & UNIFIED LOCATION DISCOVERY -->
+        <div class="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+          <label class="block font-semibold text-slate-800 flex items-center justify-between">
             <span>Destination (Anywhere in India)</span>
-            <span class="text-[10px] text-emerald-600 font-normal">Real-Time Search & Curated Hubs</span>
+            <span class="text-[10px] text-emerald-700 font-semibold">Search, GPS &amp; Curated Hubs</span>
           </label>
-          <div class="relative mb-2">
-            <input type="text" id="tripCitySearchInput" placeholder="Search any city or tourist place (e.g. Pune, Srinagar, Shillong, Hampi)..." 
-              class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-slate-50 text-xs"
-              autocomplete="off" oninput="handleCitySearchInput(this.value)">
-            <div id="citySearchResults" class="hidden absolute left-0 right-0 top-10 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-48 overflow-y-auto text-xs"></div>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <div class="relative flex-1">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+              <input type="text" id="tripCitySearchInput" placeholder="Search any Indian city, town, or destination (e.g. Pune, Srinagar, Hampi)..."
+                class="w-full pl-8 pr-8 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white text-xs"
+                autocomplete="off" oninput="handleCitySearchInput(this.value)">
+              <button type="button" onclick="clearTripCitySearch()" id="tripCityClearBtn" class="hidden absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs" title="Clear search">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+              <div id="citySearchResults" class="hidden absolute left-0 right-0 top-10 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-52 overflow-y-auto text-xs divide-y divide-slate-100"></div>
+            </div>
+            <button type="button" onclick="detectUserLocation()" id="gpsDetectBtn" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap shrink-0">
+              <i class="fa-solid fa-location-crosshairs"></i>
+              <span>Use My Location</span>
+            </button>
           </div>
-          <div class="flex items-center gap-2 mb-1">
-            <span class="text-[10px] text-slate-400 uppercase font-semibold">Or pick featured destination:</span>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 items-center">
+            <div class="sm:col-span-2">
+              <span class="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Or pick supported destination:</span>
+              <select id="tripDestSelect" required onchange="handleFeaturedDestinationChange(this.value)" class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white text-xs">
+                <option value="manali_spiti_india">Manali & Spiti Valley (Himachal Pradesh)</option>
+                <option value="rishikesh_haridwar_india">Rishikesh & Haridwar (Uttarakhand)</option>
+                <option value="leh_ladakh_india">Leh Ladakh (Ladakh)</option>
+                <option value="varanasi_india">Varanasi (Uttar Pradesh)</option>
+                <option value="udaipur_mewar_india">Udaipur & Mewar (Rajasthan)</option>
+                <option value="jaipur_jodhpur_india">Jaipur & Jodhpur (Rajasthan)</option>
+                <option value="south_goa_india">South Goa</option>
+                <option value="kerala_alleppey_india">Munnar & Alleppey (Kerala)</option>
+                <option value="hampi_india">Hampi (Karnataka)</option>
+                <option value="ooty_coorg_india">Ooty & Coorg (Tamil Nadu / Karnataka)</option>
+                <option value="darjeeling_gangtok_india">Darjeeling & Gangtok (Sikkim / West Bengal)</option>
+                <option value="meghalaya_shillong_india">Meghalaya (Shillong & Cherrapunji)</option>
+              </select>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 uppercase font-semibold block mb-1">Discovery Radius:</span>
+              <select id="tripDiscoveryRadiusSelect" onchange="handleRadiusChange(this.value)" class="w-full px-2.5 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white text-xs">
+                <option value="5000">Within 5 km</option>
+                <option value="10000">Within 10 km</option>
+                <option value="15000" selected>Within 15 km</option>
+                <option value="25000">Within 25 km</option>
+              </select>
+            </div>
           </div>
-          <select id="tripDestSelect" required class="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white">
-            <option value="manali_spiti_india">Manali & Spiti Valley (Himachal Pradesh)</option>
-            <option value="rishikesh_haridwar_india">Rishikesh & Haridwar (Uttarakhand)</option>
-            <option value="leh_ladakh_india">Leh Ladakh (Ladakh)</option>
-            <option value="varanasi_india">Varanasi (Uttar Pradesh)</option>
-            <option value="udaipur_mewar_india">Udaipur & Mewar (Rajasthan)</option>
-            <option value="jaipur_jodhpur_india">Jaipur & Jodhpur (Rajasthan)</option>
-            <option value="south_goa_india">South Goa</option>
-            <option value="kerala_alleppey_india">Munnar & Alleppey (Kerala)</option>
-            <option value="hampi_india">Hampi (Karnataka)</option>
-            <option value="ooty_coorg_india">Ooty & Coorg (Tamil Nadu / Karnataka)</option>
-            <option value="darjeeling_gangtok_india">Darjeeling & Gangtok (Sikkim / West Bengal)</option>
-            <option value="meghalaya_shillong_india">Meghalaya (Shillong & Cherrapunji)</option>
-          </select>
-          <div id="destinationSourceInfo" class="hidden text-[10px] text-slate-500 mt-1 flex items-center gap-1.5">
-            <i class="fa-solid fa-circle-check text-emerald-500"></i>
-            <span id="destinationSourceText">Resolved via Geocoding</span>
+          <div id="destinationSourceInfo" class="hidden text-[11px] text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5">
+              <i class="fa-solid fa-circle-check text-emerald-500"></i>
+              <span id="destinationSourceText">Resolved via Geocoding</span>
+            </div>
+            <span id="destinationProvenanceBadge" class="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">Live Geoapify</span>
+          </div>
+
+          <!-- Nearby Place Discovery Preview (feeds into LinUCB & Itinerary Planner) -->
+          <div id="tripNearbyPlacesArea" class="hidden space-y-2 pt-2 border-t border-slate-200">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                <span class="text-[11px] font-bold text-slate-800">Nearby Places &amp; LinUCB Matches</span>
+              </div>
+              <span id="tripDiscoveredCountText" class="text-[10px] text-slate-500 font-medium">0 places</span>
+            </div>
+            <div id="tripNearbyPlacesGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+              <!-- Populated by JS -->
+            </div>
           </div>
         </div>
 

@@ -441,12 +441,28 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     """, (total_itinerary_cost, itinerary_id))
     conn.commit()
 
+    from app.providers.geo import resolve_trip_location
+    loc_info = resolve_trip_location(
+        destination_id=trip.get("destination_id"),
+        destination_name=trip.get("destination_name"),
+        lat=trip.get("destination_lat"),
+        lon=trip.get("destination_lon"),
+        resolved_location=trip.get("resolved_location"),
+        allow_live_geocode=False,
+    )
+
     return {
         "id": itinerary_id,
         "trip_id": trip_id,
         "user_id": user_id,
         "title": f"Personalised Itinerary: {trip['destination_name']}",
+        "destination_id": trip.get("destination_id"),
         "destination_name": trip["destination_name"],
+        "destination_lat": loc_info.get("lat"),
+        "destination_lon": loc_info.get("lon"),
+        "resolved_location": loc_info.get("resolved_location") or trip["destination_name"],
+        "start_date": trip.get("start_date"),
+        "end_date": trip.get("end_date"),
         "total_days": trip["duration_days"],
         "status": "active",
         "total_estimated_cost": total_itinerary_cost,
@@ -462,7 +478,8 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
     cursor.execute("""
         SELECT i.id, i.trip_id, i.user_id, i.title, i.total_days, i.status,
                i.total_estimated_cost, i.summary_notes, i.created_at, i.updated_at,
-               t.destination_name, t.start_date
+               t.destination_name, t.start_date, t.end_date,
+               t.destination_id, t.destination_lat, t.destination_lon, t.resolved_location
         FROM itineraries i
         JOIN trips t ON i.trip_id = t.id
         WHERE i.trip_id = ? AND i.user_id = ?
@@ -535,12 +552,28 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
                 days_dict[day_n]["neighborhood"] = a[9]
                 days_dict[day_n]["theme"] = f"Exploring {a[9]}"
 
+    from app.providers.geo import resolve_trip_location
+    loc_info = resolve_trip_location(
+        destination_id=row[13],
+        destination_name=row[10],
+        lat=row[14],
+        lon=row[15],
+        resolved_location=row[16],
+        allow_live_geocode=False,
+    )
+
     return {
         "id": itin_id,
         "trip_id": row[1],
         "user_id": row[2],
         "title": row[3],
+        "destination_id": row[13],
         "destination_name": row[10],
+        "destination_lat": loc_info.get("lat"),
+        "destination_lon": loc_info.get("lon"),
+        "resolved_location": loc_info.get("resolved_location") or row[10],
+        "start_date": row[11],
+        "end_date": row[12],
         "total_days": total_days,
         "status": row[5],
         "total_estimated_cost": row[6],

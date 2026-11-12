@@ -85,12 +85,18 @@ DESTINATION_COORDS: Dict[str, Tuple[float, float]] = {
     "tokyo_japan": (35.6762, 139.6503),
     "cape_town_south_africa": (-33.9249, 18.4241),
     "ladakh_leh_india": (34.1526, 77.5771),
+    "leh_ladakh_india": (34.1526, 77.5771),
     "varanasi_kashi_india": (25.3176, 82.9739),
+    "varanasi_india": (25.3176, 82.9739),
     "jaipur_rajasthan_india": (26.9124, 75.7873),
+    "jaipur_jodhpur_india": (26.9124, 75.7873),
+    "udaipur_mewar_india": (24.5854, 73.7125),
     "rishikesh_haridwar_india": (30.0869, 78.2676),
     "hampi_karnataka_india": (15.3350, 76.4600),
+    "hampi_india": (15.3350, 76.4600),
     "meghalaya_shillong_india": (25.5788, 91.8933),
     "darjeeling_sikkim_india": (27.0410, 88.2663),
+    "darjeeling_gangtok_india": (27.0410, 88.2663),
     "andaman_havelock_india": (11.9761, 92.9876),
     "amritsar_punjab_india": (31.6340, 74.8723),
     "ooty_coorg_india": (11.4102, 76.6950),
@@ -256,11 +262,30 @@ def get_offline_weather(
 
 
 def get_weather_for_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
-    """Retrieves live Open-Meteo forecast or falls back to hand-written estimate."""
+    """Retrieves live Open-Meteo forecast for trip coordinates & dates, or falls back to climate estimate."""
     dest_id = trip.get("destination_id", "")
-    coords = DESTINATION_COORDS.get(dest_id)
+    dest_name = trip.get("destination_name", "")
     start_date = trip.get("start_date", "")
     end_date = trip.get("end_date", "")
+
+    coords = None
+    resolved_loc = trip.get("resolved_location") or dest_name or dest_id
+    if trip.get("destination_lat") is not None and trip.get("destination_lon") is not None:
+        coords = (float(trip["destination_lat"]), float(trip["destination_lon"]))
+    elif dest_id in DESTINATION_COORDS:
+        coords = DESTINATION_COORDS[dest_id]
+    else:
+        from app.providers.geo import resolve_trip_location
+        loc_info = resolve_trip_location(
+            destination_id=dest_id,
+            destination_name=dest_name,
+            resolved_location=trip.get("resolved_location"),
+            allow_live_geocode=False,
+        )
+        if loc_info.get("lat") is not None and loc_info.get("lon") is not None:
+            coords = (float(loc_info["lat"]), float(loc_info["lon"]))
+        if loc_info.get("resolved_location"):
+            resolved_loc = loc_info["resolved_location"]
 
     live_data = None
     if coords and start_date and end_date:
@@ -276,6 +301,7 @@ def get_weather_for_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
             "source": "open-meteo",
             "fetched_at": now_iso,
             "label": "Live forecast (Open-Meteo)",
+            "weather_type": "forecast",
             "summary": {
                 "temp_min_c": live_data["temp_min_c"],
                 "temp_max_c": live_data["temp_max_c"],
@@ -284,6 +310,9 @@ def get_weather_for_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
             },
             "coordinates": coords,
             "destination_id": dest_id,
+            "resolved_location": resolved_loc,
+            "start_date": start_date,
+            "end_date": end_date,
         }
 
     offline = get_offline_weather(dest_id, start_date)
@@ -291,6 +320,7 @@ def get_weather_for_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
         "source": "offline-estimate",
         "fetched_at": now_iso,
         "label": "Offline estimate – not a live forecast",
+        "weather_type": "historical_climate_estimate",
         "summary": {
             "temp_min_c": offline["temp_min_c"],
             "temp_max_c": offline["temp_max_c"],
@@ -299,6 +329,9 @@ def get_weather_for_trip(trip: Dict[str, Any]) -> Dict[str, Any]:
         },
         "coordinates": coords,
         "destination_id": dest_id,
+        "resolved_location": resolved_loc,
+        "start_date": start_date,
+        "end_date": end_date,
     }
 
 

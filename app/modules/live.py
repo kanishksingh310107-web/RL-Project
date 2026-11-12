@@ -1257,27 +1257,47 @@ def get_live_weather_alerts(trip_id: str):
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
 
-    dest_id = trip.get("destination_id", "delhi")
-    from app.recommender import DESTINATIONS
-    dest_meta = next((d for d in DESTINATIONS if d.get("id") == dest_id), {})
-    lat = dest_meta.get("lat", 28.6139)
-    lon = dest_meta.get("lon", 77.2090)
+    from app.providers.geo import resolve_trip_location
+    loc_info = resolve_trip_location(
+        destination_id=trip.get("destination_id"),
+        destination_name=trip.get("destination_name"),
+        lat=trip.get("destination_lat"),
+        lon=trip.get("destination_lon"),
+        resolved_location=trip.get("resolved_location"),
+    )
+    lat = loc_info.get("lat")
+    lon = loc_info.get("lon")
+    if lat is None or lon is None:
+        return {
+            "trip_id": trip_id,
+            "destination_name": trip.get("destination_name"),
+            "available": False,
+            "message": "Weather information unavailable",
+            "forecast": None,
+            "provenance": {"source": "unavailable", "is_live": False, "is_estimate": False},
+        }
 
     from app.providers.weather import get_weather_forecast
     forecast = get_weather_forecast(lat, lon, days=7)
+    daily_list = forecast.get("daily_forecast") or []
+    first_day = daily_list[0] if daily_list else {}
+    sunrise = first_day.get("sunrise", "06:18 AM")
+    sunset = first_day.get("sunset", "18:25 PM")
 
     return {
         "trip_id": trip_id,
         "destination_name": trip.get("destination_name"),
-        "sunrise": "06:18 AM",
-        "sunset": "18:25 PM",
+        "resolved_location": loc_info.get("resolved_location") or trip.get("destination_name"),
+        "coordinates": {"lat": lat, "lon": lon},
+        "sunrise": sunrise,
+        "sunset": sunset,
         "golden_hour_morning": "06:18 - 07:15 AM",
         "golden_hour_evening": "17:30 - 18:25 PM",
         "forecast": forecast,
-        "provenance": {
+        "provenance": forecast.get("provenance", {
             "source": "open-meteo",
-            "is_live": True,
-            "is_estimate": False,
+            "is_live": False,
+            "is_estimate": True,
             "attribution": "Weather data by Open-Meteo.com"
-        }
+        })
     }

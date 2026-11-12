@@ -91,6 +91,12 @@ class PlanDynamicTripRequest(BaseModel):
     total_budget: Optional[float] = 25000.0
     travellers_count: Optional[int] = 1
     radius_meters: Optional[int] = 15000
+    stay_id: Optional[str] = None
+    stay_name: Optional[str] = None
+    stay_lat: Optional[float] = None
+    stay_lon: Optional[float] = None
+    stay_address: Optional[str] = None
+    stay_type: Optional[str] = None
 
 
 # -----------------------------------------------------------------------------
@@ -388,7 +394,8 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
     set_cached(f"geo:dest:{dest_id}", {"lat": lat, "lon": lon, "name": dest_name}, TTL_PLACES_SECONDS)
 
     # 2. Fetch real places via Geoapify Places discovery
-    live_places = discover_places_india(lat=lat, lon=lon, radius_meters=15000, limit=20)
+    discovery_radius = max(1000, min(int(payload.radius_meters or 15000), 50000))
+    live_places = discover_places_india(lat=lat, lon=lon, radius_meters=discovery_radius, limit=20)
     
     # 3. Seed real attractions into SQLite database
     with get_connection() as conn:
@@ -486,19 +493,45 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
                 f"minimum estimated cost of ₹{bare_min:,.0f}. Shortfall: ₹{shortfall:,.0f}."
             )
 
+        # Option A: Prepare pre-selected stay anchor if provided (persisted after outer connection closes)
+        stay_obj = None
+        if payload.stay_name and payload.stay_lat is not None and payload.stay_lon is not None:
+            from app.core.schemas import Stay, Provenance
+            stay_obj_id = payload.stay_id or f"stay_pre_{uuid.uuid4().hex[:6]}"
+            stay_obj = Stay(
+                stay_id=stay_obj_id,
+                trip_id=trip_id,
+                name=payload.stay_name,
+                stay_type=payload.stay_type or "hotel",
+                lat=payload.stay_lat,
+                lon=payload.stay_lon,
+                address=payload.stay_address,
+                provenance=Provenance(source="user_selected_pre_plan", is_live=True),
+            )
+            trip_prefs_dict["stay_anchor"] = {
+                "stay_id": stay_obj_id,
+                "name": payload.stay_name,
+                "lat": payload.stay_lat,
+                "lon": payload.stay_lon,
+            }
+
         cursor.execute("""
             INSERT INTO trips (
                 id, user_id, destination_id, destination_name,
+                destination_lat, destination_lon, resolved_location,
                 start_date, end_date, duration_days, travellers_count,
                 total_budget, currency, accommodation_tier, transit_pref,
                 travel_pace, specific_interests, departure_location,
                 companions, has_children, has_elderly, trip_preferences_json,
                 status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'INR', ?, ?, ?, '[]', ?, ?, ?, ?, ?, 'planning', CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INR', ?, ?, ?, '[]', ?, ?, ?, ?, ?, 'planning', CURRENT_TIMESTAMP)
         """, (
             trip_id,
             payload.user_id,
             dest_id,
+            dest_name,
+            lat,
+            lon,
             dest_name,
             start_date,
             end_date,
@@ -519,6 +552,10 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
         # 5. Generate LinUCB day-by-day Itinerary
         generate_itinerary(conn, user_id=payload.user_id, trip_id=trip_id)
 
+    if stay_obj is not None:
+        from app.core.stores import save_stay
+        save_stay(stay_obj)
+
     # 6. Retrieve Timed Itinerary View (Sightseeing + Transit + Meals + Rest breaks)
     timed_view = get_timed_itinerary_view(trip_id)
 
@@ -537,6 +574,9 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
             "id": trip_id,
             "destination_id": dest_id,
             "destination_name": dest_name,
+            "destination_lat": lat,
+            "destination_lon": lon,
+            "resolved_location": dest_name,
             "start_date": start_date,
             "end_date": end_date,
             "duration_days": duration,
