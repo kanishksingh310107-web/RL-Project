@@ -11,6 +11,9 @@ from app.database import init_db
 from app.db_migrations_a import migrate_a
 from app.profile_gate import router as profile_gate_router
 # end A: profile/history integration
+# B: schedule preferences integration
+from app.db_migrations_b import run_b_migration
+# end B: schedule preferences integration
 from app.api import router
 from app.modules import discover, init_module_tables, registry_router
 
@@ -41,6 +44,9 @@ def startup():
     # A: profile/history migration
     migrate_a()
     # end A: profile/history migration
+    # B: schedule preferences migration
+    run_b_migration()
+    # end B: schedule preferences migration
     init_module_tables()
 
 @app.get("/")

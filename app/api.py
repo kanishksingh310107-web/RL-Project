@@ -3,7 +3,8 @@ import json
 import uuid
 import numpy as np
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi.responses import JSONResponse
 
 from app.models import (
     AuthRequest, AuthResponse, ShortProfileCreate, ProfileResponse,
@@ -41,6 +42,10 @@ from app.questionnaire import (
 from app import precision as prec
 from app.planning.budget import (
     calculate_minimum_trip_budget, validate_trip_budget, adapt_itinerary_to_budget
+)
+from app.profile_gate import require_profile_complete
+from app.schedule_preferences import (
+    LEGACY_SCHEDULE_PREFS, normalize_schedule_preferences,
 )
 
 router = APIRouter(prefix="/api")
@@ -1056,7 +1061,7 @@ def get_profile_summary_endpoint(user_id: str):
 from datetime import datetime
 
 @router.post("/trips/{user_id}", response_model=TripResponse)
-def create_trip(user_id: str, payload: TripCreate):
+def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require_profile_complete)):
     """Create a new trip configuration pre-filling from profile if needed."""
     import app.database as database
     # 1. Validate destination (India-only unless running in test environment)
@@ -1089,6 +1094,16 @@ def create_trip(user_id: str, payload: TripCreate):
             raise ValueError('Trip must last at most 366 days')
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
+
+    trip_pref_input = dict(payload.trip_preferences or {})
+    incoming_schedule_prefs = payload.schedule_prefs or trip_pref_input.pop("schedule_prefs", None)
+    try:
+        schedule_prefs = normalize_schedule_preferences(
+            incoming_schedule_prefs, duration,
+            same_day=(duration == 1 and incoming_schedule_prefs is not None)
+        )
+    except Exception as exc:
+        return JSONResponse(status_code=422, content={"detail": str(exc), "code": "INVALID_SCHEDULE_PREFS", "field": "schedule_prefs"})
 
     # 4. Lookup user
     user = get_user_by_id(user_id)
@@ -1163,7 +1178,7 @@ def create_trip(user_id: str, payload: TripCreate):
     bare_min = min_budget_data["bare_minimum_budget"]
     rec_budget = min_budget_data["recommended_budget"]
 
-    trip_prefs_dict = dict(payload.trip_preferences or {})
+    trip_prefs_dict = trip_pref_input
     trip_prefs_dict["bare_minimum_budget"] = bare_min
     trip_prefs_dict["recommended_budget"] = rec_budget
     trip_prefs_dict["budget_categories"] = min_budget_data["categories"]
@@ -1265,6 +1280,20 @@ def create_trip(user_id: str, payload: TripCreate):
 
         cursor.execute("SELECT * FROM trips WHERE id = ?", (trip_id,))
         row = cursor.fetchone()
+        if incoming_schedule_prefs is not None:
+            from app.db_migrations_b import migrate_b
+            migrate_b(conn)
+            conn.execute("""INSERT INTO trip_schedule_prefs
+            (trip_id, hotel_arrival_time, hotel_departure_time, wake_time, bed_time, activity_start_time, free_blocks_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(trip_id) DO UPDATE SET
+            hotel_arrival_time=excluded.hotel_arrival_time, hotel_departure_time=excluded.hotel_departure_time,
+            wake_time=excluded.wake_time, bed_time=excluded.bed_time,
+            activity_start_time=excluded.activity_start_time, free_blocks_json=excluded.free_blocks_json""",
+                (trip_id, schedule_prefs["hotel_arrival_time"], schedule_prefs["hotel_departure_time"],
+             schedule_prefs["wake_time"], schedule_prefs["bed_time"], schedule_prefs["activity_start_time"],
+                 json.dumps(schedule_prefs["free_blocks"])))
+        conn.commit()
+        row = conn.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone()
         t_dict = _hydrate_trip_row(dict(row))
         if payload.stay_name and payload.stay_lat is not None and payload.stay_lon is not None:
             save_stay(stay_obj)
@@ -1277,6 +1306,21 @@ def create_trip(user_id: str, payload: TripCreate):
 def _hydrate_trip_row(d: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a trips SQLite row into a TripResponse-ready dict with resolved coordinates."""
     d["specific_interests"] = json.loads(d["specific_interests"]) if d.get("specific_interests") else []
+    try:
+        with get_connection() as pref_conn:
+            pref_row = pref_conn.execute("SELECT * FROM trip_schedule_prefs WHERE trip_id=?", (d.get("id"),)).fetchone()
+        if pref_row:
+            p = dict(pref_row)
+            d["schedule_prefs"] = {
+                "hotel_arrival_time": p["hotel_arrival_time"], "hotel_departure_time": p["hotel_departure_time"],
+                "wake_time": p["wake_time"], "bed_time": p["bed_time"],
+                "activity_start_time": p["activity_start_time"],
+                "free_blocks": json.loads(p["free_blocks_json"] or "[]"),
+            }
+        else:
+            d["schedule_prefs"] = dict(LEGACY_SCHEDULE_PREFS)
+    except Exception:
+        d["schedule_prefs"] = dict(LEGACY_SCHEDULE_PREFS)
     d["has_children"] = bool(d.get("has_children", 0))
     d["has_elderly"] = bool(d.get("has_elderly", 0))
     if d.get("trip_preferences_json"):
@@ -1351,7 +1395,7 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
     from app.core.party import normalize_party, party_type
     allowed = {'start_date','end_date','party','travellers_count','companions','total_budget',
                'travel_pace','transit_pref','accommodation_tier','departure_location',
-               'trip_preferences','food_style','notes','regeneration_mode'}
+               'trip_preferences','food_style','notes','regeneration_mode','schedule_prefs'}
     unknown = set(payload)-allowed
     if unknown:
         raise HTTPException(422, 'Unsupported edit fields: '+', '.join(sorted(unknown)))
@@ -1363,6 +1407,17 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
         if not row:
             raise HTTPException(404, 'Trip not found or unauthorized')
         current = _hydrate_trip_row(dict(row))
+        prefs_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone()
+        prefs_already_stored = bool(prefs_table and conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone())
+        has_custom_prefs = payload.get('schedule_prefs') is not None or prefs_already_stored
+        try:
+            schedule_prefs = normalize_schedule_preferences(
+                payload.get('schedule_prefs', current.get('schedule_prefs')),
+                max(1, (datetime.strptime(payload.get('end_date', current['end_date']), '%Y-%m-%d') - datetime.strptime(payload.get('start_date', current['start_date']), '%Y-%m-%d')).days + 1),
+                same_day=(has_custom_prefs and payload.get('start_date', current['start_date']) == payload.get('end_date', current['end_date']))
+            )
+        except Exception as exc:
+            return JSONResponse(status_code=422, content={"detail": str(exc), "code": "INVALID_SCHEDULE_PREFS", "field": "schedule_prefs"})
         merged = dict(current, **{k:v for k,v in payload.items() if k in TripCreate.model_fields})
         prefs = dict(current.get('trip_preferences') or {}, **(payload.get('trip_preferences') or {}))
         for key in ('food_style','notes'):
@@ -1400,6 +1455,20 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
              int(updated.has_children),int(updated.has_elderly),updated.total_budget,updated.travel_pace,
              updated.transit_pref,updated.accommodation_tier,updated.departure_location,
              json.dumps(updated.trip_preferences),trip_id))
+        prefs_exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone()
+        stored_prefs = conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone() if prefs_exists else None
+        if payload.get('schedule_prefs') is not None or stored_prefs:
+            from app.db_migrations_b import migrate_b
+            migrate_b(conn)
+            conn.execute('''INSERT INTO trip_schedule_prefs
+            (trip_id, hotel_arrival_time, hotel_departure_time, wake_time, bed_time, activity_start_time, free_blocks_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(trip_id) DO UPDATE SET
+            hotel_arrival_time=excluded.hotel_arrival_time, hotel_departure_time=excluded.hotel_departure_time,
+            wake_time=excluded.wake_time, bed_time=excluded.bed_time,
+            activity_start_time=excluded.activity_start_time, free_blocks_json=excluded.free_blocks_json''',
+                (trip_id, schedule_prefs['hotel_arrival_time'], schedule_prefs['hotel_departure_time'],
+             schedule_prefs['wake_time'], schedule_prefs['bed_time'], schedule_prefs['activity_start_time'],
+                 json.dumps(schedule_prefs['free_blocks'])))
         # Derived snapshots are invalid after preferences/dates change.
         for table in ('core_plans','core_trip_prefs','prep_reminders'):
             conn.execute(f'DELETE FROM {table} WHERE trip_id=?',(trip_id,))
@@ -1415,6 +1484,8 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
                 conn.execute(f"INSERT INTO itinerary_activities ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})",[activity[k] for k in keys])
             conn.commit()
             get_itinerary_details(conn,user_id,trip_id)
+            from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
+            regenerate_timed_itinerary_for_trip(conn, trip_id, user_id)
         result = _hydrate_trip_row(dict(conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone()))
         result['message'] = 'Trip updated; accepted activities kept.' if mode == 'keep_accepted' else 'Trip updated; itinerary regenerated.'
         return TripResponse(**result)

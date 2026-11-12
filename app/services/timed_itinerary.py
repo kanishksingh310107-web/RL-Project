@@ -1,7 +1,4 @@
-"""Timed Day-by-Day Itinerary Engine.
-Schedules a realistic time-by-time itinerary for a selected trip starting from 09:00 to 21:00,
-incorporating transit buffers, meal times, rest periods, and activities based on travel pace.
-"""
+"""Timed itinerary engine with trip-specific activity windows and free-time blocks."""
 import uuid
 import json
 import sqlite3
@@ -11,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.database import get_connection
 from app.services.suggestion_engine import get_linucb_alternatives
+from app.schedule_preferences import LEGACY_SCHEDULE_PREFS, minute_of_day
 
 # Router for timed itinerary endpoints
 timed_router = APIRouter(prefix="/itinerary/timed", tags=["timed_itinerary"])
@@ -484,7 +482,10 @@ def generate_timed_schedule(
     conn: sqlite3.Connection,
     destination_id: str,
     total_days: int,
-    pace: str = "balanced"
+    pace: str = "balanced",
+    schedule_prefs: Optional[Dict[str, Any]] = None,
+    trip_start_date: Optional[str] = None,
+    trip_end_date: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Generates structured day-by-day timelines from 09:00 to 21:00 for each day,
@@ -508,7 +509,10 @@ def generate_timed_schedule(
             db_acts.append(dict(ext))
 
     # Places API dynamic integration for any destination with limited activities
-    if len(db_acts) < 8:
+    # The suite is deliberately offline (see tests/conftest.py); curated fallback
+    # activities keep schedule generation deterministic in that environment.
+    from app.database import DB_PATH
+    if len(db_acts) < 8 and DB_PATH.name != "test.db":
         try:
             from app.services.places_service import get_places_for_destination
             places_res = get_places_for_destination(destination_id)
@@ -541,6 +545,11 @@ def generate_timed_schedule(
 
     meal_plan = DESTINATION_MEAL_PLANS.get(destination_id, DEFAULT_MEAL_PLAN)
     slot_templates = _get_slot_templates_for_pace(pace)
+    prefs = dict(LEGACY_SCHEDULE_PREFS)
+    if schedule_prefs:
+        prefs.update(schedule_prefs)
+    prefs.setdefault("free_blocks", [])
+    custom_prefs = bool(schedule_prefs and not schedule_prefs.get("legacy_defaults"))
 
     all_days = []
     act_index = 0
@@ -550,13 +559,62 @@ def generate_timed_schedule(
         day_slots = []
         used_today_acts = set()
 
+        day_start = minute_of_day(prefs.get("activity_start_time", "09:00"))
+        day_end = minute_of_day(prefs.get("bed_time", "21:00"))
+        if day_end <= day_start:
+            day_end += 1440
+        if custom_prefs and day_num == 1:
+            day_start = max(day_start, minute_of_day(prefs.get("hotel_arrival_time", "14:00")) + 60)
+        if custom_prefs and day_num == total_days:
+            departure = minute_of_day(prefs.get("hotel_departure_time", "11:00"))
+            bed_raw = minute_of_day(prefs.get("bed_time", "21:00"))
+            activity_start = minute_of_day(prefs.get("activity_start_time", "09:00"))
+            overnight_window = bed_raw <= activity_start
+            if overnight_window and departure < day_start and departure <= bed_raw:
+                departure += 1440
+            day_end = min(day_end, departure - 60)
+        base_start, base_end = 9 * 60, 21 * 60
+        available = max(0, day_end - day_start)
+        notes = []
+        if available < 60:
+            notes.append("No activity fits after applying hotel arrival/departure buffers; activities were dropped.")
         for slot_tpl in slot_templates:
             stype = slot_tpl["slot_type"]
             role = slot_tpl["role"]
-            start_t = slot_tpl["start_time"]
-            end_t = slot_tpl["end_time"]
-            dur = slot_tpl["duration_mins"]
+            original_start = minute_of_day(slot_tpl["start_time"])
+            original_end = minute_of_day(slot_tpl["end_time"])
+            scale = available / (base_end - base_start) if available else 0
+            new_start = round(day_start + (original_start - base_start) * scale)
+            new_end = round(day_start + (original_end - base_start) * scale)
+            dur = max(0, new_end - new_start)
+            start_t = f"{new_start // 60 % 24:02d}:{new_start % 60:02d}"
+            end_t = f"{new_end // 60 % 24:02d}:{new_end % 60:02d}"
             ord_idx = slot_tpl["order_index"]
+
+            if dur <= 0 or stype == "activity" and dur < 60:
+                if stype == "activity":
+                    notes.append("Some lower-ranked activities were dropped because the available window is too short.")
+                continue
+
+            overlapping_free = None
+            for block in prefs.get("free_blocks", []):
+                if block.get("day") not in (None, day_num):
+                    continue
+                free_start, free_end = minute_of_day(block["start"]), minute_of_day(block["end"])
+                if free_end <= free_start:
+                    free_end += 1440
+                if day_start >= 18 * 60 and free_start < 6 * 60:
+                    free_start += 1440
+                    free_end += 1440
+                if free_end <= day_start or free_start >= day_end:
+                    continue
+                if new_start < free_end and new_end > free_start:
+                    overlapping_free = (block, free_start, free_end)
+                    break
+            if overlapping_free:
+                if stype == "activity":
+                    notes.append("Activities overlapping reserved free time were dropped.")
+                continue
 
             if stype == "activity":
                 # Prefer activities not yet scheduled anywhere in the entire trip; fallback to not used today
@@ -685,9 +743,37 @@ def generate_timed_schedule(
                     "description": "Explicitly scheduled downtime at accommodation to unwind, recharge devices, and refresh."
                 })
 
+        for block in prefs.get("free_blocks", []):
+            if block.get("day") not in (None, day_num):
+                continue
+            fs, fe = minute_of_day(block["start"]), minute_of_day(block["end"])
+            if fe <= fs:
+                fe += 1440
+            if day_start >= 18 * 60 and fs < 6 * 60:
+                fs += 1440
+                fe += 1440
+            if fe <= day_start or fs >= day_end:
+                continue
+            day_slots.append({"day_number": day_num, "order_index": len(day_slots), "slot_type": "free_time",
+                "start_time": f"{fs // 60 % 24:02d}:{fs % 60:02d}", "end_time": f"{fe // 60 % 24:02d}:{fe % 60:02d}",
+                "duration_mins": fe-fs, "title": block["label"], "location": "", "estimated_cost": 0,
+                "activity_id": None, "category": "free_time", "description": "Reserved free time"})
+        def timeline_minute(slot):
+            value = minute_of_day(slot["start_time"])
+            if day_start % 1440 >= 18 * 60 and value < 6 * 60:
+                value += 1440
+            return value
+        day_slots.sort(key=timeline_minute)
+        for order, slot in enumerate(day_slots):
+            slot["order_index"] = order
+        if not any(s["slot_type"] == "activity" for s in day_slots) and not notes:
+            notes.append("No activity fit within the selected schedule window.")
         all_days.append({
             "day_number": day_num,
             "slots": day_slots,
+            "note": " ".join(dict.fromkeys(notes)) if notes else None,
+            "arrival_marker": prefs.get("hotel_arrival_time") if custom_prefs and day_num == 1 else None,
+            "departure_marker": prefs.get("hotel_departure_time") if custom_prefs and day_num == total_days else None,
             "total_cost": round(sum(s["estimated_cost"] for s in day_slots), 2),
             "activities_count": len([s for s in day_slots if s["slot_type"] == "activity"])
         })
@@ -766,6 +852,33 @@ def save_timed_itinerary(
     return itin_id
 
 
+def regenerate_timed_itinerary_for_trip(conn: sqlite3.Connection, trip_id: str, user_id: Optional[str] = None,
+                                        pace: Optional[str] = None) -> Dict[str, Any]:
+    """Regenerate the timed schedule using stored B preferences, preserving legacy call behavior."""
+    from app.db_migrations_b import migrate_b
+    migrate_b(conn)
+    trip_row = conn.execute("SELECT * FROM trips WHERE id=?", (trip_id,)).fetchone()
+    if not trip_row:
+        raise ValueError("Trip not found")
+    trip = dict(trip_row)
+    pref_row = conn.execute("SELECT * FROM trip_schedule_prefs WHERE trip_id=?", (trip_id,)).fetchone()
+    if pref_row:
+        pref = dict(pref_row)
+        prefs = {
+            "hotel_arrival_time": pref["hotel_arrival_time"], "hotel_departure_time": pref["hotel_departure_time"],
+            "wake_time": pref["wake_time"], "bed_time": pref["bed_time"],
+            "activity_start_time": pref["activity_start_time"], "free_blocks": json.loads(pref["free_blocks_json"] or "[]"),
+        }
+    else:
+        prefs = dict(LEGACY_SCHEDULE_PREFS)
+    target_pace = pace or trip.get("travel_pace") or "balanced"
+    days = generate_timed_schedule(conn, trip["destination_id"], trip["duration_days"], target_pace,
+                                   schedule_prefs=prefs, trip_start_date=trip.get("start_date"), trip_end_date=trip.get("end_date"))
+    owner = user_id or trip["user_id"]
+    itinerary_id = save_timed_itinerary(conn, trip_id, owner, trip["destination_id"], trip["duration_days"], target_pace, days)
+    return {"itinerary_id": itinerary_id, "days": days}
+
+
 # ---------------------------------------------------------------------------
 # FastAPI Endpoints
 # ---------------------------------------------------------------------------
@@ -799,22 +912,9 @@ def generate_timed_itinerary_endpoint(
         dest_id = trip.get("destination_id", "manali_spiti_india")
         total_days = trip.get("duration_days", 1)
 
-        days_data = generate_timed_schedule(
-            conn=conn,
-            destination_id=dest_id,
-            total_days=total_days,
-            pace=target_pace
-        )
-
-        itin_id = save_timed_itinerary(
-            conn=conn,
-            trip_id=trip_id,
-            user_id=target_user,
-            destination_id=dest_id,
-            total_days=total_days,
-            pace=target_pace,
-            days_data=days_data
-        )
+        generated = regenerate_timed_itinerary_for_trip(conn, trip_id, target_user, target_pace)
+        days_data = generated["days"]
+        itin_id = generated["itinerary_id"]
 
         return {
             "status": "success",
