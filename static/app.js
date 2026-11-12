@@ -2938,12 +2938,6 @@ function toggleTripFormModal() {
   editingTripId = null;
   document.getElementById('tripEditOptions').classList.add('hidden');
   document.getElementById('tripDestSelect').disabled = false;
-  if (state.profileStatus && !state.profileStatus.complete) {
-    const remaining = state.profileStatus.missing ? state.profileStatus.missing.length : "applicable";
-    alert(`Trip planning is locked until your mandatory travel profile is complete (${remaining} questions remaining). Please finish answering the questions first.`);
-    openPersonalProfileModal();
-    return;
-  }
   // Pre-fill trip form with default dates (14 days from today) and user profile defaults
   const startInput = document.getElementById("tripStartDateInput");
   const endInput = document.getElementById("tripEndDateInput");

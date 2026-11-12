@@ -147,8 +147,27 @@
   async function refreshRevisits() { await loadHistory(); renderRevisits(); }
 
   async function status() {
-    const res = await fetch("/api/profile/status"); if (!res.ok) throw new Error("Sign in again to check your profile"); return res.json();
+    const res = await fetch("/api/profile/status");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = typeof data.detail === "object" ? data.detail : {};
+      const error = new Error(detail.detail || data.detail || "Could not check your profile. Please try again.");
+      error.code = detail.code;
+      error.status = res.status;
+      throw error;
+    }
+    return data;
   }
+
+  function handleAuthFailure() {
+    localStorage.removeItem("rl_travel_user");
+    if (typeof state !== "undefined") state.currentUser = null;
+    if (typeof updateNavUser === "function") updateNavUser();
+    if (typeof showView === "function") showView("auth");
+    const authMessage = byId("authFormMessage");
+    if (authMessage) { authMessage.textContent = "Your sign-in session has expired. Sign in again, then try planning your trip."; authMessage.classList.remove("hidden"); }
+  }
+  let gateCheckInFlight = null;
 
   async function openQuestionnaire() {
     ensurePanel(); await loadHistory(); byId("aHistoryPanel").classList.remove("hidden");
@@ -180,11 +199,21 @@
   window.ProfileGate = {
     async require(callback) {
       try { const s = await status(); if (s.profile_complete) { callback?.(); return true; } showMessage("Finish the required profile and travel history to plan a trip.", false); await openQuestionnaire(); return false; }
-      catch (_) { showMessage("Please sign in again to continue."); return false; }
+      catch (error) {
+        const authFailed = error.code === "AUTH_REQUIRED" || error.code === "SESSION_EXPIRED";
+        if (authFailed) {
+          handleAuthFailure();
+        } else showMessage(error.message || "Could not check your profile. Please try again.");
+        return false;
+      }
     },
     async checkAndPrompt() {
-      if (!user()) return;
-      try { const s = await status(); setGateState(!s.profile_complete); if (!s.profile_complete) await openQuestionnaire(); else { await refreshRevisits(); } } catch (_) {}
+      if (!user() || gateCheckInFlight) return gateCheckInFlight;
+      gateCheckInFlight = (async () => {
+        try { const s = await status(); setGateState(!s.profile_complete); if (!s.profile_complete) await openQuestionnaire(); else { await refreshRevisits(); } }
+        catch (error) { if (error.code === "AUTH_REQUIRED" || error.code === "SESSION_EXPIRED") handleAuthFailure(); }
+      })();
+      try { await gateCheckInFlight; } finally { gateCheckInFlight = null; }
     }
   };
 
