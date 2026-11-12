@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
+from app.db_migrations_b import run_b_migration
 from app.api import router
 from app.modules import discover, init_module_tables, registry_router
 
@@ -31,6 +32,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 def startup():
     init_db()
+    run_b_migration()
     init_module_tables()
 
 @app.get("/")

@@ -260,18 +260,21 @@ class ShortlistResponse(BaseModel):
 # =============================================================
 
 class Party(BaseModel):
-    adults: int = Field(1, ge=1)
-    children: int = Field(0, ge=0)
-    seniors: int = Field(0, ge=0)
+    adults: int = Field(1, ge=1, le=30)
+    children: int = Field(0, ge=0, le=30)
+    seniors: int = Field(0, ge=0, le=30)
 
 
 class TripCreate(BaseModel):
+    schedule_prefs: Optional[Dict[str, Any]] = None
     party: Optional[Party] = None
     @model_validator(mode='after')
     def sync_party(self):
         from app.core.party import normalize_party, party_type
         explicitly_solo = 'companions' in self.model_fields_set and self.companions == 'solo'
         composition = normalize_party(self.model_dump())
+        if sum(composition.values()) > 30:
+            raise ValueError('A trip can include at most 30 travellers.')
         if explicitly_solo and (sum(composition.values()) > 1 or self.travellers_count > 1):
             raise ValueError('Solo requires exactly one adult. Change the party type or traveller counts.')
         self.party = Party(**composition)
@@ -290,12 +293,12 @@ class TripCreate(BaseModel):
     start_date: str # YYYY-MM-DD
     end_date: str # YYYY-MM-DD
     duration_days: Optional[int] = None
-    travellers_count: int = Field(1, ge=1)
+    travellers_count: int = Field(1, ge=1, le=30)
     companions: Optional[str] = "solo"
     has_children: Optional[bool] = False
     has_elderly: Optional[bool] = False
     departure_location: Optional[str] = "Delhi"
-    total_budget: float = 25000.0
+    total_budget: float = Field(25000.0, gt=0, le=1_000_000_000)
     currency: str = "INR"
     accommodation_tier: str = "balanced" # 'budget_hostel', 'boutique', 'resort', 'apartment'
     transit_pref: str = "public_transit" # 'public_transit', 'walking', 'rental_car', 'taxi'
@@ -343,6 +346,7 @@ class TripResponse(BaseModel):
     travel_pace: str
     specific_interests: List[str] = []
     trip_preferences: Optional[Dict[str, Any]] = None
+    schedule_prefs: Optional[Dict[str, Any]] = None
     stay_id: Optional[str] = None
     stay_name: Optional[str] = None
     created_at: str

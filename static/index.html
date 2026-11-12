@@ -601,7 +601,11 @@
               </div>
 
               <!-- Day-by-Day Timeline Accordion / Tabs -->
-              <details class="border rounded-xl p-3"><summary class="cursor-pointer text-xs font-bold">Edit schedule: swap, remove, reschedule or switch days</summary><div id="workspaceEditorContainer"></div></details><div id="itineraryDaysContainer" class="space-y-6">
+              <details class="border rounded-xl p-3"><summary class="cursor-pointer text-xs font-bold">Edit schedule: swap, remove, reschedule or switch days</summary><div id="workspaceEditorContainer"></div></details>
+              <!-- B: schedule markers mount point -->
+              <div id="scheduleMarkersMount" aria-live="polite"></div>
+              <!-- /B: schedule markers mount point -->
+              <div id="itineraryDaysContainer" class="space-y-6">
                 <!-- Populated via JavaScript -->
               </div>
             </div>
@@ -1162,6 +1166,9 @@
 
       <form id="tripCreateForm" onsubmit="handleTripCreateSubmit(event)" class="mt-4 space-y-4 text-xs">
         <div id="tripEditOptions" class="hidden"><label>After saving <select id="tripRegenerationMode" class="border rounded p-2"><option value="keep_accepted">Keep accepted activities and regenerate the rest</option><option value="everything">Regenerate everything</option></select></label></div>
+        <!-- B: schedule preferences form mount point -->
+        <div id="schedulePrefsMount"></div>
+        <!-- /B: schedule preferences form mount point -->
         <!-- 1. DESTINATION & UNIFIED LOCATION DISCOVERY -->
         <div class="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
           <label class="block font-semibold text-slate-800 flex items-center justify-between">
@@ -1650,5 +1657,8 @@
   <script src="/static/modules/stay.js"></script>
   <script src="/static/modules/prep.js"></script>
   <script src="/static/modules/live.js"></script>
+  <!-- B: schedule preferences module -->
+  <script src="/static/modules/schedule_prefs.js"></script>
+  <!-- /B: schedule preferences module -->
 </body>
 </html>
