@@ -209,6 +209,11 @@ def generate_trip_plan(trip_id: str):
     if not trip:
         raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found")
 
+    from app.modules.common import has_completed_deep_profile
+    with get_connection() as conn:
+        if not has_completed_deep_profile(conn, trip["user_id"]):
+            raise HTTPException(status_code=403, detail="Complete deep personalization before generating a day-by-day trip plan.")
+
     user_id = trip["user_id"]
     dest_id = trip["destination_id"]
     dest_name = trip.get("destination_name") or dest_id.replace("_", " ").title()
@@ -490,6 +495,13 @@ def generate_trip_plan(trip_id: str):
 @router.get("/{trip_id}", response_model=TripPlan)
 def get_trip_plan(trip_id: str):
     """Retrieves an existing TripPlan, generating it if not yet present."""
+    trip = get_trip(trip_id)
+    if not trip:
+        raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found")
+    from app.modules.common import has_completed_deep_profile
+    with get_connection() as conn:
+        if not has_completed_deep_profile(conn, trip["user_id"]):
+            raise HTTPException(status_code=403, detail="Complete deep personalization before viewing a day-by-day trip plan.")
     plan = load_trip_plan(trip_id)
     if plan:
         return plan

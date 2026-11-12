@@ -26,7 +26,7 @@ def _get_trip_exclusions(conn, trip_id: str) -> set:
     return set(row[0] for row in cursor.fetchall())
 
 def _load_user_profile(conn, user_id: str) -> Dict[str, Any]:
-    """Retrieve unified traveller profile data."""
+    """Retrieve base, detailed, and deep-personalisation inputs for planning."""
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM traveller_profiles WHERE user_id = ?", (user_id,))
     base_row = cursor.fetchone()
@@ -52,6 +52,39 @@ def _load_user_profile(conn, user_id: str) -> Dict[str, Any]:
         profile["schedule_density"] = det_dict.get("schedule_density", "balanced_2_3")
         profile["stay_style"] = det_dict.get("stay_style", "boutique")
         profile["transit_pref"] = det_dict.get("transit_pref", "public_transit")
+
+    # The itinerary used to stop at Level 2, so completed deep answers never
+    # reached its candidate filters or LinUCB context. Merge saved answers and
+    # normalize the high-impact constraints consumed by the planner.
+    cursor.execute("SELECT answers_json FROM precision_profiles WHERE user_id = ?", (user_id,))
+    precision_row = cursor.fetchone()
+    precision_answers = {}
+    if precision_row and precision_row["answers_json"]:
+        try:
+            precision_answers = json.loads(precision_row["answers_json"])
+        except (TypeError, ValueError):
+            precision_answers = {}
+    profile["precision_answers"] = precision_answers
+    profile.update(precision_answers)
+
+    avoidances = precision_answers.get("d22_avoidances") or profile.get("avoidances") or []
+    if isinstance(avoidances, str):
+        avoidances = [avoidances]
+    profile["avoidances"] = avoidances
+
+    allergens = precision_answers.get("d11_food_allergens") or []
+    if isinstance(allergens, str):
+        allergens = [allergens]
+    if allergens and "no_allergies" not in allergens:
+        profile["allergies"] = allergens
+        existing_diet = profile.get("dietary") or []
+        if isinstance(existing_diet, str):
+            existing_diet = [existing_diet]
+        profile["dietary"] = list(dict.fromkeys(existing_diet + allergens))
+
+    walking = precision_answers.get("d19_daily_walking_km")
+    if walking in ("under_2km", "2_5km"):
+        profile["walking_tolerance"] = "minimal" if walking == "under_2km" else "low"
 
     return profile
 

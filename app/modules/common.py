@@ -112,7 +112,7 @@ def get_itinerary(trip_id: str) -> Optional[Dict[str, Any]]:
         return d
 
 def has_completed_deep_profile(conn, user_id: str) -> bool:
-    """Verifies whether the user has successfully completed and saved a deep personalization profile."""
+    """Require a completed precision profile to unlock trip tools."""
     if not user_id:
         return False
     cursor = conn.cursor()
@@ -122,31 +122,10 @@ def has_completed_deep_profile(conn, user_id: str) -> bool:
     if p_row and p_row[0]:
         try:
             answers = json.loads(p_row[0]) if isinstance(p_row[0], str) else p_row[0]
-            if isinstance(answers, dict) and len(answers) >= 2:
+            if isinstance(answers, dict) and answers and float(p_row[1] or 0) >= 0.999:
                 return True
         except Exception:
             pass
 
-    # 2. Check Level 2 comprehensive detailed profile
-    cursor.execute("SELECT raw_answers_json, avoidances, dietary, accessibility, schedule_density FROM detailed_profiles WHERE user_id = ?", (user_id,))
-    d_row = cursor.fetchone()
-    if d_row:
-        raw_val = d_row[0]
-        if raw_val:
-            try:
-                raw_ans = json.loads(raw_val) if isinstance(raw_val, str) else raw_val
-                if isinstance(raw_ans, dict) and len(raw_ans) >= 2:
-                    return True
-            except Exception:
-                pass
-        # Check if substantive answers exist
-        for col_idx in (1, 2, 3):
-            val = d_row[col_idx]
-            if val and val not in ("[]", '""', "null"):
-                try:
-                    parsed = json.loads(val) if isinstance(val, str) else val
-                    if isinstance(parsed, list) and len(parsed) > 0:
-                        return True
-                except Exception:
-                    pass
+    # Detailed-profile data alone must not unlock features reserved for deep personalization.
     return False

@@ -1,24 +1,22 @@
 # Authentication handling for google, email, phone, and guest login
-import os
 import uuid
 import secrets
 import hashlib
-import json
-import base64
 from typing import Optional, Dict, Any, Tuple
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from app.database import get_connection
+from app.core.config import get_setting
 
-AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY")
-APP_ENV = os.getenv("APP_ENV", "development").lower()
+AUTH_SECRET_KEY = get_setting("AUTH_SECRET_KEY")
+APP_ENV = get_setting("APP_ENV", "development").lower()
 if not AUTH_SECRET_KEY:
     if APP_ENV == "production":
         raise RuntimeError("AUTH_SECRET_KEY must be set in production environment.")
     AUTH_SECRET_KEY = "dev_secret_key_123"
 
 SECRET_KEY = AUTH_SECRET_KEY
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_ID = get_setting("GOOGLE_CLIENT_ID")
 PBKDF2_ITERATIONS = 100_000
 
 def set_google_client_id(client_id: str):
@@ -33,18 +31,9 @@ def verify_google_credential(credential: str) -> Dict[str, Any]:
     Uses the stable ``sub`` claim as the internal identifier.
     """
     try:
-        if GOOGLE_CLIENT_ID:
-            # Verify token with Google
-            id_info = id_token.verify_oauth2_token(credential, google_requests.Request(), GOOGLE_CLIENT_ID)
-        else:
-            # Development fallback: decode JWT without verification
-            parts = credential.split('.')
-            if len(parts) >= 2:
-                payload_b64 = parts[1]
-                payload_b64 += '=' * ((4 - len(payload_b64) % 4) % 4)
-                id_info = json.loads(base64.urlsafe_b64decode(payload_b64).decode('utf-8'))
-            else:
-                raise ValueError('Invalid token format.')
+        if not GOOGLE_CLIENT_ID:
+            raise ValueError('Google sign-in is not configured on this site. Use email sign-in instead.')
+        id_info = id_token.verify_oauth2_token(credential, google_requests.Request(), GOOGLE_CLIENT_ID)
         sub = id_info.get('sub')
         email = id_info.get('email')
         if not sub:
@@ -103,7 +92,8 @@ def authenticate_or_register(
     identifier: str,
     password: Optional[str] = None,
     display_name: Optional[str] = None,
-    avatar_url: Optional[str] = None
+    avatar_url: Optional[str] = None,
+    mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     clean_identifier = identifier.strip().lower()
     with get_connection() as conn:
@@ -119,20 +109,22 @@ def authenticate_or_register(
         if existing_user:
             if provider == "email":
                 if not existing_user["password_hash"]:
-                    new_hash, _ = hash_password(password)
-                    cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, existing_user["id"]))
-                    conn.commit()
-                elif not password or not verify_password(password, existing_user["password_hash"]):
+                    raise ValueError("This email is linked to another sign-in method. Use that method to continue.")
+                if mode == "signup":
+                    raise ValueError("An account with this email already exists. Please sign in instead.")
+                if not password or not verify_password(password, existing_user["password_hash"]):
                     raise ValueError("Invalid email or password.")
             user_id = existing_user["id"]
             user_name = existing_user["display_name"]
             user_avatar = existing_user["avatar_url"]
         else:
+            if provider == "email" and mode == "login":
+                raise ValueError("No account exists for this email. Create an account first.")
             user_id = str(uuid.uuid4())
             pwd_hash = None
             if provider == "email":
-                if not password or len(password) < 6:
-                    raise ValueError("Password must be at least 6 characters.")
+                if not password or len(password) < 8:
+                    raise ValueError("Password must be at least 8 characters.")
                 pwd_hash, _ = hash_password(password)
             if not display_name:
                 if provider == "phone":

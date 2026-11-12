@@ -2,6 +2,33 @@
 # Matches destinations against traveller preferences (interests, budget, climate, companions, avoidances)
 # Uses configurable scoring weights, transparent reasoning, and accounts for missing information
 from typing import List, Dict, Any, Optional
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app.data.india_destinations import DESTINATIONS_BY_ID
+
+_MONTHS = {name.lower(): index for index, name in enumerate((
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+), 1)}
+
+
+def _season_relevance(destination: Dict[str, Any], today: Optional[datetime] = None) -> int:
+    """Return 0 when out of season, 1 when season starts within 3 months, 2 in season."""
+    today = today or datetime.now(ZoneInfo("Asia/Kolkata"))
+    source = DESTINATIONS_BY_ID.get(destination.get("id"), {})
+    months = {str(m).lower() for m in source.get("best_seasons", [])}
+    event = str(destination.get("seasonal_event") or "").lower()
+    months.update(m for m in _MONTHS if m in event)
+    if not months:
+        return 0
+    month_nums = {_MONTHS[m] for m in months if m in _MONTHS}
+    current = today.month
+    if current in month_nums:
+        return 2
+    if any(((m - current) % 12) in (1, 2, 3) for m in month_nums):
+        return 1
+    return 0
 
 # Configurable scoring weights for transparent ranking
 SCORING_WEIGHTS = {
@@ -1328,28 +1355,25 @@ def get_categorized_recommendations(
 
     recommended_ids = set(r["id"] for r in recommended_for_you)
 
-    # 2. Trending Trips: High buzz, curated popular options
-    trending_trips = []
-    for s in scored:
-        if s.get("is_trending") and s["id"] not in recommended_ids:
-            trending_trips.append(s)
-    if len(trending_trips) < 3:
-        for s in scored:
-            if s.get("is_trending") and s not in trending_trips:
-                trending_trips.append(s)
-    trending_trips = trending_trips[:3]
+    # Keep these lists date-sensitive: catalogue popularity is only a prior,
+    # while the Indian calendar determines which seasonal options are surfaced.
+    today = datetime.now(ZoneInfo("Asia/Kolkata"))
+    seasonal_ranked = []
+    for item in scored:
+        relevance = _season_relevance(item, today)
+        if item.get("is_seasonal") and relevance:
+            item["seasonal_relevance"] = relevance
+            item["seasonal_timing"] = "In season now" if relevance == 2 else "Coming into season"
+            seasonal_ranked.append(item)
+    seasonal_ranked.sort(key=lambda item: (item["seasonal_relevance"], item["match_score"]), reverse=True)
+    seasonal_experiences = seasonal_ranked[:3]
 
-    # 3. Seasonal & Upcoming Experiences
-    seasonal_experiences = []
-    already_shown = recommended_ids.union(set(t["id"] for t in trending_trips))
-    for s in scored:
-        if s.get("is_seasonal") and s["id"] not in already_shown:
-            seasonal_experiences.append(s)
-    if len(seasonal_experiences) < 3:
-        for s in scored:
-            if s.get("is_seasonal") and s not in seasonal_experiences:
-                seasonal_experiences.append(s)
-    seasonal_experiences = seasonal_experiences[:3]
+    # Curated trend signals are ranked by current seasonal relevance and match.
+    # This avoids treating every destination marked trending in the catalogue as
+    # equally timely all year.
+    trending_ranked = [item for item in scored if item.get("is_trending")]
+    trending_ranked.sort(key=lambda item: (_season_relevance(item, today), item["match_score"]), reverse=True)
+    trending_trips = trending_ranked[:3]
 
     # Basis summary in plain language
     if detailed_profile and detailed_profile.get("avoidances"):

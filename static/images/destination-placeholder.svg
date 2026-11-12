@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Destination image unavailable">
+  <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#dbeafe"/><stop offset="1" stop-color="#f8fafc"/></linearGradient></defs>
+  <rect width="800" height="500" fill="url(#sky)"/>
+  <circle cx="625" cy="125" r="48" fill="#fde68a"/>
+  <path d="M0 380 205 155l142 160 110-120 240 260H0Z" fill="#94a3b8"/>
+  <path d="m137 230 68-75 67 76-40-17-27 24-28-23Z" fill="#f8fafc"/>
+  <path d="m353 330 104-135 144 260H295Z" fill="#64748b"/>
+  <path d="m419 247 38-52 44 78-40-21-21 14Z" fill="#f8fafc"/>
+  <path d="M0 420q150-82 300 0t300 0 200 0v80H0Z" fill="#cbd5e1"/>
+  <text x="400" y="466" text-anchor="middle" fill="#475569" font-family="Arial,sans-serif" font-size="20">Destination photo unavailable</text>
+</svg>

@@ -225,13 +225,16 @@ function updateNavUser() {
   const navBadge = document.getElementById("navUserBadge");
   const navAvatar = document.getElementById("navAvatar");
   const navName = document.getElementById("navUserName");
+  const inspector = document.getElementById("modelInspectorNavBtn");
 
   if (state.currentUser) {
     navBadge.classList.remove("hidden");
+    if (inspector) inspector.classList.remove("hidden");
     navName.textContent = state.currentUser.display_name;
     navAvatar.textContent = state.currentUser.display_name.charAt(0).toUpperCase();
   } else {
     navBadge.classList.add("hidden");
+    if (inspector) inspector.classList.add("hidden");
   }
 }
 
@@ -252,6 +255,8 @@ function showView(viewId) {
 }
 
 // Auth Tabs
+let emailAuthMode = "login";
+
 function switchAuthTab(tabName) {
   ["google", "manual", "phone"].forEach(t => {
     const btn = document.getElementById(`tab-${t}`);
@@ -264,11 +269,56 @@ function switchAuthTab(tabName) {
       content.classList.add("hidden");
     }
   });
+  const phoneTab = document.getElementById("tab-phone");
+  if (phoneTab) phoneTab.setAttribute("aria-selected", String(tabName === "phone"));
+  if (tabName === "manual") updateEmailAuthMode();
 }
 switchAuthTab("google");
 
+function updateEmailAuthMode() {
+  const signup = emailAuthMode === "signup";
+  const nameWrap = document.getElementById("manualNameWrap");
+  const nameInput = document.getElementById("manualName");
+  const password = document.getElementById("manualPassword");
+  const submit = document.getElementById("emailSubmitBtn");
+  const prompt = document.getElementById("emailModePrompt");
+  const toggle = document.getElementById("emailModeToggle");
+  if (nameWrap) nameWrap.classList.toggle("hidden", !signup);
+  if (nameInput) nameInput.required = signup;
+  if (password) {
+    password.autocomplete = signup ? "new-password" : "current-password";
+    password.minLength = signup ? 8 : 1;
+    password.placeholder = signup ? "At least 8 characters" : "Enter your password";
+  }
+  if (submit) submit.textContent = signup ? "Create account" : "Sign in";
+  if (prompt) prompt.textContent = signup ? "Already have an account?" : "New here?";
+  if (toggle) toggle.textContent = signup ? "Sign in" : "Create an account";
+}
+
+function toggleEmailAuthMode() {
+  emailAuthMode = emailAuthMode === "login" ? "signup" : "login";
+  const message = document.getElementById("authFormMessage");
+  if (message) message.classList.add("hidden");
+  updateEmailAuthMode();
+}
+
+function togglePasswordVisibility() {
+  const input = document.getElementById("manualPassword");
+  const button = document.getElementById("passwordVisibilityBtn");
+  if (!input || !button) return;
+  input.type = input.type === "password" ? "text" : "password";
+  button.textContent = input.type === "password" ? "Show" : "Hide";
+}
+
 // Auth API call
 async function sendAuthRequest(payload) {
+  const submit = document.getElementById("emailSubmitBtn");
+  const message = document.getElementById("authFormMessage");
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = payload.mode === "signup" ? "Creating account…" : "Signing in…";
+  }
+  if (message) message.classList.add("hidden");
   try {
     const res = await fetch("/api/auth", {
       method: "POST",
@@ -288,55 +338,106 @@ async function sendAuthRequest(payload) {
       showView("onboarding");
     }
   } catch (err) {
-    alert("Error: " + err.message);
+    if (message) {
+      message.textContent = err.message;
+      message.classList.remove("hidden");
+    } else {
+      alert(err.message);
+    }
+  } finally {
+    if (submit) {
+      submit.disabled = false;
+      updateEmailAuthMode();
+    }
   }
 }
 
-function handleGoogleSignIn(name, email) {
-  sendAuthRequest({
-    provider: "google",
-    identifier: email,
-    display_name: name
-  });
-}
-
 // Google GIS SDK Hook
+let googleGisInitializedFor = null;
 async function initGoogleGIS() {
   try {
     const res = await fetch("/api/config/google");
     const data = await res.json();
     const clientId = data.client_id;
 
+    const chooser = document.getElementById("googleChooserBtn");
+    const setupLink = document.getElementById("googleSetupLink");
+    const status = document.getElementById("googleAuthStatus");
+    const btnContainer = document.getElementById("googleOfficialBtn");
     if (clientId && window.google && window.google.accounts) {
+      if (googleGisInitializedFor === clientId && btnContainerHasGoogleButton()) return;
       google.accounts.id.initialize({
         client_id: clientId,
         callback: async (resp) => {
-          const r = await fetch("/api/auth/google-token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ credential: resp.credential })
-          });
-          const u = await r.json();
-          if (r.ok) {
+          try {
+            const r = await fetch("/api/auth/google-token", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ credential: resp.credential })
+            });
+            const u = await r.json();
+            if (!r.ok) throw new Error(formatApiError(u, "Google sign-in failed."));
             state.currentUser = u;
             localStorage.setItem("rl_travel_user", JSON.stringify(u));
             updateNavUser();
             if (u.has_profile) loadUserProfile(u.user_id);
             else showView("onboarding");
+          } catch (err) {
+            if (status) {
+              status.textContent = err.message;
+              status.classList.remove("hidden");
+            }
           }
         },
-        prompt: "select_account",
         auto_select: false
       });
 
-      const btnContainer = document.getElementById("googleOfficialBtn");
       if (btnContainer) {
-        google.accounts.id.renderButton(btnContainer, { theme: "outline", size: "large", width: 340 });
-        document.getElementById("googleChooserBtn").classList.add("hidden");
+        google.accounts.id.renderButton(btnContainer, { theme: "outline", size: "large", width: Math.min(320, btnContainer.clientWidth || 320) });
+        if (chooser) chooser.classList.add("hidden");
+        if (setupLink) setupLink.classList.add("hidden");
+        if (status) status.classList.add("hidden");
+        googleGisInitializedFor = clientId;
       }
-      google.accounts.id.prompt();
+    } else if (!clientId) {
+      if (setupLink) setupLink.classList.add("hidden");
+      if (status) {
+        status.textContent = "Google sign-in hasn’t been configured on this site. Email sign-in is ready to use.";
+        status.classList.remove("hidden");
+      }
+    } else if (status) {
+      status.textContent = "Google sign-in couldn’t be loaded. Try email sign-in instead.";
+      status.classList.remove("hidden");
     }
-  } catch (e) {}
+  } catch (e) {
+    const status = document.getElementById("googleAuthStatus");
+    if (status) {
+      status.textContent = "Google sign-in couldn’t be loaded. Try email sign-in instead.";
+      status.classList.remove("hidden");
+    }
+  }
+}
+
+function btnContainerHasGoogleButton() {
+  const container = document.getElementById("googleOfficialBtn");
+  return !!(container && container.querySelector("iframe"));
+}
+
+function startGoogleSignIn() {
+  const clientId = document.getElementById("googleOfficialBtn");
+  if (clientId && clientId.querySelector("iframe")) {
+    const status = document.getElementById("googleAuthStatus");
+    if (status) {
+      status.textContent = "Use the Google button above to choose your account.";
+      status.classList.remove("hidden");
+    }
+    return;
+  }
+  const status = document.getElementById("googleAuthStatus");
+  if (status) {
+    status.textContent = "Google sign-in isn’t configured. Choose Email to sign in or create an account.";
+    status.classList.remove("hidden");
+  }
 }
 
 async function saveGoogleClientId() {
@@ -364,102 +465,18 @@ async function saveGoogleClientId() {
   }
 }
 
-function openGoogleModal() {
-  const container = document.getElementById("googleSavedAccounts");
-  container.innerHTML = "";
-  let saved = [];
-  try {
-    saved = JSON.parse(localStorage.getItem("saved_google_accounts") || "[]");
-  } catch (e) {
-    saved = [];
-  }
-  if (saved.length === 0) {
-    saved = [
-      { name: "Alex Sharma", email: "alex.sharma@gmail.com" },
-      { name: "Kanishk Singh", email: "kanishk.travel@gmail.com" }
-    ];
-    localStorage.setItem("saved_google_accounts", JSON.stringify(saved));
-  }
-  saved.forEach(acc => {
-    const card = document.createElement("div");
-    card.className = "p-3 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/60 cursor-pointer flex items-center justify-between transition shadow-xs";
-    card.onclick = () => {
-      closeModal("googleAuthModal");
-      handleGoogleSignIn(acc.name, acc.email);
-    };
-    card.innerHTML = `
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs">
-          ${acc.name.charAt(0).toUpperCase()}
-        </div>
-        <div class="text-left">
-          <div class="text-xs font-semibold text-slate-800">${acc.name}</div>
-          <div class="text-[11px] text-slate-500">${acc.email}</div>
-        </div>
-      </div>
-      <i class="fa-solid fa-arrow-right text-blue-500 text-xs"></i>
-    `;
-    container.appendChild(card);
-  });
-  document.getElementById("googleAccountsSection").classList.remove("hidden");
-  document.getElementById("googleCustomForm").classList.add("hidden");
-  openModal("googleAuthModal");
-}
-
-function showGoogleManualForm() {
-  document.getElementById("googleAccountsSection").classList.add("hidden");
-  document.getElementById("googleCustomForm").classList.remove("hidden");
-  document.getElementById("gModalName").focus();
-}
-
-function hideGoogleManualForm() {
-  document.getElementById("googleAccountsSection").classList.remove("hidden");
-  document.getElementById("googleCustomForm").classList.add("hidden");
-}
-
-function submitGoogleModal(e) {
-  e.preventDefault();
-  const name = document.getElementById("gModalName").value.trim();
-  const email = document.getElementById("gModalEmail").value.trim();
-  if (!name || !email) return;
-  closeModal("googleAuthModal");
-  handleGoogleSignIn(name, email);
-}
-
 function handleManualAuth(e) {
   e.preventDefault();
-  const name = document.getElementById("manualName").value || "Alex";
-  const email = document.getElementById("manualEmail").value;
+  const name = document.getElementById("manualName").value.trim();
+  const email = document.getElementById("manualEmail").value.trim();
   const password = document.getElementById("manualPassword").value;
-  sendAuthRequest({ provider: "email", identifier: email, password, display_name: name });
-}
-
-let isOtpSent = false;
-function handlePhoneAuth(e) {
-  e.preventDefault();
-  const phone = document.getElementById("phoneNumber").value;
-  const otpSection = document.getElementById("otpSection");
-  const submitBtn = document.getElementById("phoneSubmitBtn");
-  const otpCode = document.getElementById("otpCode").value;
-
-  if (!isOtpSent) {
-    isOtpSent = true;
-    otpSection.classList.remove("hidden");
-    submitBtn.textContent = "Verify & Sign In";
-    submitBtn.className = "w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl transition";
-    document.getElementById("otpCode").focus();
-  } else {
-    if (otpCode !== "123456" && otpCode.length < 4) {
-      alert("Demo OTP is 123456");
-      return;
-    }
-    sendAuthRequest({ provider: "phone", identifier: phone, display_name: `User (${phone.slice(-4)})` });
-  }
-}
-
-function handleGuestSignIn() {
-  const demoId = "demo_traveler_" + Math.floor(Math.random() * 1000);
-  sendAuthRequest({ provider: "guest", identifier: demoId, display_name: "Demo Traveler" });
+  sendAuthRequest({
+    provider: "email",
+    mode: emailAuthMode,
+    identifier: email,
+    password,
+    display_name: name || undefined
+  });
 }
 
 function logout() {
@@ -469,6 +486,8 @@ function logout() {
   state.detailedProfile = null;
   state.precision = { bank: state.precision.bank, answers: {}, context: {}, tab: "p1", exists: false, past_trips: [] };
   resetAnswers();
+  emailAuthMode = "login";
+  updateEmailAuthMode();
   updateNavUser();
   goToStep(1);
   showView("auth");
@@ -1140,11 +1159,11 @@ function renderRecommendationCard(item, category) {
     </span>`;
   } else if (category === "trending") {
     badgeHtml = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-white/95 text-amber-800 shadow-sm backdrop-blur-sm flex items-center gap-1">
-      <i class="fa-solid fa-fire text-amber-500 text-[10px]"></i> Trending
+      <i class="fa-solid fa-fire text-amber-500 text-[10px]"></i> Trending now
     </span>`;
   } else if (category === "seasonal") {
     badgeHtml = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-white/95 text-sky-800 shadow-sm backdrop-blur-sm flex items-center gap-1">
-      <i class="fa-regular fa-calendar-check text-sky-500 text-[10px]"></i> Seasonal
+      <i class="fa-regular fa-calendar-check text-sky-500 text-[10px]"></i> ${item.seasonal_timing || "Seasonal"}
     </span>`;
   }
 
@@ -1159,8 +1178,8 @@ function renderRecommendationCard(item, category) {
     <div>
       <!-- Photo banner with offline fallback -->
       <div class="relative h-44 w-full bg-slate-100 overflow-hidden">
-        <img src="${item.image_url}" alt="${item.name}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-          onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=800&q=80';">
+        <img src="${item.image_url || '/static/images/destination-placeholder.svg'}" alt="${item.name}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+          onerror="this.onerror=null; this.src='/static/images/destination-placeholder.svg';">
         <div class="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent"></div>
         <div class="absolute top-3 left-3">${badgeHtml}</div>
         <button type="button" onclick="toggleShortlist('${item.id}', this)" data-shortlist-dest="${item.id}"
@@ -1236,7 +1255,7 @@ async function openExploreModal(destId) {
   const imgEl = document.getElementById("exploreImg");
   if (imgEl && item.image_url) {
     imgEl.src = item.image_url;
-    imgEl.onerror = () => { imgEl.src = 'https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=1200&q=80'; };
+    imgEl.onerror = () => { imgEl.onerror = null; imgEl.src = '/static/images/destination-placeholder.svg'; };
   }
   if (document.getElementById("exploreTitle")) {
     document.getElementById("exploreTitle").textContent = item.name || destId.replace(/_/g, " ");
@@ -3348,6 +3367,13 @@ let currentWorkspaceMode = "pre";
 let currentPreSubtab = "itin";
 
 function switchWorkspaceMode(mode) {
+  const deepProfileComplete = !!(state.profileStatus && state.profileStatus.complete);
+  if ((mode === "live" || mode === "post") && !deepProfileComplete) {
+    mode = "pre";
+    currentPreSubtab = "itin";
+    const lockedState = document.getElementById("itineraryLockedState");
+    if (lockedState) lockedState.classList.remove("hidden");
+  }
   currentWorkspaceMode = mode;
   const modes = ["pre", "live", "post"];
   modes.forEach(m => {
@@ -3627,7 +3653,7 @@ function renderItinerary(itin) {
 
       actRow.innerHTML = `
         <div class="flex gap-3">
-          ${act.photo_url ? `<img src="${act.photo_url}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${act.title}">` : `
+          ${act.photo_url ? `<img src="${act.photo_url}" onerror="this.onerror=null;this.src='/static/images/destination-placeholder.svg'" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${act.title}">` : `
           <div class="w-16 h-16 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0">
             <i class="fa-solid fa-location-dot text-xl"></i>
           </div>`}
@@ -3972,8 +3998,8 @@ function stayDescription(stay) {
 function tripSelectorLabel(trip) {
   const start = new Date(trip.start_date+'T00:00:00');
   const end = new Date(trip.end_date+'T00:00:00');
-  const dateText = `${start.getDate()}–${end.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}`;
-  return `${trip.destination_name.replace(/\s*\([^)]*\)/g,'')} - ${dateText} - ${trip.travellers_count} traveller${trip.travellers_count===1?'':'s'} - ${formatINR(trip.total_budget)} · ${humanLabel(trip.status || 'planned')}`;
+  const dateText = `${start.getDate()}–${end.toLocaleDateString('en-IN',{day:'numeric',month:'short'})}`;
+  return `${trip.destination_name.replace(/\s*\([^)]*\)/g,'')} · ${dateText} · ${trip.travellers_count} traveller${trip.travellers_count===1?'':'s'}`;
 }
 function readTripParty() {
   return {adults:Math.max(1,Number(document.getElementById('tripAdultsInput').value)||1),

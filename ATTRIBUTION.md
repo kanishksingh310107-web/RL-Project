@@ -44,7 +44,9 @@ In accordance with academic integrity guidelines, the table below documents the 
 | File / Component | Primary Author | AI Assistance Used? | Description of Human vs. AI Contributions |
 | :--- | :--- | :--- | :--- |
 | `app/questionnaire.py` | Teammate | Yes | Questionnaire structure authored with LLM brainstorming; question bank finalized by team. |
-| `app/auth.py` | Teammate | Yes | Salted SHA-256 hashing and token flows; Google auth token verification scaffold assisted by LLM. |
+| `app/auth.py` | Teammate / OpenAI Codex | Yes | Password hashing, explicit email sign-in and account creation, and verified Google ID-token flow. |
+| `app/api.py`, `app/models.py` | OpenAI Codex | Yes | Authentication request validation and verified sign-in routing. |
+| `static/app.js`, `static/index.html`, `static/style.css` | OpenAI Codex | Yes | Responsive login and planner layout, email account flow, honest provider availability, and accessible inline errors. |
 | `app/vectorizer.py` | Teammate | Yes | Linear mapping from questionnaire answers to 22-dim and 41-dim normalized feature representations. |
 | `app/precision.py` | Teammate | Yes (Claude) | Level 3 precision profile, conditional `show_if` rules, and privacy filters developed with Claude assistance. |
 | `app/recommender.py` | Teammate | Yes | Static destination catalogue (16 destinations) and baseline heuristic scoring function. |
@@ -63,7 +65,6 @@ In accordance with academic integrity guidelines, the table below documents the 
 | `ATTRIBUTION.md` & `README.md` | Atharva / Person C | Yes (Claude / Gemini) | Comprehensive attribution cleanup, Q-learning correction, verified capability matrix, and execution instructions. |
 | `tests/test_rl_policy.py` | Atharva | Yes (Claude / Gemini) | Unit tests verifying Sherman-Morrison rank-1 inverse updates match direct matrix inversion within machine precision. |
 | `docs/evaluation_results.md` | Atharva | Yes (Claude / Gemini) | Pre-registered 100-seed empirical LinUCB vs. static baseline benchmark reporting means, standard deviations, and 95% confidence intervals. |
-| `docs/bugs/atharva.md` | Atharva | Yes | Click-through verification bug log capturing external UI and lifecycle issues for teammates. |
 
 ---
 

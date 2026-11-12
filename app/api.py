@@ -137,13 +137,18 @@ def get_detailed_options():
 # Login or signup
 @router.post("/auth", response_model=AuthResponse)
 def login_or_signup(payload: AuthRequest):
+    if payload.provider != "email":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use the verified sign-in method for this provider.")
+    if payload.mode not in ("login", "signup"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose sign in or create account.")
     try:
         user_data = authenticate_or_register(
             provider=payload.provider,
             identifier=payload.identifier,
             password=payload.password,
             display_name=payload.display_name,
-            avatar_url=payload.avatar_url
+            avatar_url=payload.avatar_url,
+            mode=payload.mode
         )
         return user_data
     except ValueError as e:

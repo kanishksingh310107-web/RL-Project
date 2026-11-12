@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 class AuthRequest(BaseModel):
     provider: str
     identifier: str
+    mode: Optional[str] = None
     password: Optional[str] = None
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None

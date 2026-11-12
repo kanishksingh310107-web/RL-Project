@@ -812,13 +812,16 @@ def profile_status(user_id: str) -> Dict[str, Any]:
         answered_questions = (12 - len(basic_missing)) + prec_ans
         pct = round(100 * answered_questions / total_questions) if total_questions else 0
 
+        has_deep = has_basic and has_precision and not prec_missing
         return {
             "user_id": user_id,
             "has_basic_profile": has_basic,
             "has_detailed_profile": has_detailed,
             "has_precision_profile": has_precision,
-            "complete": has_basic,
-            "is_complete": has_basic,
+            "has_deep_profile": has_deep,
+            "basic_complete": has_basic,
+            "complete": has_deep,
+            "is_complete": has_deep,
             "completion_percentage": pct,
             "missing": basic_missing + prec_missing,
             "breakdown": {
