@@ -3006,12 +3006,6 @@ function updateBudgetAllowanceLabels(numVal) {
 }
 
 function toggleTripFormModal() {
-  // Match the planner's lock for every entry point, including revisit links.
-  if (!state.profileStatus?.complete) {
-    closeModal("tripFormModal");
-    openPersonalProfileModal();
-    return;
-  }
   editingTripId = null;
   document.getElementById('tripEditOptions').classList.add('hidden');
   document.getElementById('tripDestSelect').disabled = false;

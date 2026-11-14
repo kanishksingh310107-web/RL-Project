@@ -73,7 +73,21 @@
       const res = await fetch("/api/profile/history/choice", { method: "POST", headers: authHeaders(), body: JSON.stringify({ choice }) }); const data = await res.json();
       if (!res.ok) throw new Error(data.detail?.detail || data.detail || "Could not save your choice");
       setGateState(!data.profile_complete);
-      byId("aHistoryPanel").classList.add("hidden"); await refreshRevisits();
+      const noHistory = byId("aHistoryChoice")?.querySelector("button:first-child");
+      if (choice === "none" && noHistory) noHistory.textContent = "✓ I have no travel history";
+      if (data.profile_complete) {
+        byId("aHistoryPanel").classList.add("hidden");
+        await refreshRevisits();
+      } else {
+        showMessage("Your no-travel-history answer is saved. Trip planning is still locked until the remaining basic profile details are complete.", false);
+        const message = byId("aHistoryMessage");
+        if (message && !byId("aFinishBasicProfile")) {
+          const finish = make("button", "Finish basic profile", "ml-2 mt-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white");
+          finish.type = "button"; finish.id = "aFinishBasicProfile";
+          finish.onclick = () => { byId("aHistoryPanel").classList.add("hidden"); if (typeof editProfile === "function") editProfile(); };
+          message.append(document.createElement("br"), finish);
+        }
+      }
     } catch (err) { showMessage(err.message); } finally { if (button) button.disabled = false; }
   }
 
@@ -178,6 +192,7 @@
     const choice = byId("aHistoryChoice");
     choice.querySelectorAll("button").forEach(b => b.classList.remove("hidden"));
     const historyState = await fetch("/api/profile/history").then(r => r.ok ? r.json() : null).catch(() => null);
+    choice.querySelector("button:first-child").textContent = historyState?.history_choice === "none" ? "✓ I have no travel history" : "I have no travel history";
     if (historyState?.history_choice === "provided") choice.querySelector("button:last-child").textContent = "Add another past trip";
     if (historyState?.history_choice === "none") choice.querySelector("button:last-child").textContent = "Add past trips instead";
   }

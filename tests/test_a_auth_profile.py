@@ -67,6 +67,22 @@ def test_wrong_password_session_persistence_and_rate_limit(client):
     assert "Invalid email or password" in wrong.text
 
 
+def test_no_history_choice_completes_required_basic_gate(client):
+    user = _signup(client, email="no-history@example.com", username="nohistory").json()
+    headers = {"Authorization": f"Bearer {user['token']}"}
+    profile = client.post(f"/api/profile/{user['user_id']}", headers=headers, json={
+        "residence_country": "IN", "residence_state": "Tamil Nadu", "residence_city": "Tirunelveli",
+        "travel_goals": ["nature", "culture"], "place_interests": ["mountains", "historic"],
+        "preferred_climate": "cool", "budget_tier": "mid_range", "companions": "partner",
+    })
+    assert profile.status_code == 200, profile.text
+
+    choice = client.post("/api/profile/history/choice", headers=headers, json={"choice": "none"})
+    assert choice.status_code == 200, choice.text
+    assert choice.json() == {"history_choice": "none", "profile_complete": True}
+    assert client.get("/api/profile/status", headers=headers).json() == {"profile_complete": True}
+
+
 def test_history_validation_and_profile_gate(client):
     migrate_a()
     user = _signup(client).json()
