@@ -644,7 +644,7 @@ def generate_timed_schedule(
 
                 act_id = chosen_act.get("id") if chosen_act else f"act_{day_num}_{ord_idx}"
                 act_name = chosen_act.get("name") if chosen_act else slot_tpl["default_title"]
-                act_loc = chosen_act.get("neighborhood") or chosen_act.get("location") or "Local Area"
+                act_loc = (chosen_act.get("neighborhood") or chosen_act.get("location") or "Local Area") if chosen_act else "Local Area"
                 act_cost = float(chosen_act.get("cost_amount") or chosen_act.get("estimated_cost", 10.0)) if chosen_act else 10.0
                 act_cat = chosen_act.get("category", "sightseeing") if chosen_act else "sightseeing"
                 act_desc = chosen_act.get("description", "") if chosen_act else "Enjoy popular regional attraction."

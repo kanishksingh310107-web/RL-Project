@@ -1,38 +1,15 @@
 """Targeted tests for Task 4 (Hotel Selection in Trip Planning) and Task 5 (Explore Details).
 """
 import pytest
-from fastapi.testclient import TestClient
 
-from main import app
 from app.core.stores import load_stay, load_trip_plan
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
-
-
-@pytest.fixture
 def setup_user_and_trip(client, demo_user):
-    """Takes demo_user and completes their precision/detailed profile so trip planning is unlocked."""
-    client.post(
-        f"/api/profile/precision/{demo_user}",
-        json={
-            "b01_age_group": "25_34",
-            "b02_travel_experience": "frequent",
-            "b03_companions": "couple",
-            "b04_planning_approach": "plan_essentials",
-            "b05_travel_goals": ["culture_immersion", "relaxation"],
-            "b06_place_interests": ["heritage_monuments", "artisan_markets"],
-            "b14_preferred_environment": ["historic_old_quarters"],
-            "b15_weather_sensitivity": "comfortable_any",
-            "b20_food_adventurousness": "high",
-            "b26_climate_preference": "mild",
-            "b32_budget_tier": "mid_range",
-            "b36_preferred_transport": ["metro", "cabs"],
-            "b41_assistance_autonomy": "balanced",
-        },
-    )
+    """Prepare a complete deep profile before testing plan generation."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client, demo_user)
     return demo_user
 
 

@@ -14,9 +14,12 @@ def demo_user(client):
         'password':'pass1234','display_name':'C legacy regression','mode':'signup'})
     assert response.status_code==200,response.text
     user=response.json()['user_id']
+    client.headers.update({'Authorization':f"Bearer {response.json()['token']}"})
     profile=client.post('/api/profile/'+user,json={'travel_goals':['nature','culture'],
         'place_interests':['mountains','historic'],'preferred_climate':'cool','budget_tier':'mid_range','companions':'partner'})
     assert profile.status_code==200,profile.text
+    history=client.post('/api/profile/history/choice',json={'choice':'none'})
+    assert history.status_code==200,history.text
     return user
 
 

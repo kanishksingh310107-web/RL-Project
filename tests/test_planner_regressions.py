@@ -106,8 +106,9 @@ def test_party_sync_legacy_and_solo_rejection(client,demo_user):
     assert party_type(normalize_party({'travellers_count':2,'companions':'solo'}))=='partner'
 
 
-def test_trip_duplicate_edit_delete_ownership_and_policy(client,demo_user):
+def test_trip_duplicate_edit_delete_ownership_and_policy(client,deep_user):
     from app.database import get_connection
+    demo_user = deep_user
     trip=create(client,demo_user)
     duplicate=create(client,demo_user)
     assert trip['id']==duplicate['id']
@@ -207,7 +208,8 @@ def test_weather_offline_and_past_paths(monkeypatch):
     assert {r['source'] for r in past['daily']}=={'climatology'}
 
 
-def test_regenerate_everything_and_activity_cost_refresh(client,demo_user):
+def test_regenerate_everything_and_activity_cost_refresh(client,deep_user):
+    demo_user = deep_user
     trip=create(client,demo_user)
     tid=trip['id']
     itinerary=client.post(f'/api/itinerary/generate/{tid}?user_id={demo_user}').json()

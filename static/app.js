@@ -189,7 +189,7 @@ const PREC_KIND_STYLE = {
 document.addEventListener("DOMContentLoaded", async () => {
   await loadQuestionnaireData();
   await initGoogleGIS();
-  checkPersistedSession();
+  await checkPersistedSession();
 });
 
 async function loadQuestionnaireData() {
@@ -202,20 +202,53 @@ async function loadQuestionnaireData() {
   }
 }
 
-function checkPersistedSession() {
+async function checkPersistedSession() {
   const saved = localStorage.getItem("rl_travel_user");
   if (saved) {
+    let storedUser;
     try {
-      state.currentUser = JSON.parse(saved);
+      storedUser = JSON.parse(saved);
+    } catch (_) {
+      localStorage.removeItem("rl_travel_user");
+      showView("auth");
+      return;
+    }
+    state.currentUser = storedUser;
+    try {
+      // Validate saved sessions before loading the dashboard's other profile endpoints.
+      const sessionRes = await fetch("/api/profile/status");
+      if (sessionRes.status === 401 || sessionRes.status === 403) {
+        localStorage.removeItem("rl_travel_user");
+        state.currentUser = null;
+        updateNavUser();
+        showView("auth");
+        const message = document.getElementById("authFormMessage");
+        if (message) {
+          message.textContent = "Your sign-in session expired. Sign in again to continue planning your trip.";
+          message.classList.remove("hidden");
+        }
+        return;
+      }
+      if (!sessionRes.ok) throw new Error("Could not verify your sign-in session.");
       updateNavUser();
       if (state.currentUser.has_profile) {
-        loadUserProfile(state.currentUser.user_id);
+        await loadUserProfile(state.currentUser.user_id);
       } else {
         showView("onboarding");
       }
       return;
-    } catch (e) {
-      localStorage.removeItem("rl_travel_user");
+    } catch (_) {
+      // Keep the saved token on network/server errors so a transient outage does not sign out
+      // the user, while avoiding partially loading the dashboard.
+      state.currentUser = null;
+      updateNavUser();
+      showView("auth");
+      const message = document.getElementById("authFormMessage");
+      if (message) {
+        message.textContent = "We could not verify your sign-in. Check your connection and try again.";
+        message.classList.remove("hidden");
+      }
+      return;
     }
   }
   showView("auth");

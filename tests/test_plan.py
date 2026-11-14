@@ -225,31 +225,14 @@ def test_validator_catches_planted_violations():
     assert "budget_exceeded" in types
 
 
-def test_plan_api_routes():
-    from fastapi.testclient import TestClient
-    from main import app
+def test_plan_api_routes(client, deep_user):
     from app.database import get_connection
     import uuid
 
-    client = TestClient(app)
-    user_id = f"test_user_{uuid.uuid4().hex[:6]}"
+    user_id = deep_user
     trip_id = f"trip_{uuid.uuid4().hex[:6]}"
 
     with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT INTO users (id, auth_provider, identifier, display_name)
-            VALUES (?, 'email', ?, ?)
-            """,
-            (user_id, f"{user_id}@test.com", "Plan Tester"),
-        )
-        conn.execute(
-            """
-            INSERT INTO traveller_profiles (user_id, pace, budget_tier, interests)
-            VALUES (?, 'balanced', 'mid_range', 'nature,culture')
-            """,
-            (user_id,),
-        )
         conn.execute(
             """
             INSERT INTO trips (id, user_id, destination_id, destination_name, start_date, end_date, duration_days, total_budget)

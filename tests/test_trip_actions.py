@@ -180,6 +180,11 @@ def test_companion_lock_status(client, demo_user):
 
     res2 = client.get(f"/api/companion/status/{demo_user}")
     assert res2.status_code == 200
+    # Level 2 details by themselves do not complete the separate Level 3 profile.
+    assert res2.json()["unlocked"] is False
+    from conftest import complete_deep_profile
+    complete_deep_profile(client, demo_user)
+    res2 = client.get(f"/api/companion/status/{demo_user}")
     assert res2.json()["unlocked"] is True
     assert res2.json()["has_deep_profile"] is True
 

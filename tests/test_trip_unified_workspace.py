@@ -12,6 +12,7 @@ def test_unified_trip_creation_and_persistence(client):
     })
     assert auth_resp.status_code == 200
     user_id = auth_resp.json()["user_id"]
+    client.headers.update({"Authorization": f"Bearer {auth_resp.json()['token']}"})
 
     # 2. Create basic profile
     profile_payload = {
@@ -30,6 +31,8 @@ def test_unified_trip_creation_and_persistence(client):
     }
     p_resp = client.post(f"/api/profile/{user_id}", json=profile_payload)
     assert p_resp.status_code == 200
+    history_resp = client.post("/api/profile/history/choice", json={"choice": "none"})
+    assert history_resp.status_code == 200, history_resp.text
 
     # 3. Create a trip with companion specs, children, elderly, departure, and trip-specific preferences
     trip_payload = {

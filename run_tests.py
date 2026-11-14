@@ -16,7 +16,15 @@ def run_tests():
     global _TEMP_DIR
     _TEMP_DIR = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
     database.DB_PATH = Path(_TEMP_DIR.name) / "test.db"
-    init_db()  # TestClient(app) does not fire the startup hook, so create tables explicitly
+    init_db()  # TestClient(app) does not fire the startup hook, so mirror production startup.
+    from app.db_migrations_a import migrate_a
+    from app.db_migrations_b import run_b_migration
+    from app.db_migrations_c import migrate_c
+    from app.modules import init_module_tables
+    migrate_a()
+    run_b_migration()
+    init_module_tables()
+    migrate_c()
     client = TestClient(app)
 
     # 1. Options & Master Questionnaire Bank
@@ -39,6 +47,7 @@ def run_tests():
     })
     assert g_res.status_code == 200
     user_id = g_res.json()["user_id"]
+    client.headers.update({"Authorization": f"Bearer {g_res.json()['token']}"})
 
     # start clean so the suite can be re-run against an existing database
     # (a saved Level 3 profile would otherwise take priority in /api/rl/state)
@@ -88,6 +97,8 @@ def run_tests():
     }
     p_res = client.post(f"/api/profile/{user_id}", json=prof_payload)
     assert p_res.status_code == 200
+    history_res = client.post("/api/profile/history/choice", json={"choice": "none"})
+    assert history_res.status_code == 200, history_res.text
     print("[OK] Profile created and saved")
 
     # 5. Detailed options
