@@ -1152,6 +1152,16 @@ def score_destination_for_user(
     else:
         score += w["baseline_discovery"]
 
+    custom_context = str(profile.get("custom_travel_context") or "").casefold()
+    if custom_context:
+        context_terms = {word.strip(".,!?;:'\"()[]{}") for word in custom_context.split()}
+        destination_text = " ".join([dest.get("name", ""), dest.get("tagline", ""),
+            dest.get("travel_style_and_atmosphere", ""), " ".join(dest.get("tags", []))]).casefold().replace("_", " ")
+        matches = sum(1 for term in context_terms if len(term) >= 4 and term in destination_text)
+        if matches:
+            score += min(6.0, matches * 1.5)
+            suitability_reasons.append("matches details you added to your travel profile")
+
     # 2. Climate preference match (handles missing/unspecified gracefully)
     raw_climate = profile.get("preferred_climate")
     dest_climates = [c.lower() for c in dest.get("preferred_climate", [])]
@@ -1387,7 +1397,7 @@ def get_categorized_recommendations(
     total_candidates = len(scored_sorted)
 
     # Rotate through top matching candidates when user clicks 'Refresh Options'
-    batch_size = 4
+    batch_size = 6
     effective_offset = offset % total_candidates if total_candidates > 0 else 0
     end_idx = effective_offset + batch_size
 

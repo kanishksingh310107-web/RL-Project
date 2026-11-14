@@ -910,6 +910,7 @@ def _precision_state(cursor, user_id: str, answers: Dict[str, Any], dropped: Lis
         "feature_dimension": len(vector),
         "feature_names": names,
         "summary_text": prec.summarize_precision(answers, context),
+        "additional_info": str(detailed.get("custom_travel_context") or ""),
     }
 
 @router.get("/config/precision-questionnaire")
@@ -918,6 +919,9 @@ def get_precision_questionnaire():
 
 @router.post("/profile/precision/{user_id}", response_model=PrecisionProfileResponse)
 def save_precision_profile(user_id: str, payload: PrecisionProfileCreate):
+    additional_info = (payload.additional_info or "").strip()
+    if len(additional_info) > 1000:
+        raise HTTPException(status_code=422, detail={"message": "Additional travel details must be 1,000 characters or fewer.", "field": "additional_info"})
     with get_connection() as conn:
         cursor = conn.cursor()
         base = _load_base_dict(cursor, user_id)
@@ -993,7 +997,7 @@ def save_precision_profile(user_id: str, payload: PrecisionProfileCreate):
             str(clean.get("q35", "public_transit")),
             "similar_vibes",
             json.dumps(state["rl_state_vector"][:41]),
-            json.dumps(clean)
+            json.dumps({**clean, **({"custom_travel_context": additional_info} if additional_info else {})})
         ))
 
         conn.commit()

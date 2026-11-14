@@ -411,6 +411,11 @@ def generate_trip_plan(trip_id: str):
         }
         ctx = extract_context_vector(profile_for_rl, trip, 1, total_days, "afternoon", activity_dict)
         pred_reward, _, _ = policy.predict_score(arm, ctx)
+        extra_context = str(profile.get("custom_travel_context") or "").casefold()
+        if extra_context:
+            place_text = " ".join((place.name, place.category, place.description or "")).casefold().replace("_", " ")
+            if any(len(word) >= 4 and word in place_text for word in extra_context.split()):
+                pred_reward += 0.04
 
         # Proximity bonus if stay anchor exists
         if stay_anchor:

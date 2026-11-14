@@ -216,6 +216,11 @@ def load_profile(user_id: str) -> Dict[str, Any]:
             det_row = cursor.fetchone()
             if det_row:
                 try:
+                    detailed_answers = json.loads(det_row["raw_answers_json"] or "{}")
+                    profile["custom_travel_context"] = str(detailed_answers.get("custom_travel_context") or "") if isinstance(detailed_answers, dict) else ""
+                except (TypeError, ValueError):
+                    profile["custom_travel_context"] = ""
+                try:
                     profile["avoidances"] = json.loads(det_row["avoidances"]) if det_row["avoidances"] else []
                 except Exception:
                     profile["avoidances"] = []

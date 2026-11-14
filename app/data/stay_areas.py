@@ -37,6 +37,17 @@ def areas_for_destination(destination_id=None, lat=None, lon=None):
         nearest = min(AREA_NAMES, key=lambda key: min(haversine_distance_km(lat,lon,a,b) for _,a,b in AREA_NAMES[key]))
         if min(haversine_distance_km(lat,lon,a,b) for _,a,b in AREA_NAMES[nearest]) < 50:
             rows = AREA_NAMES[nearest]
+    # For user-searched towns and cities, provide a transparent map anchor
+    # instead of an empty accommodation panel. This is a centroid estimate,
+    # not a claim that we know the local neighbourhoods or hotel inventory.
+    if not rows and lat is not None and lon is not None:
+        label = 'Destination centre'
+        if destination_id:
+            from app.data.india_destinations import DESTINATIONS_BY_ID
+            meta = DESTINATIONS_BY_ID.get(destination_id, {})
+            fallback_name = destination_id.removeprefix('geo_').removesuffix('_india').replace('_', ' ').title()
+            label = (meta.get('name') or fallback_name) + ' centre'
+        rows = [(label, float(lat), float(lon))]
     return [{'area_name': name, 'lat': a, 'lon': b,
              'label': 'Indicative - no live listings',
              'price_bands': {k: {'label': TIER_LABELS[k], 'min_inr': v[0], 'max_inr': v[1]} for k,v in STAY_RATES_INR.items()},

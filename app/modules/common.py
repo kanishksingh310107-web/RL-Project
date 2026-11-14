@@ -56,6 +56,7 @@ def get_user_context(user_id: str) -> Dict[str, Any]:
             try: raw_d = json.loads(raw_d)
             except Exception: raw_d = {}
         answers.update(raw_d)
+        out["custom_travel_context"] = str(raw_d.get("custom_travel_context") or "") if isinstance(raw_d, dict) else ""
         for f in ["avoidances", "walking_tolerance", "schedule_density", "accessibility", "dietary", "stay_style", "transit_pref"]:
             if f in out["detailed"] and out["detailed"][f] is not None:
                 answers[f] = out["detailed"][f]

@@ -304,6 +304,7 @@ def build_packing_list(
     medication = answers.get("q11") or []
     food_allergens = answers.get("q95") or []
     med_reqs = answers.get("q103") or []
+    custom_context = str(user_ctx.get("custom_travel_context") or "").casefold()
 
     # Climate classifications with insights integration
     is_hot = (t_min >= 20.0 and t_max >= 25.0) and (q78 is None or q78 >= 3)
@@ -559,6 +560,13 @@ def build_packing_list(
             ),
             "quantity": "Trip supply + 2-3 days backup",
         })
+
+    if "stroller" in custom_context:
+        items.append({"name": "Compact stroller and rain cover", "category": "Family",
+            "reason": "You noted a stroller need; check transport and venue access before setting out.", "quantity": "As needed"})
+    if "camera" in custom_context or "photograph" in custom_context:
+        items.append({"name": "Camera, spare battery and memory card", "category": "Electronics",
+            "reason": "Matched to your photography preference in the additional profile details.", "quantity": "1 set"})
 
     from app.core.party import normalize_party
     party = normalize_party(trip)

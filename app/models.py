@@ -211,6 +211,7 @@ class DetailedProfileResponse(BaseModel):
 class PrecisionProfileCreate(BaseModel):
     # Full set of answers keyed by question id, e.g. {"q78": 2, "q95": ["peanuts"], "q100": "mushrooms"}
     answers: Dict[str, Any] = {}
+    additional_info: Optional[str] = None
 
 class PrecisionInsight(BaseModel):
     kind: str   # constraint | rule | reminder
@@ -230,6 +231,7 @@ class PrecisionProfileResponse(BaseModel):
     feature_dimension: int = 0
     feature_names: List[str] = []
     summary_text: str = ""
+    additional_info: Optional[str] = None
 
 # Recommendations models
 class DestinationRecommendation(BaseModel):

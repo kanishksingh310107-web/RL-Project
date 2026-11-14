@@ -1690,6 +1690,8 @@ async function openPersonalProfileModal() {
     if (!res.ok) throw new Error(formatApiError(data, "Could not load your saved answers"));
     state.precision.answers = data.answers || {};
     state.precision.context = data.context_answers || {};
+    const additionalInfoField = document.getElementById("personalAdditionalInfo");
+    if (additionalInfoField) additionalInfoField.value = data.additional_info || "";
     state.precision.exists = !!data.exists;
 
     // Pre-seed default non-empty answers for scale & multi questions if uncalibrated
@@ -1817,7 +1819,9 @@ function renderPersonalSection() {
   // Show past trips section when in last section (Assistant & Decision Support)
   const isLast = sec.id === bank.sections[bank.sections.length - 1].id;
   const pastTripsSec = document.getElementById("personalPastTripsSection");
-  if (pastTripsSec) pastTripsSec.classList.toggle("hidden", !isLast);
+  const additionalInfo = document.getElementById("personalAdditionalInfoSection");
+  if (additionalInfo) additionalInfo.classList.toggle("hidden", !isLast);
+  if (pastTripsSec) pastTripsSec.classList.toggle("hidden", true);
 
   const secs = bank.sections;
   const idx = secs.findIndex(s => s.id === sec.id);
@@ -2040,7 +2044,7 @@ async function submitPersonalProfile() {
     const res = await fetch(`/api/profile/precision/${state.currentUser.user_id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answers: state.precision.answers })
+      body: JSON.stringify({ answers: state.precision.answers, additional_info: document.getElementById("personalAdditionalInfo")?.value || "" })
     });
     const data = await res.json();
     if (!res.ok) {
@@ -2819,6 +2823,7 @@ function toggleBudgetBreakdownTable() {
 let budgetEstimateRequestSeq = 0;
 async function calculateTripMinimumBudget() {
   const requestSeq = ++budgetEstimateRequestSeq;
+  state.activeBudgetEstimate = null;
   const destSelect = document.getElementById("tripDestSelect");
   if (!destSelect) return;
   const destId = destSelect.value;
@@ -2833,6 +2838,9 @@ async function calculateTripMinimumBudget() {
   const transport = document.getElementById("tripTransitSelect")?.value || "public_transit";
   const pace = document.getElementById("tripPaceSelect")?.value || "balanced";
   const includeShopping = document.getElementById("tripIncludeShoppingCheck")?.checked || false;
+  const estimateButton = document.getElementById("calcBudgetBtn");
+  const estimateError = document.getElementById("budgetEstimateError");
+  if (estimateError) { estimateError.textContent = ""; estimateError.classList.add("hidden"); }
 
   let durationDays = 4;
   if (startDate && endDate) {
@@ -2858,12 +2866,18 @@ async function calculateTripMinimumBudget() {
   };
 
   try {
+    if (estimateButton) estimateButton.disabled = true;
     const res = await fetch("/api/budget/estimate-minimum", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      let detail = "Budget estimate is temporarily unavailable. Your trip details are still here; please retry.";
+      try { detail = formatApiError(await res.json(), detail); } catch (_) {}
+      if (estimateError && requestSeq === budgetEstimateRequestSeq) { estimateError.textContent = detail; estimateError.classList.remove("hidden"); }
+      return;
+    }
     const data = await res.json();
     if (requestSeq !== budgetEstimateRequestSeq) return;
     state.activeBudgetEstimate = data;
@@ -2939,6 +2953,26 @@ async function calculateTripMinimumBudget() {
     updateBudgetAllowanceLabels(budgetInput ? parseFloat(budgetInput.value) : data.bare_minimum_budget);
   } catch (err) {
     console.warn("Failed to calculate minimum budget estimate:", err);
+    if (estimateError && requestSeq === budgetEstimateRequestSeq) { estimateError.textContent = "Could not reach the budget service. Check your connection and retry; your entries are preserved."; estimateError.classList.remove("hidden"); }
+  } finally {
+    if (estimateButton && requestSeq === budgetEstimateRequestSeq) estimateButton.disabled = false;
+  }
+}
+
+async function calculateTripMaximumBudget() {
+  const button = document.getElementById("calcBudgetMaxBtn");
+  if (button) button.disabled = true;
+  try {
+    await calculateTripMinimumBudget();
+    const ceiling = Number(state.activeBudgetEstimate?.slider_config?.max ?? state.activeBudgetEstimate?.slider_config?.max_slider);
+    if (!Number.isFinite(ceiling) || ceiling <= 0) return;
+    const slider = document.getElementById("tripBudgetSlider");
+    const input = document.getElementById("tripBudgetInput");
+    if (slider) slider.value = String(ceiling);
+    if (input) input.value = String(ceiling);
+    updateBudgetAllowanceLabels(ceiling);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 

@@ -702,7 +702,7 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
         "total_days": total_days,
         "status": row[5],
         "total_estimated_cost": row[6],
-        "summary_notes": ' '.join(filter(None, [row[7]] + ([day['note'] for day in custom_schedule['days']] if custom_schedule else []))),
+        "summary_notes": ' '.join(dict.fromkeys(filter(None, [row[7]] + ([day['note'] for day in custom_schedule['days']] if custom_schedule else [])))),
         "days": list(days_dict.values()),
         "created_at": str(row[8]),
         "updated_at": str(row[9])
