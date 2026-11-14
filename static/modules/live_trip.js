@@ -6,14 +6,16 @@
   const label = value => String(value).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
   const button = 'px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold disabled:opacity-50';
   const isCurrent = ctx => typeof getWorkspaceContext!=='function' || getWorkspaceContext().tripId===ctx.tripId;
-  const errorBox = error => `<p role="alert" class="text-xs text-rose-700 mt-2">${esc(error.message)}</p>`;
+  const errorBox = error => `<p role="alert" class="text-xs text-rose-700 mt-2">${esc(window.TripExperience?.publicText(error.message)||error.message)}</p>`;
 
   async function api(ctx,path,body,method='POST') {
     let response;
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
     try {
       response=await fetch(`/api/trips/${encodeURIComponent(ctx.tripId)}${path}${path.includes('?')?'&':'?'}user_id=${encodeURIComponent(ctx.userId)}`,{
-        method,headers:{'Content-Type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify(body || {})})});
-    } catch (_) { throw new Error('Connection failed. Your entered information has been kept. Please retry.'); }
+        method,signal:controller.signal,headers:{'Content-Type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify(body || {})})});
+    } catch (_) { throw new Error('Connection failed or timed out. Your entered information has been kept. Please retry.'); }
+    finally { clearTimeout(timer); }
     let data;
     try { data=await response.json(); } catch (_) { throw new Error('The server response could not be read. Please retry.'); }
     if(!response.ok) {
@@ -26,8 +28,8 @@
   function applyLocks(snapshot) {
     const locked=snapshot.status!=='draft';
     for(const id of ['workspaceEditorContainer','itineraryDaysContainer']) {
-      document.getElementById(id)?.querySelectorAll('button,input,select,textarea').forEach(control=>{
-        control.disabled=locked; control.title=locked?'Itinerary locked by trip runtime':'';
+      document.getElementById(id)?.querySelectorAll('[data-choice],[data-edit],[data-all],[data-custom],[data-undo]').forEach(control=>{
+        if(locked)control.disabled=true; control.title=locked?'This itinerary is read only.':'';
       });
     }
     document.querySelectorAll('#btnFinalizeTrip,#btnStartTrip').forEach(control=>{control.hidden=true;});
@@ -37,6 +39,7 @@
   function lifecycle(ctx,snapshot) {
     if(!isCurrent(ctx)) return;
     state.snapshot=snapshot;
+    window.TripExperience?.applySnapshot(ctx,snapshot);
     const box=document.getElementById('cTripLifecycle');
     if(!box) return;
     const action=snapshot.status==='draft'?'Finalize itinerary':snapshot.status==='finalized'?'Start trip':null;
@@ -146,19 +149,32 @@
     const current=snapshot.current_activity;
     const dayRuns=snapshot.runs.filter(run=>run.day_number===snapshot.runtime.current_day);
     container.innerHTML=`<div class="space-y-4"><div><h3 class="text-sm font-bold">Day ${snapshot.runtime.current_day} of ${snapshot.total_days}</h3>
-      <span class="text-xs text-slate-500">Your progress is saved automatically.</span></div>
+      <span class="text-xs text-slate-500">Your progress is saved automatically.</span><p class="text-xs">${snapshot.phase==='day_summary'?snapshot.runtime.current_day:Math.max(0,snapshot.runtime.current_day-1)} of ${snapshot.total_days} days finished.</p></div>
       ${current?`<div class="rounded-xl border border-indigo-200 bg-indigo-50 p-4"><span class="text-xs font-semibold">Current activity · In progress</span>
         <h4 class="font-bold mt-1">${esc(current.title)}</h4><p class="text-xs mt-1">${esc(current.neighborhood || '')}</p>
         <label class="block text-xs mt-3">How did it finish?<select data-c-outcome class="border rounded-lg p-2 ml-2"><option value="completed">Completed</option><option value="early_ended">Ended early</option><option value="skipped">Skipped</option><option value="not_done">Not done</option></select></label>
         <button class="${button} mt-3" data-c-end>${esc(snapshot.end_activity_label)}</button></div>`:''}
+      ${current?`<details class="border rounded-xl p-3"><summary>Running late or need a rest?</summary><p class="text-xs mt-2">Preview changes to upcoming activities. Completed activities remain unchanged.</p><label class="text-xs">Minutes<input data-c-adjust-minutes type="number" min="5" max="240" step="5" value="30" class="border rounded p-2 ml-2"></label><button data-c-adjust="delay" class="border rounded px-3 py-2 ml-2" ${window.TripExperience?.can('live_adjustments')?'':'disabled'}>Running late</button><button data-c-adjust="rest" class="border rounded px-3 py-2 ml-2" ${window.TripExperience?.can('live_adjustments')?'':'disabled'}>Take a rest</button><p class="text-xs">${window.TripExperience?.can('live_adjustments')?'':'Schedule adjustments await the server update.'}</p><div data-c-adjust-preview></div></details>`:''}
       <div data-c-review></div><div data-c-decision></div>
-      ${snapshot.phase==='day_summary'?`<div class="p-3 bg-emerald-50 rounded-xl"><strong>Day ${snapshot.runtime.current_day} summary</strong><p class="text-xs mt-1">${dayRuns.filter(r=>r.outcome==='completed').length} completed, ${dayRuns.filter(r=>r.outcome==='early_ended').length} ended early, ${dayRuns.filter(r=>['skipped','not_done'].includes(r.outcome)).length} skipped/not done.</p>
+      ${snapshot.phase==='day_summary'?`<div class="p-3 bg-emerald-50 rounded-xl"><strong>Day ${snapshot.runtime.current_day} summary</strong><p class="text-xs mt-1">${dayRuns.filter(r=>r.outcome==='completed').length} activities completed today, ${dayRuns.filter(r=>r.outcome==='early_ended').length} ended early, ${dayRuns.filter(r=>['skipped','not_done'].includes(r.outcome)).length} skipped/not done.</p>
         <button class="${button} mt-3" data-c-next>${snapshot.runtime.current_day<snapshot.total_days?`Start day ${snapshot.runtime.current_day+1}`:'End trip'}</button></div>`:''}
       ${snapshot.phase==='awaiting_day_end'?`<button class="${button}" data-c-close-day>${snapshot.runtime.current_day===snapshot.total_days?'End trip':'End day'}</button>`:''}
       <details class="border rounded-xl p-3"><summary class="text-xs font-semibold">Rest of this day and activity history</summary><ul class="space-y-2 mt-2">${snapshot.today.map(slot=>`<li class="text-xs">${esc(slot.title)} · ${esc(slot.run?label(slot.run.outcome):'Upcoming')}</li>`).join('')}</ul></details>
       ${current?'<details class="border rounded-xl p-3"><summary class="text-xs font-semibold">End day with unfinished activities</summary><p class="text-xs mt-2">Each unfinished activity must explicitly be marked skipped or not done.</p><div data-c-marks></div><button class="'+button+' mt-2" data-c-mark-end>Save marked outcomes and end day</button></details>':''}
       <div data-c-alerts></div><div data-c-error></div></div>`;
     const refresh=next=>renderSnapshot(container,ctx,next);
+    container.querySelectorAll('[data-c-adjust]').forEach(control=>control.onclick=event=>submitButton(event.currentTarget,container,async()=>{
+      const minutes=Number(container.querySelector('[data-c-adjust-minutes]').value);
+      if(!Number.isInteger(minutes)||minutes<5||minutes>240)throw new Error('Choose 5 to 240 whole minutes.');
+      const result=await api(ctx,'/adjustments/preview',{operation:control.dataset.cAdjust,duration_minutes:minutes});
+      if(!isCurrent(ctx))return;
+      const proposal=result.preview||result;
+      if(!proposal.token)throw new Error('No preview was returned. Your schedule has not changed.');
+      const box=container.querySelector('[data-c-adjust-preview]');
+      box.innerHTML=`<p class="text-xs mt-2">${esc(window.TripExperience.publicText(proposal.summary||proposal.title))}</p><button class="${button} mt-2" data-c-adjust-confirm>Confirm adjustment</button><button class="border rounded p-2 ml-2" data-c-adjust-cancel>Cancel</button>`;
+      box.querySelector('[data-c-adjust-cancel]').onclick=()=>box.replaceChildren();
+      box.querySelector('[data-c-adjust-confirm]').onclick=event=>submitButton(event.currentTarget,container,async()=>refresh(await api(ctx,'/adjustments/confirm',{token:proposal.token})));
+    }));
     container.querySelector('[data-c-end]')?.addEventListener('click',event=>submitButton(event.currentTarget,container,async()=>{
       refresh(await api(ctx,`/activities/${encodeURIComponent(current.id)}/end`,{outcome:container.querySelector('[data-c-outcome]').value}));
     }));
@@ -276,7 +292,7 @@
         ${(data.budget_alerts||[]).map(a=>`<p class="text-xs text-amber-800 mt-2">${esc(a.message)}</p>`).join('')}
         ${data.weather?`<p class="text-xs mt-2">${esc(data.weather.label)} · ${esc(data.weather.message)}</p>`:''}
         ${alerts.map(a=>`<p class="text-xs mt-2">${esc(a.title)} — ${esc(a.message)}</p>`).join('')}
-        <p class="text-xs mt-2 text-slate-500">Disruption simulations use the existing live-trip service.</p>
+        <p class="text-xs mt-2 text-slate-500">Try a disruption scenario to preview how your trip could adapt.</p>
         <select data-c-condition class="border rounded p-2 text-xs"><option value="heavy_rain">Heavy rain</option><option value="closure">Closure</option><option value="fatigue">Fatigue</option><option value="traffic_delay">Traffic delay</option></select>
         <button class="border rounded px-3 py-2 text-xs" data-c-simulate>Simulate disruption</button><div data-c-error></div></details>`;
       box.querySelector('[data-c-simulate]').onclick=event=>submitButton(event.currentTarget,box,async()=>{

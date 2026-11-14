@@ -476,30 +476,7 @@ function startGoogleSignIn() {
   }
 }
 
-async function saveGoogleClientId() {
-  const input = document.getElementById("googleClientIdInput");
-  const clientId = input ? input.value.trim() : "";
-  if (!clientId) {
-    alert("Please enter a Google Client ID.");
-    return;
-  }
-  try {
-    const res = await fetch("/api/config/google", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: clientId })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(formatApiError(data, "Failed to save Google Client ID"));
-    }
-    closeModal("googleConfigModal");
-    alert("Google Client ID saved successfully.");
-    initGoogleGIS();
-  } catch (err) {
-    alert("Error saving Google Client ID: " + err.message);
-  }
-}
+
 
 function handleManualAuth(e) {
   e.preventDefault();
@@ -552,13 +529,8 @@ function resetAnswers() {
 function openModal(id) {
   const el = document.getElementById(id);
   if (el) el.classList.remove("hidden");
-  if (id === "academicModal") loadAcademicInspector();
-  if (id === "googleConfigModal") {
-    fetch("/api/config/google").then(r => r.json()).then(d => {
-      const inp = document.getElementById("googleClientIdInput");
-      if (inp && d.client_id) inp.value = d.client_id;
-    }).catch(() => {});
-  }
+  if (id === "academicModal") return;
+
 }
 
 function closeModal(id) {
@@ -1145,7 +1117,7 @@ async function loadRecommendations(isRefresh = false) {
   try {
     const res = await fetch(`/api/recommendations/${state.currentUser.user_id}?offset=${currentOffset}`);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: "Personalised recommendations require a complete travel profile." }));
+      const err = await res.json().catch(() => ({ detail: "Complete your travel profile to see personalised recommendations." }));
       const msg = formatApiError(err, "Complete your profile to unlock recommendations.");
       basisEl.textContent = msg;
       recGrid.innerHTML = `
@@ -1168,9 +1140,12 @@ async function loadRecommendations(isRefresh = false) {
     }
 
     const data = await res.json();
-    basisEl.textContent = data.basis_summary;
+    basisEl.textContent = window.TripExperience?.publicText(data.basis_summary) || "Matched to your preferences.";
     totalCandidateCount = data.total_candidates || 16;
 
+    for (const key of ['recommended_for_you','trending_trips','seasonal_and_upcoming']) {
+      data[key]=(data[key]||[]).filter(item=>!window.TripExperience?.isHomeDestination(item));
+    }
     // Cache destination cards for instant Explore Modal lookup
     (data.recommended_for_you || []).forEach(d => { recCache[d.id] = d; });
     (data.trending_trips || []).forEach(d => { recCache[d.id] = d; });
@@ -1203,7 +1178,7 @@ async function loadRecommendations(isRefresh = false) {
     }
   } catch (err) {
     basisEl.textContent = "Unable to fetch recommendations at this time.";
-    recGrid.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-rose-500">Failed to load recommendations: ${err.message}</div>`;
+    recGrid.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-rose-500">Failed to load recommendations: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -1224,7 +1199,7 @@ function renderRecommendationCard(item, category) {
   let badgeHtml = "";
   if (category === "recommended") {
     badgeHtml = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-white/95 text-emerald-800 shadow-sm backdrop-blur-sm flex items-center gap-1">
-      <i class="fa-solid fa-sparkles text-emerald-600 text-[10px]"></i> ${Math.round(item.match_score)}% Match
+      <i class="fa-solid fa-sparkles text-emerald-600 text-[10px]"></i> ${escapeHtml(window.TripExperience?.matchLabel(item) || "Recommended for you")}
     </span>`;
   } else if (category === "trending") {
     badgeHtml = `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-white/95 text-amber-800 shadow-sm backdrop-blur-sm flex items-center gap-1">
@@ -1331,7 +1306,7 @@ async function openExploreModal(destId) {
     document.getElementById("exploreTitle").textContent = item.name || destId.replace(/_/g, " ");
   }
   if (document.getElementById("exploreBadge")) {
-    document.getElementById("exploreBadge").textContent = `${Math.round(item.match_score || 95)}% Match`;
+    document.getElementById("exploreBadge").textContent = window.TripExperience?.matchLabel(item) || "Recommended for you";
   }
 
   try {
@@ -2054,18 +2029,6 @@ async function submitPersonalProfile() {
     state.precision.answers = data.answers;
     state.precision.exists = true;
 
-    // Save past trips if any were added
-    if (state.precision.past_trips.length > 0) {
-      await fetch(`/api/profile/detailed/${state.currentUser.user_id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          past_trips: state.precision.past_trips,
-          avoidances: state.precision.answers.q12 || []
-        })
-      });
-    }
-
     renderPersonalResult(data);
     // Refresh completeness status and unlock trip planner
     if (state.currentUser) {
@@ -2384,7 +2347,7 @@ async function fetchTripNearbyPlaces(lat, lon, radius) {
   }
 
   area.classList.remove("hidden");
-  grid.innerHTML = '<div class="col-span-full py-4 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1.5 text-indigo-600"></i>Discovering nearby places &amp; scoring with LinUCB...</div>';
+  grid.innerHTML = '<div class="col-span-full py-4 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-1.5 text-indigo-600"></i>Discovering nearby places &amp; finding places for you...</div>';
 
   try {
     const userId = state.currentUser ? state.currentUser.user_id : "";
@@ -2398,7 +2361,7 @@ async function fetchTripNearbyPlaces(lat, lon, radius) {
     const places = data.places || [];
 
     if (countText) {
-      countText.textContent = `${places.length} places (${(radius / 1000).toFixed(0)} km · feeds LinUCB planner)`;
+      countText.textContent = `${places.length} places (${(radius / 1000).toFixed(0)} km · nearby suggestions)`;
     }
 
     if (places.length === 0) {
@@ -2427,7 +2390,7 @@ async function fetchTripNearbyPlaces(lat, lon, radius) {
         ? `<span><i class="fa-solid fa-route text-indigo-500 mr-1"></i>${p.distance_km} km</span>`
         : "";
       const scoreBadge = p.score !== undefined
-        ? `<span class="font-mono px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">LinUCB ${Number(p.score).toFixed(2)}</span>`
+        ? `<span class="font-mono px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">Suggested for you</span>`
         : "";
 
       return `
@@ -2772,30 +2735,9 @@ function updateTripDurationPreview() {
 }
 
 function onCompanionTypeChanged(val) {
-  const travellersInput = document.getElementById("tripTravellersInput");
-  const hasKidsCheck = document.getElementById("tripHasChildrenCheck");
-  const hasElderlyCheck = document.getElementById("tripHasElderlyCheck");
-  if (val === "solo") {
-    if (travellersInput) travellersInput.value = "1";
-    if (hasKidsCheck) hasKidsCheck.checked = false;
-    if (hasElderlyCheck) hasElderlyCheck.checked = false;
-  } else if (val === "partner") {
-    if (travellersInput) travellersInput.value = "2";
-  } else if (val === "friends") {
-    if (travellersInput && parseInt(travellersInput.value) < 2) {
-      travellersInput.value = "3";
-    }
-  } else if (val === "family") {
-    if (travellersInput && parseInt(travellersInput.value) < 3) {
-      travellersInput.value = "3";
-    }
-  }
-  const total = Number(travellersInput?.value || 1);
-  document.getElementById('tripAdultsInput').value = total;
-  document.getElementById('tripChildrenInput').value = val === 'family' ? 1 : 0;
-  document.getElementById('tripSeniorsInput').value = 0;
-  if (val === 'family') document.getElementById('tripAdultsInput').value = Math.max(1,total-1);
-  if (val === 'friends') document.getElementById('tripAdultsInput').value = Math.max(3,total);
+  const type=document.getElementById('teTripType');
+  if(type) type.value=val==='partner'?'couple':val;
+  // Ages and party size are independent of the selected relationship / trip type.
   syncTripPartyFromCounts();
 }
 
@@ -2932,9 +2874,9 @@ async function calculateTripMinimumBudget() {
     const maxBound = document.getElementById("sliderMaxBound");
 
     if (slider && data.slider_config) {
-      slider.min = data.slider_config.min ?? data.slider_config.min_slider;
-      slider.max = data.slider_config.max ?? data.slider_config.max_slider;
-      slider.step = data.slider_config.step || 500;
+      slider.min = Math.ceil(data.slider_config.min ?? data.slider_config.min_slider);
+      slider.max = Math.ceil(data.slider_config.max ?? data.slider_config.max_slider);
+      slider.step = 1;
 
       const minVal = data.slider_config.min ?? data.slider_config.min_slider;
       const maxVal = data.slider_config.max ?? data.slider_config.max_slider;
@@ -2943,7 +2885,7 @@ async function calculateTripMinimumBudget() {
 
       const currentVal = budgetInput ? parseFloat(budgetInput.value) : 0;
       if (!currentVal || currentVal < data.bare_minimum_budget) {
-        if (budgetInput) budgetInput.value = data.bare_minimum_budget;
+        if (budgetInput) budgetInput.value = Math.ceil(data.bare_minimum_budget);
         slider.value = data.bare_minimum_budget;
       } else {
         slider.value = currentVal;
@@ -2964,7 +2906,7 @@ async function calculateTripMaximumBudget() {
   if (button) button.disabled = true;
   try {
     await calculateTripMinimumBudget();
-    const ceiling = Number(state.activeBudgetEstimate?.slider_config?.max ?? state.activeBudgetEstimate?.slider_config?.max_slider);
+    const ceiling = Math.ceil(Number(state.activeBudgetEstimate?.slider_config?.max ?? state.activeBudgetEstimate?.slider_config?.max_slider));
     if (!Number.isFinite(ceiling) || ceiling <= 0) return;
     const slider = document.getElementById("tripBudgetSlider");
     const input = document.getElementById("tripBudgetInput");
@@ -3040,6 +2982,7 @@ function updateBudgetAllowanceLabels(numVal) {
 }
 
 function toggleTripFormModal() {
+  if (window.TripExperience && !window.TripExperience.allowPlanning()) return;
   editingTripId = null;
   document.getElementById('tripEditOptions').classList.add('hidden');
   document.getElementById('tripDestSelect').disabled = false;
@@ -3270,7 +3213,7 @@ async function handleTripCreateSubmit(e) {
   const startDate = document.getElementById("tripStartDateInput").value;
   const endDate = document.getElementById("tripEndDateInput").value;
   const travellers = parseInt(document.getElementById("tripTravellersInput").value) || 1;
-  const budget = parseFloat(document.getElementById("tripBudgetInput").value) || 25000;
+  const budget = Number(document.getElementById("tripBudgetInput").value);
   const pace = document.getElementById("tripPaceSelect").value;
   const accom = document.getElementById("tripAccomSelect").value;
   const transit = document.getElementById("tripTransitSelect") ? document.getElementById("tripTransitSelect").value : "public_transit";
@@ -3316,7 +3259,7 @@ async function handleTripCreateSubmit(e) {
 
   const btn = document.getElementById("generateItinerarySubmitBtn");
   if (btn) btn.disabled = true;
-  if (btn) btn.textContent = "Generating LinUCB Itinerary...";
+  if (btn) btn.textContent = "Creating your itinerary…";
 
   try {
     const hotelName = document.getElementById("selectedHotelName")?.value.trim() || null;
@@ -3455,7 +3398,7 @@ async function handleTripCreateSubmit(e) {
     alert("Could not generate itinerary: " + err.message);
   } finally {
     if (btn) btn.disabled = false;
-    if (btn) btn.textContent = "Generate LinUCB Itinerary →";
+    if (btn) btn.textContent = "Create personalised itinerary →";
   }
 }
 
@@ -3658,7 +3601,7 @@ function renderItinerary(itin) {
 
   document.getElementById("itinDestinationTitle").textContent = itin.destination_name;
   document.getElementById("itinDatesBadge").textContent = `${itin.total_days} Days Planned`;
-  document.getElementById("itinSummaryNotes").textContent = itin.summary_notes || "Tailored by Contextual LinUCB bandit.";
+  document.getElementById("itinSummaryNotes").textContent = window.TripExperience?.publicText(itin.summary_notes) || "Tailored to your preferences.";
   document.getElementById("itinTotalCostDisplay").textContent = formatINR(itin.total_estimated_cost);
 
   // Companion and departure location badges
@@ -3703,100 +3646,7 @@ function renderItinerary(itin) {
     endDate: itin.end_date || currentTrip?.end_date || ""
   });
 
-  daysContainer.innerHTML = "";
-
-  itin.days.forEach(day => {
-    const dayCard = document.createElement("div");
-    dayCard.className = "bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4";
-
-    const header = document.createElement("div");
-    header.className = "flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2";
-    header.innerHTML = `
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white">Day ${day.day_number}</span>
-          <span class="text-xs font-semibold text-slate-500">${day.date}</span>
-        </div>
-        <h4 class="text-sm font-bold text-slate-900 mt-0.5">${day.theme}</h4>
-      </div>
-      <div class="flex items-center gap-2 text-xs">
-        <span class="text-slate-500">${day.activities.length} activities · Est. ${formatINR(day.total_cost)}</span>
-      </div>
-    `;
-    dayCard.appendChild(header);
-
-    const actList = document.createElement("div");
-    actList.className = "space-y-3";
-
-    day.activities.forEach(act => {
-      const actRow = document.createElement("div");
-      const isAccepted = act.status === 'accepted';
-      const isRejected = act.status === 'rejected';
-      const isModified = act.status === 'modified';
-
-      let statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-700">Proposed</span>`;
-      let borderHighlight = "border-slate-200";
-
-      if (isAccepted) {
-        statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-check"></i> Accepted</span>`;
-        borderHighlight = "border-emerald-300 bg-emerald-50/20";
-      } else if (isRejected) {
-        statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800"><i class="fa-solid fa-xmark"></i> Skipped</span>`;
-        borderHighlight = "border-red-200 opacity-60";
-      } else if (isModified) {
-        statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800"><i class="fa-solid fa-arrows-rotate"></i> Modified</span>`;
-        borderHighlight = "border-amber-300 bg-amber-50/20";
-      }
-
-      actRow.className = `p-3.5 bg-white rounded-xl border ${borderHighlight} transition shadow-sm hover:shadow flex flex-col md:flex-row justify-between gap-3`;
-
-      actRow.innerHTML = `
-        <div class="flex gap-3">
-          ${act.photo_url ? `<img src="${act.photo_url}" onerror="this.onerror=null;this.src='/static/images/destination-placeholder.svg'" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${act.title}">` : `
-          <div class="w-16 h-16 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0">
-            <i class="fa-solid fa-location-dot text-xl"></i>
-          </div>`}
-          <div class="space-y-1">
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">${act.time_slot}</span>
-              ${statusBadge}
-              <span class="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">${act.neighborhood || 'Local Area'}</span>
-              <span class="text-[10px] font-bold text-slate-700">${act.duration_minutes} mins · ${formatINR(act.cost_estimate)}</span>
-            </div>
-            <h5 class="text-sm font-bold text-slate-900">${act.title}</h5>
-            <p class="text-xs text-slate-600 leading-snug">${act.description || ''}</p>
-            <div class="text-[11px] text-indigo-700 bg-indigo-50/80 border border-indigo-100 rounded-md px-2 py-1 font-medium flex items-start gap-1.5 mt-1">
-              <i class="fa-solid fa-sparkles text-[10px] text-indigo-500 mt-0.5 shrink-0"></i>
-              <span>${act.because_you_said || act.why_it_suits || 'Matches your travel pacing and style.'}</span>
-            </div>
-            ${act.transit_suggestion ? `<div class="text-[10px] text-slate-400"><i class="fa-solid fa-person-walking"></i> ${act.transit_suggestion}</div>` : ''}
-          </div>
-        </div>
-
-        <div class="flex md:flex-col justify-end items-end gap-1.5 flex-shrink-0 pt-2 md:pt-0">
-          <div class="flex items-center gap-1">
-            <button onclick="acceptActivity('${itin.id}', '${act.activity_id}')" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold ${isAccepted ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} transition flex items-center gap-1" title="Accept recommendation">
-              <i class="fa-solid fa-check"></i>
-              <span>Accept</span>
-            </button>
-            <button onclick="openRejectModal('${itin.id}', '${act.activity_id}')" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold ${isRejected ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'} transition flex items-center gap-1" title="Reject / Skip recommendation">
-              <i class="fa-solid fa-xmark"></i>
-              <span>Skip</span>
-            </button>
-            <button onclick="openModifyModal('${itin.id}', '${act.activity_id}')" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex items-center gap-1" title="Change to alternative">
-              <i class="fa-solid fa-arrows-rotate"></i>
-              <span>Modify</span>
-            </button>
-          </div>
-        </div>
-      `;
-
-      actList.appendChild(actRow);
-    });
-
-    dayCard.appendChild(actList);
-    daysContainer.appendChild(dayCard);
-  });
+  daysContainer.replaceChildren();
 }
 
 // -------------------------------------------------------------
@@ -4110,7 +3960,8 @@ function syncTripPartyFromCounts() {
   document.getElementById('tripTravellersInput').value=total;
   document.getElementById('tripHasChildrenCheck').checked=party.children>0;
   document.getElementById('tripHasElderlyCheck').checked=party.seniors>0;
-  const type=party.children || party.seniors ? 'family' : total===1 ? 'solo' : total===2 ? 'partner' : 'friends';
+  const selectedType=document.getElementById('teTripType')?.value;
+  const type=selectedType ? (selectedType==='couple'?'partner':selectedType) : (party.children || party.seniors ? 'family' : total===1 ? 'solo' : total===2 ? 'partner' : 'friends');
   const radio=document.querySelector(`input[name="tripCompanionsRadio"][value="${type}"]`);
   if(radio) radio.checked=true;
   calculateTripMinimumBudget();
@@ -4137,7 +3988,7 @@ function renderCostBreakdown(cost) {
 async function editSelectedTrip() {
   const trip=activeUserTrips.find(t=>t.id===currentPlannedTripId);
   if(!trip) return;
-  toggleTripFormModal();
+  await toggleTripFormModal();
   editingTripId=trip.id;
   document.getElementById('tripEditOptions').classList.remove('hidden');
   const fields={tripDestSelect:trip.destination_id,tripStartDateInput:trip.start_date,tripEndDateInput:trip.end_date,

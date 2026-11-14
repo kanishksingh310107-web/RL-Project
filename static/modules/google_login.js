@@ -1,4 +1,4 @@
-/* A: official Google button, recoverable SDK loading, and persistent setup. */
+/* Official account selection with recoverable sign-in errors. */
 (() => {
   const el = id => document.getElementById(id);
   let inFlight, renderedFor, configuration;
@@ -9,7 +9,7 @@
       let timer;
       const cleanup=()=>{clearTimeout(timer);window.removeEventListener('google-identity-ready',ready);window.removeEventListener('google-identity-error',failed);};
       const ready=()=>{cleanup();resolve();};
-      const failed=()=>{cleanup();reject(new Error('Google sign-in could not load. Check your connection and press Retry Google sign-in.'));};
+      const failed=()=>{const script=el('googleIdentitySdk');if(script)script.dataset.failed='true';cleanup();reject(new Error('Google sign-in could not load. Check your connection and press Retry Google sign-in.'));};
       window.addEventListener('google-identity-ready',ready,{once:true});
       window.addEventListener('google-identity-error',failed,{once:true});
       timer=setTimeout(failed,12000);
@@ -24,8 +24,10 @@
     });
   }
   async function acceptCredential(response) {
+    if (acceptCredential.busy) return;
     if (!response.credential) { status('Google did not return a sign-in credential. Please choose your account again.');return; }
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+    acceptCredential.busy=true;
     status('Signing in with Google…');
     try {
       const result=await fetch('/api/auth/google-token',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -38,7 +40,7 @@
       else {resetAnswers();showView('onboarding');}
       status('');
     }catch(error){status(error.name==='AbortError'?'Google sign-in timed out. Please try again.':error.message || 'Google sign-in is unavailable. Please retry.');}
-    finally{clearTimeout(timer);}
+    finally{clearTimeout(timer);acceptCredential.busy=false;}
   }
   window.initGoogleGIS=async function() {
     if(document.readyState==='loading')return;
@@ -50,10 +52,8 @@
         const response=await fetch('/api/config/google',{signal:controller.signal});
         if(!response.ok)throw new Error('Google sign-in settings could not be loaded. Please retry.');
         configuration=await response.json();
-        const originHint=el('googleOriginHint');
-        if(originHint)originHint.textContent='Authorized JavaScript origin for this app: '+window.location.origin;
-        el('googleSetupLink')?.classList.toggle('hidden',!configuration.can_configure);
-        if(!configuration.client_id){status('Google sign-in needs a Google OAuth Web client ID. Complete Google setup to enable it; email and guest sign-in remain available.');return;}
+
+        if(!configuration.client_id){el('googleOfficialBtn')?.replaceChildren();chooser?.classList.remove('hidden');status('Google sign-in is currently unavailable. Please use email or continue as a guest.');return;}
         status('Loading Google sign-in…');
         await sdkReady();
         const container=el('googleOfficialBtn');if(!container)return;
@@ -71,8 +71,7 @@
   };
   window.startGoogleSignIn=async function(){
     await window.initGoogleGIS();
-    if(!configuration?.client_id && configuration?.can_configure)openModal('googleConfigModal');
-    else el('googleOfficialBtn')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+    if(configuration?.client_id) el('googleOfficialBtn')?.scrollIntoView({block:'nearest',behavior:'smooth'});
   };
   window.addEventListener('google-identity-ready',()=>{if(document.readyState!=='loading')window.initGoogleGIS();});
 })();
