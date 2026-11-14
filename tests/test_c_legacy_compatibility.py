@@ -26,6 +26,8 @@ def demo_user(client):
     # questionnaire tests. The merged create route now requires the gate.
     history=client.post('/api/profile/history/choice',json={'choice':'none'})
     assert history.status_code==200,history.text
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,user)
     return user
 
 

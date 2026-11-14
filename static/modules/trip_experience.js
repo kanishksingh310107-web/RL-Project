@@ -7,7 +7,7 @@
     const part=key=>parts.find(p=>p.type===key).value;
     return `${part('year')}-${part('month')}-${part('day')}`;
   };
-  const publicText = value => /linucb|bandit|sherman|state.vector|reinforcement|policy|feature.dimension/i.test(String(value || '')) ? 'Personalised using your travel preferences and feedback.' : String(value || '');
+  const publicText = value => /linucb|bandit|sherman|state.vector|reinforcement|policy.weights|feature.dimension/i.test(String(value || '')) ? 'Personalised using your travel preferences and feedback.' : String(value || '');
   function matchLabel(item) {
     const score = Number(item.calibrated_match_score);
     return item.score_calibrated === true && Number.isFinite(score) && score >= 0 && score <= 100
@@ -247,7 +247,7 @@
     ['pre','live','post'].forEach(mode=>{const btn=el('wsTabBtn-'+mode);if(btn){btn.disabled=!allowed[mode];btn.setAttribute('aria-disabled',String(!allowed[mode]));btn.title=allowed[mode]?'':mode==='live'?'Start this trip to unlock live activities.':'Complete the trip to unlock feedback.';}});
     document.querySelectorAll('[onclick="editSelectedTrip()"],[onclick="regenerateEntireItinerary()"],[onclick="deleteSelectedTrip()"],#preSubContent-stay button').forEach(button=>{button.disabled=!allowed.edit;});
     const preferred=next.status==='completed'?'post':next.status==='live'?'live':'pre';
-    if(!allowed[currentWorkspaceMode]&&!window.BudgetExperience?.isOpen(ctx.tripId))oldMode(preferred);
+    if(!allowed[currentWorkspaceMode]&&!window.BudgetExperience?.isOpen(ctx.tripId)&&!window.ShoppingExperience?.isOpen(ctx.tripId))oldMode(preferred);
     el('itinSummaryNotes').textContent=next.status==='completed'?(next.closed_out?'Archived trip · feedback saved':'Trip ended · finish your feedback'):'Your personalised itinerary.';
     if(next.status==='completed') [...el('userTripsSelect').options].filter(option=>option.value===ctx.tripId).forEach(option=>option.remove());
     window.dispatchEvent(new CustomEvent('trip:runtime',{detail:{tripId:ctx.tripId,snapshot:next}}));
@@ -304,7 +304,8 @@
         currentItinerary=itinerary;renderItinerary(itinerary);
         const effective=getSnapshot(id)||next;
         Trip.applySnapshot(getWorkspaceContext(),effective);
-        if(window.BudgetExperience?.isOpen(id))window.BudgetExperience.restore(id);
+        if(window.ShoppingExperience?.isOpen(id))window.ShoppingExperience.restore(id);
+        else if(window.BudgetExperience?.isOpen(id))window.BudgetExperience.restore(id);
         else oldMode(effective.status==='completed'?'post':effective.status==='live'?'live':'pre');
         if(match[2]){if(next.status!=='draft'){notice('Reopen a finalized trip before editing. Live and completed trips cannot be edited.');return;}await editSelectedTrip();await fillExperience(id);restoreDraft();}
       }
@@ -336,7 +337,7 @@
   const oldSelect=window.onTripSelectChanged;
   window.onTripSelectChanged=id=>{if(id)location.hash=`/trips/${encodeURIComponent(id)}`;else oldSelect(id);};
   window.addEventListener('hashchange',route);
-  window.addEventListener('load',route);
+  window.addEventListener('load',()=>{if(view.hidden)route();});
   // Keep direct links private when the existing session controller signs out.
   new MutationObserver(()=>{
     if(!el('authView').classList.contains('hidden')){

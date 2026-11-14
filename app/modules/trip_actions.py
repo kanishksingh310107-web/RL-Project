@@ -230,6 +230,7 @@ def _timed_itinerary_data(trip_id: str,request: Request):
                     original = next((a for a in activities if a['day_number']==day['day_number'] and a['activity_id']==slot['activity_id']),{})
                     timeline.append(dict(original, type=slot['slot_type'], id=original.get('id'), acceptance_status=original.get('status','proposed'), pinned=bool(original.get('is_pinned')), coordinates=[original.get('latitude'),original.get('longitude')] if original.get('latitude') is not None else None,
                         activity_id=slot['activity_id'], title=slot['title'], description=slot['description'],
+                        provenance=slot.get('provenance'),
                         time_range=slot['start_time']+' – '+slot['end_time'], duration_minutes=slot['duration_mins'],
                         cost_estimate=slot['estimated_cost'], can_edit=slot['slot_type'] in ('activity','shopping'),
                         slot_type_label=slot['slot_type'].replace('_',' ').title(), badge_color='blue'))
@@ -405,6 +406,7 @@ def get_timed_itinerary_view(trip_id: str, request: Request):
         categories = {}
         activity_minutes = 0
         travel_minutes = 0
+        transfer_walking_km=0.0
         for block in day.get('timeline',[]):
             if block.get('type')=='activity':
                 category = block.get('category') or 'Experiences'
@@ -417,8 +419,10 @@ def get_timed_itinerary_view(trip_id: str, request: Request):
                     block['coordinates']=[block['latitude'],block['longitude']]
             elif block.get('type')=='transit':
                 travel_minutes += int(block.get('duration_minutes') or 0)
+                source=block.get('provenance') or {}
+                if source.get('mode')=='walk':transfer_walking_km+=float(source.get('distance_km') or 0)*1.35
         day.update(theme=max(categories,key=categories.get).replace('_',' ').title() if categories else 'Open time',
-                   active_hours=round(activity_minutes/60,1),travel_minutes=travel_minutes,
+                   active_hours=round(activity_minutes/60,1),travel_minutes=travel_minutes,transfer_walking_km=round(transfer_walking_km,2),
                    order_explanation='Follows your saved activity order, with estimated transfers and scheduled breaks.')
     with get_connection() as conn:
         history=conn.execute('SELECT id FROM trip_edit_history WHERE trip_id=? AND undone_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 1',(trip_id,)).fetchone()

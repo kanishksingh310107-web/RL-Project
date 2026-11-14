@@ -13,6 +13,13 @@ def prevent_unmocked_provider_network(monkeypatch):
     """
     import requests
     import httpx
+    # A developer's private provider configuration must not affect test cases.
+    monkeypatch.setenv('GOOGLE_CLIENT_ID','')
+    monkeypatch.setenv('OPENAI_API_KEY','')
+    monkeypatch.setattr('app.auth.GOOGLE_CLIENT_ID','')
+    from app.core import config
+    monkeypatch.setitem(config._DOTENV,'OPENAI_API_KEY','')
+    monkeypatch.setitem(config._DOTENV,'GOOGLE_CLIENT_ID','')
 
     def requests_offline(*args, **kwargs):
         raise requests.ConnectionError('Unmocked provider network disabled in tests')
@@ -73,6 +80,7 @@ def onboard_user(client):
         history = client.post('/api/profile/history/choice', json={'choice': 'none'})
         assert history.status_code == 200, history.text
         assert client.get('/api/profile/status').json()['profile_complete'] is True
+        complete_deep_profile(client,user_id)
         return user_id
     return onboard
 

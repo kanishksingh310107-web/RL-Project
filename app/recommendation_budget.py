@@ -19,6 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError, field_validator, model_validator
 
 from app.database import get_connection
+from app.core.config import get_setting
 from app.modules.trip_actions import _require_trip_owner
 
 MODULE = {"id": "recommendation_budget", "title": "Discovery and Budget", "icon": "fa-compass", "owner": "D"}
@@ -368,16 +369,18 @@ def budget_summary(conn, trip):
 
 @router.get('/api/experience/capabilities')
 def experience_capabilities():
+    local=get_setting('ASSISTANT_MODE','local')!='api'
     return {
         'discovery': True,
         'budget_options': True,
         'expense_tracking': True,
         'itinerary_check': True,
         'day_options': True,
-        'assistant_chat': bool(os.getenv('OPENAI_API_KEY', '').strip()),
-        'assistant_actions': bool(os.getenv('OPENAI_API_KEY', '').strip()),
+        'assistant_chat': local or bool(get_setting('OPENAI_API_KEY','').strip()),
+        'assistant_actions': local or bool(get_setting('OPENAI_API_KEY','').strip()),
+        'assistant_mode': 'local' if local else 'api',
         'conversation_persistence': 'server',
-        'assistant_unavailable_reason': None if os.getenv('OPENAI_API_KEY', '').strip() else 'Model service is not configured on the server.',
+        'assistant_unavailable_reason': None if local or get_setting('OPENAI_API_KEY','').strip() else 'Model service is not configured on the server.',
     }
 
 
@@ -461,11 +464,23 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
         else:
             start = end = None
         lat, lon = meta.get('lat'), meta.get('lon')
+        if lat is None or lon is None:
+            resolved=resolve_trip_location(destination_id=dest['id'],destination_name=dest['name'],allow_live_geocode=False)
+            lat,lon=resolved.get('lat'),resolved.get('lon')
         distance = None
         if origin_coords[0] is not None and lat is not None:
             distance = round(haversine_distance_km(origin_coords[0], origin_coords[1], lat, lon), 1)
         if payload.max_distance_km is not None and distance is not None and distance > payload.max_distance_km:
             continue
+        if origin_coords[0] is not None and distance is None and (payload.max_distance_km is not None or payload.max_travel_minutes is not None):
+            continue
+        estimated_minutes=None
+        if distance is not None:
+            speed={'walking':4.5,'flight':600,'train':60,'driving':45,'taxi':45,'bus':40,'public_transit':40}.get(payload.transport,40)
+            overhead=120 if payload.transport=='flight' else 45 if payload.transport=='train' else 15
+            estimated_minutes=int(math.ceil(distance*(1 if payload.transport=='flight' else 1.35)/speed*60+overhead))
+            if payload.max_travel_minutes is not None and estimated_minutes>payload.max_travel_minutes:
+                continue
         # The destination catalogue has no verified travel schedules. Do not
         # fabricate travel-time feasibility; disclose this unfulfilled filter.
         party = {'adults': payload.party_size, 'children': 0, 'seniors': 0}
@@ -518,12 +533,13 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
             'image_url': dest.get('image_url'), 'why_recommended': reasons, 'trade_off': drawback,
             'estimated_total_cost_inr': cost['total'], 'cost_breakdown': cost['cost_breakdown'],
             'travel_distance_km': distance, 'travel_time_minutes': None,
+            'estimated_travel_minutes':estimated_minutes,'travel_estimate_is_verified':False,
             'travel_time_status': 'unavailable: no verified route schedule in catalogue',
             'sample_itinerary': [{'name': a['name'], 'category': a['category'], 'duration_minutes': a['duration_minutes'],
                 'cost_estimate_inr': int(round(activity_fee_inr(a))), 'status': 'curated estimate'} for a in sample],
             'date_basis': 'provided_dates' if payload.start_date else 'flexible_duration',
             'start_date': start, 'end_date': end, 'duration_days': day_count,
-            'estimate_limitations': ['Indicative INR cost model, not live fares or lodging inventory.', 'Sample activity values may be curated estimates.'] +
+            'estimate_limitations': ['Indicative INR cost model, not live fares or lodging inventory.', 'Sample activity values may be curated estimates.', 'Travel duration is indicative; actual routes, traffic and service availability are unverified.'] +
                 (['Requested travel mode is not priced by the model; intercity estimates use its public-transit assumption.'] if payload.transport in ('flight','train','bus','driving') else []) +
                 (['Walking distances and accessibility details are incomplete in the destination catalogue.'] if payload.walking_limit_minutes is not None or payload.walking_limit_km is not None or payload.accessibility else []),
             'confidence': cost['confidence'], 'saved': dest['id'] in shortlist,
@@ -553,6 +569,7 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
     if payload.accessibility:
         unavailable_filters.append('accessibility_detail')
     return {'mode': payload.mode, 'recommendations': ranked, 'groups': groups,
+        'estimated_travel_filter_applied':payload.max_travel_minutes is not None and origin_coords[0] is not None,
         'count': len(ranked), 'date_basis': 'provided_dates' if payload.start_date else 'flexible_duration',
         'filters_not_evaluable': unavailable_filters,
         'distance_basis':'straight_line_haversine' if origin_coords[0] is not None else 'unavailable',
@@ -661,7 +678,7 @@ def set_budget(trip_id: str, payload: BudgetAllocationInput, request: Request):
 
 
 @router.post('/api/trips/{trip_id}/budget-options')
-def budget_options(trip_id: str, payload: BudgetComparisonInput, request: Request):
+async def budget_options(trip_id: str, payload: BudgetComparisonInput, request: Request):
     trip, _ = _require_trip_owner(request, trip_id)
     from app.core.cost_model import estimate_cost
     with get_connection() as conn:
@@ -720,6 +737,11 @@ def budget_options(trip_id: str, payload: BudgetComparisonInput, request: Reques
                 'benefits': ['Keeps existing activity prices and prioritizes relevant categories.'],
                 'trade_offs': ['Itinerary changes require a separate preview and confirmation.']})
     baseline_spend = current_forecast
+    from app.planning.options import activity_budget_options,simulate_option
+    if activities:
+        with get_connection() as conn:
+            candidates.extend(activity_budget_options(conn,trip,activities,current_budget,original_allocations,payload.max_additional_budget_inr))
+    candidates.sort(key=lambda o:0 if o['id']=='current_budget' else 1 if (o['id']=='more_comfort' and 'stay_comfort' in payload.priorities) or o['id'].startswith('experience-') else 2)
     options = []
     for option in candidates:
         extra = max(0, option.get('new_total_budget_inr', current_budget['total_budget_inr']) - current_budget['total_budget_inr'])
@@ -731,12 +753,25 @@ def budget_options(trip_id: str, payload: BudgetComparisonInput, request: Reques
             comparison_basis={'destination_id': trip['destination_id'], 'start_date': trip['start_date'],
                 'end_date': trip['end_date'], 'travellers_count': trip['travellers_count']},
             confidence='indicative', estimate_limitations=['Uses the project INR assumption model; lodging and fares are not live quotes.'])
+        if option.get('preview_request'):
+            try:
+                with get_connection() as conn:
+                    option['itinerary']=await simulate_option(conn,trip_id,trip['user_id'],request,option['preview_request'])
+            except (HTTPException,ValueError,KeyError):
+                option['itinerary']=None
+            if not option['itinerary']:
+                continue
+        else:
+            with get_connection() as conn:
+                exists=conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='timed_itinerary_slots'").fetchone()
+                slots=[dict(r) for r in conn.execute('SELECT * FROM timed_itinerary_slots WHERE trip_id=? ORDER BY day_number,order_index',(trip_id,))] if exists else []
+            option['itinerary']={'days':[{'day_number':d,'timeline':[{'title':s['title'],'time_range':s['start_time']+' – '+s['end_time'],'type':s['slot_type']} for s in slots if s['day_number']==d]} for d in range(1,trip['duration_days']+1)]}
         options.append(option)
     if len(options) > 1 and all(item['additional_cost_inr'] <= 0 and not item.get('changes') for item in options[1:]):
         options = options[:1]
     return {'baseline_total_cost_inr': baseline_spend, 'baseline_estimated_trip_cost_inr':base_total,
         'max_additional_budget_inr': payload.max_additional_budget_inr,
-        'options': options, 'keep_current_recommended':len(options)==1, 'saved_trip_mutated': False}
+        'options': options[:3], 'keep_current_recommended':len(options)==1, 'saved_trip_mutated': False}
 
 
 @router.get('/api/trips/{trip_id}/itinerary-check')
@@ -895,11 +930,23 @@ def day_options(trip_id: str, request: Request, day_number: Optional[int] = None
         runtime = conn.execute('SELECT status FROM trip_runtime WHERE trip_id=?', (trip_id,)).fetchone()
         if runtime and runtime['status'] != 'draft':
             fail(409, 'Day alternatives are only available before the trip is finalized.', 'ITINERARY_LOCKED')
-        days = sorted({r['day_number'] for r in rows})
+        days = list(range(1,int(trip['duration_days'])+1))
         if day_number is not None and day_number not in days:
             fail(404, 'Trip day not found.', 'DAY_NOT_FOUND', 'day_number')
         loads = {d: sum(int(r.get('duration_minutes') or 0) for r in rows if r['day_number'] == d) for d in days}
         options = []
+        if goal=='less_walking':
+            prefs=json.loads(trip.get('trip_preferences_json') or '{}')
+            options.append({'id':'vehicle-transfers','label':'Use vehicle transfers between stops','day_number':day_number,
+                'explanation':'Keep your activities and use estimated vehicle transfers. On-site walking and wheelchair access still need venue confirmation.',
+                'trade_off':'Vehicle transfers may cost more; no live fare or traffic guarantee is available.',
+                'preview_request':{'operation':'preferences','preferences':{'intensity':trip.get('travel_pace') or 'balanced','walking_limit_km':prefs.get('walking_limit_km'),
+                    'accessibility_notes':prefs.get('accessibility_notes',''),'transport_mode':'cab','priorities':[]}}})
+        if day_number and not any(r['day_number']==day_number for r in rows):
+            options.append({'id':'balance-days','label':'Balance existing activities across days','day_number':day_number,
+                'explanation':'Redistribute proposed activities while preserving accepted stops and pinned bookings.',
+                'trade_off':'Some unreviewed activities may move to another day.', 'estimated_cost_change_inr':0,
+                'preview_request':{'operation':'rebalance'}})
         for target_day in ([day_number] if day_number else days):
             movable = [r for r in rows if r['day_number'] == target_day and r['status'] == 'proposed' and not r.get('is_pinned') and not r.get('is_fixed_booking') and not r.get('must_visit') and r.get('planning_priority')!='must_do']
             if not movable:
@@ -910,11 +957,13 @@ def day_options(trip_id: str, request: Request, day_number: Optional[int] = None
                 for activity in movable:
                     alternatives = get_slot_alternatives(conn, actor, itinerary['id'], activity['activity_id'])
                     cheaper = [alt for alt in alternatives if not alt.get('is_already_scheduled') and
-                        activity_fee_inr(alt) < float(activity.get('cost_estimate') or 0)]
+                        (any(tag in (str(alt.get('tags',''))+' '+str(alt.get('name',''))).lower() for tag in ('local','artisan','bazaar','market','traditional')) if goal=='local_experiences' else
+                         alt.get('physical_intensity') in ('low','minimal') if goal=='less_walking' else
+                         activity_fee_inr(alt) < float(activity.get('cost_estimate') or 0))]
                     if cheaper:
                         replacement = min(cheaper, key=activity_fee_inr)
                         reduction = int(round(float(activity.get('cost_estimate') or 0) - activity_fee_inr(replacement)))
-                        options.append({'id':f'lower-cost-{activity["id"]}','label':'Choose a lower-cost experience',
+                        options.append({'id':f'lower-cost-{activity["id"]}','label':'Choose a local experience' if goal=='local_experiences' else 'Choose a gentler activity' if goal=='less_walking' else 'Choose a lower-cost experience',
                             'day_number':target_day,'changes':[{'occurrence_id':activity['id'],'replacement_activity_id':replacement['id']}],
                             'explanation':f"Replace {activity['title']} with {replacement['name']} using the existing destination catalogue.",
                             'trade_off':'The replacement is a different experience; catalogue cost values are estimates.',
@@ -947,10 +996,12 @@ def day_options(trip_id: str, request: Request, day_number: Optional[int] = None
         options = [o for o in options if o['estimated_cost_change_inr'] < 0]
     elif goal == 'more_downtime':
         options = [o for o in options if o['id'].startswith(('downtime-', 'lighter-day-'))]
-    elif goal in ('less_walking','local_experiences'):
-        options = []  # These goals need walking/locality data the catalogue does not reliably provide.
+    elif goal=='local_experiences':
+        options=[o for o in options if o['label']=='Choose a local experience']
+    elif goal=='less_walking':
+        options=[o for o in options if o['id']=='vehicle-transfers' or o['label']=='Choose a gentler activity']
     return {'trip_id':trip_id,'day_options':options[:2],
-        'message': 'Verified walking or local-experience data is unavailable; no suitable alternative can be promised.' if goal in ('less_walking','local_experiences') else None,
+        'message': 'No additional suitable catalogue places are available. Try another goal or refresh the destination recommendations.' if not options else 'Walking and transfer details are estimates; check on-site accessibility with the venue.' if goal=='less_walking' else None,
         'confirmation_flow':'POST /api/trip-actions/{trip_id}/preview then POST /api/trip-actions/{trip_id}/confirm',
         'saved_itinerary_mutated':False,'preserved_constraints':['completed activities','pinned activities','fixed bookings']}
 
@@ -1058,7 +1109,10 @@ def _require_trip_owner_from_conn(conn, trip_id, actor):
 
 async def _assistant_chat(payload: AssistantInput, request: Request):
     actor = _actor(request, payload.user_id)
-    api_key = os.getenv('OPENAI_API_KEY', '').strip()
+    if get_setting('ASSISTANT_MODE','local')!='api':
+        from app.local_assistant import answer_local
+        return await answer_local(payload,request,actor)
+    api_key = get_setting('OPENAI_API_KEY','').strip()
     if not api_key:
         fail(503, 'The travel assistant is unavailable because the model service is not configured.', 'ASSISTANT_UNAVAILABLE')
     with get_connection() as conn:
@@ -1088,7 +1142,14 @@ async def _assistant_chat(payload: AssistantInput, request: Request):
     try:
         response = requests.post('https://api.openai.com/v1/chat/completions',
             headers={'Authorization':'Bearer '+api_key,'Content-Type':'application/json'},
-            json={'model':os.getenv('OPENAI_MODEL','gpt-4o-mini'),'messages':messages,'max_tokens':700,'temperature':0.2}, timeout=(3,15))
+            json={'model':get_setting('OPENAI_MODEL','gpt-4o-mini'),'messages':messages,'max_tokens':700,'temperature':0.2}, timeout=(3,15))
+        if response.status_code==429:
+            issue=response.json().get('error',{}).get('code')
+            if issue in ('credit_balance_exhausted','insufficient_quota'):
+                fail(503,'The travel assistant is temporarily unavailable. Your trip is unchanged; planning and budgets still work.','ASSISTANT_CREDITS_UNAVAILABLE')
+            fail(429,'The assistant is busy. Please retry shortly; your message is kept.','ASSISTANT_PROVIDER_RATE_LIMIT')
+        if response.status_code in (401,403):
+            fail(503,'The travel assistant is temporarily unavailable. Your trip has not been changed.','ASSISTANT_PROVIDER_AUTH')
         response.raise_for_status()
         content = response.json()['choices'][0]['message']['content']
     except (requests.RequestException, ValueError, KeyError, IndexError, TypeError, AttributeError):
@@ -1170,6 +1231,7 @@ class DayPreferences(BaseModel):
     walking_limit_km: Optional[float] = Field(None,ge=0,le=100,allow_inf_nan=False)
     accessibility_notes: str = Field('',max_length=500)
     priorities: list[dict[str,str]] = Field(default_factory=list,max_length=2000)
+    transport_mode: Optional[Literal['auto','walk','cab','bus_metro']] = None
 
 
 @router.patch('/api/trips/{trip_id}/day-options/preferences')
@@ -1178,7 +1240,7 @@ def day_preferences(trip_id: str, payload: DayPreferences, request: Request):
     from app.trip_preview import require_draft, AtomicConnection
     from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
     with get_connection() as conn:
-        conn.execute('BEGIN IMMEDIATE')
+        if not conn.in_transaction:conn.execute('BEGIN IMMEDIATE')
         require_draft(conn, trip_id)
         trip=dict(conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone())
         rows={r['id']:dict(r) for r in conn.execute('SELECT ia.* FROM itinerary_activities ia JOIN itineraries i ON i.id=ia.itinerary_id WHERE i.trip_id=?',(trip_id,))}
@@ -1195,6 +1257,9 @@ def day_preferences(trip_id: str, payload: DayPreferences, request: Request):
             conn.execute('UPDATE itinerary_activities SET planning_priority=? WHERE id=?',(line['priority'],target['id']))
         prefs=json.loads(trip.get('trip_preferences_json') or '{}')
         prefs.update(walking_limit_km=payload.walking_limit_km,accessibility_notes=re.sub(r'<[^>]*>','',payload.accessibility_notes).strip())
+        if payload.transport_mode is not None:
+            prefs['transport_preferences']=[] if payload.transport_mode=='auto' else [payload.transport_mode]
+            conn.execute('UPDATE trips SET transit_pref=? WHERE id=?',('taxi' if payload.transport_mode=='cab' else 'public_transit',trip_id))
         conn.execute('UPDATE trips SET travel_pace=?,trip_preferences_json=? WHERE id=?',(payload.intensity,json.dumps(prefs),trip_id))
         regenerate_timed_itinerary_for_trip(AtomicConnection(conn),trip_id,actor)
     return {'saved':True,'message':'Preferences saved. Walking estimates remain unavailable where route data is missing.'}

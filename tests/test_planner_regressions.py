@@ -96,6 +96,8 @@ def test_cost_monotonic_components_and_shared_minimum():
 
 
 def test_party_sync_legacy_and_solo_rejection(client,demo_user):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     r=client.post('/api/trips/'+demo_user,json=trip_payload(companions='solo',travellers_count=2))
     assert r.status_code == 422
     assert 'Solo requires exactly one adult' in r.text
@@ -149,6 +151,8 @@ def test_trip_duplicate_edit_delete_ownership_and_policy(client,deep_user):
 
 
 def test_strict_radius_regions_and_daily_clusters(client,demo_user):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     from app.providers.geo import discover_places_india
     from app.activity_data import CURATED_ACTIVITIES
     places=discover_places_india(26.9124,75.7873,radius_meters=5000)
@@ -180,6 +184,8 @@ def mock_weather_http(url,params,timeout):
 
 
 def test_weather_mixed_window_climatology_and_packing_equality(client,demo_user,monkeypatch):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     from app.services import trip_weather
     monkeypatch.setattr(trip_weather,'today_india',lambda:date(2026,11,12))
     http=Mock(side_effect=mock_weather_http)
@@ -235,6 +241,8 @@ def test_outside_india_never_returns_stays():
 
 
 def test_stay_option_a_anchor_and_option_b_centroid(client,demo_user):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     trip=create(client,demo_user,stay_name='User chosen stay',stay_lat=26.931,stay_lon=75.789)
     assert trip['trip_preferences']['stay_anchor']['lat']==26.931
     r=client.post(f"/api/itinerary/generate/{trip['id']}?user_id={demo_user}")

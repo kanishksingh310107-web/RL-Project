@@ -22,7 +22,7 @@ def error(status, message, code='INVALID_INPUT', field=None):
 
 class Preview(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    operation: Literal['swap','remove','reschedule','move_day','reorder','pin','must_visit','set_priority','add_custom','budget_allocation']
+    operation: Literal['swap','remove','reschedule','move_day','reorder','pin','must_visit','set_priority','add_custom','budget_allocation','preferences','rebalance','trip_plan']
     target_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
     replacement_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
     before_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
@@ -33,6 +33,8 @@ class Preview(BaseModel):
     budget_allocations: Optional[dict[str,dict]] = None
     budget_reserve_released: StrictBool = False
     planning_priority: Optional[Literal['must_do','nice_to_do','avoid']] = None
+    preferences: Optional[dict] = None
+    plan_changes: list[dict] = Field(default_factory=list,max_length=20)
 
 
 class Token(BaseModel):
@@ -74,18 +76,37 @@ def require_draft(conn,trip_id):
     if runtime and runtime['status']!='draft': error(409,'Only draft itineraries can be edited.','ITINERARY_LOCKED')
 
 
+def require_planning(actor,request):
+    from app.profile_gate import require_profile_complete,require_planning_profile
+    require_planning_profile(require_profile_complete({'id':actor},request))
+
+
 async def apply(request,trip_id,actor,payload):
     with get_connection() as conn:
         itinerary,rows,_=state(conn,trip_id)
         target=next((r for r in rows if r['id']==payload.target_activity_id),None)
-        requires_target=payload.operation not in ('add_custom','budget_allocation')
+        requires_target=payload.operation not in ('add_custom','budget_allocation','preferences','rebalance','trip_plan')
         if requires_target and not target: error(404,'Activity occurrence not found.','ACTIVITY_NOT_FOUND')
         if target and (target['is_fixed_booking'] or target['is_pinned']) and payload.operation not in ('pin','must_visit'):
             error(409,'Unpin this activity before moving or replacing it.','PINNED_ACTIVITY')
         if payload.target_day and payload.target_day>conn.execute('SELECT duration_days FROM trips WHERE id=?',(trip_id,)).fetchone()[0]:
             error(404,'Trip day not found.','DAY_NOT_FOUND')
         base=f'/api/trip-actions/{trip_id}'
-        if payload.operation=='budget_allocation':
+        if payload.operation=='trip_plan':
+            if not payload.plan_changes:error(422,'Choose at least one plan change.','INVALID_PLAN')
+            for change in payload.plan_changes:
+                validated=Preview.model_validate(change)
+                if validated.operation not in ('swap','remove','reschedule','move_day','reorder','preferences','budget_allocation'):
+                    error(422,'This plan contains an unsupported change.','INVALID_PLAN')
+                await apply(request,trip_id,actor,validated)
+        elif payload.operation=='preferences':
+            from app.recommendation_budget import DayPreferences
+            validated=DayPreferences.model_validate(payload.preferences or {})
+            await c_call_existing(request,'PATCH',f'/api/trips/{trip_id}/day-options/preferences',validated.model_dump())
+        elif payload.operation=='rebalance':
+            from app.planning.day_balance import rebalance_days
+            rebalance_days(conn,trip_id)
+        elif payload.operation=='budget_allocation':
             if payload.budget_total_inr is None or payload.budget_allocations is None:
                 error(422,'A proposed total and category allocations are required.','INVALID_BUDGET','budget_allocations')
             allowed={'accommodation','food','intercity_travel','local_transport','activities','shopping','emergency_reserve','other'}
@@ -151,6 +172,7 @@ def capabilities():
 @router.post('/api/trip-actions/{trip_id}/preview')
 async def preview(trip_id: str,payload: Preview,request: Request):
     _,actor=_require_trip_owner(request,trip_id)
+    require_planning(actor,request)
     with get_connection() as conn:
         require_draft(conn,trip_id)
         _,before,fingerprint=state(conn,trip_id)
@@ -188,6 +210,7 @@ async def preview(trip_id: str,payload: Preview,request: Request):
 @router.post('/api/trip-actions/{trip_id}/confirm')
 async def confirm(trip_id: str,payload: Token,request: Request):
     _,actor=_require_trip_owner(request,trip_id)
+    require_planning(actor,request)
     with get_connection() as conn:
         conn.execute('BEGIN IMMEDIATE');require_draft(conn,trip_id)
         row=conn.execute('SELECT * FROM trip_edit_previews WHERE token=? AND trip_id=? AND user_id=?',(payload.token,trip_id,actor)).fetchone()

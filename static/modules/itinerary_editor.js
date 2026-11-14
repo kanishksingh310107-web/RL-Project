@@ -3,12 +3,16 @@ TravelModules.register('itinerary_editor', {
   async render(container,ctx) {
     const T=window.TripExperience;
     if(!T){container.textContent='Loading trip tools…';return;}
+    // Keep legacy mounts for compatibility; the unified timeline is the visible schedule.
+    document.getElementById('itineraryDaysContainer')?.classList.add('hidden');
+    document.getElementById('scheduleMarkersMount')?.classList.add('hidden');
     const {esc,api}=T, tripId=ctx.tripId, userId=ctx.userId;
     const query=`user_id=${encodeURIComponent(userId)}`;
     const endpoint=path=>`/api/trip-actions/${encodeURIComponent(tripId)}${path}?${query}`;
     const current=()=>container.isConnected&&getWorkspaceContext().tripId===tripId;
-    const activity=b=>b.type==='activity'||b.slot_type==='activity';
+    const activity=b=>['activity','shopping'].includes(b.type)||['activity','shopping'].includes(b.slot_type);
     const money=n=>n!=null&&Number.isFinite(Number(n))?formatINR(Number(n)):'Cost unavailable';
+    const costLabel=b=>{const kind=b.type||b.slot_type;return ['transit','travel'].includes(kind)?'Covered by your local transport allowance':kind==='meal'?'Covered by your food allowance':kind==='unplanned'?'No fixed spend planned':money(b.cost_estimate);};
     let data,runtime,selectedDay=window.ItineraryInsights?.selectedDay(tripId)||1,busy=false,dragId=null;
     function message(text){const node=container.querySelector('[data-status]');if(node)node.textContent=text;}
     async function action(control,work){if(busy||control.disabled)return;busy=true;control.disabled=true;message('');try{await work();}catch(error){if(current())message(error.message);}finally{busy=false;if(control.isConnected)control.disabled=false;}}
@@ -30,7 +34,7 @@ TravelModules.register('itinerary_editor', {
         <p>${accepted} of ${all.length} activities accepted${T.can('occurrence_acceptance')?'':' · Individual acceptance awaits the server update.'}</p>
         <nav class="te-day-nav" aria-label="Itinerary day">${days.map(d=>`<button data-day="${d.day_number}" aria-current="${d.day_number===selectedDay}">Day ${d.day_number}</button>`).join('')}</nav>
         <div class="te-toolbar"><button data-print>Print itinerary</button><button data-map>Open day route</button>
-        ${editable?`<button data-all ${T.can('occurrence_acceptance')?'':'disabled'}>Accept all activities</button><button data-custom ${T.can('custom_activities')?'':'disabled'}>Add custom activity</button><button data-undo ${data.undo_token&&T.can('itinerary_preview')?'':'disabled'}>Undo last edit</button>`:''}
+        ${editable?`<button data-balance ${T.can('itinerary_preview')?'':'disabled'}>Balance all days</button><button data-all ${T.can('occurrence_acceptance')?'':'disabled'}>Accept all activities</button><button data-custom ${T.can('custom_activities')?'':'disabled'}>Add custom activity</button><button data-undo ${data.undo_token&&T.can('itinerary_preview')?'':'disabled'}>Undo last edit</button>`:''}
         <button data-expenses ${T.can('expenses')?'':'disabled'}>Expenses</button><button data-share ${T.can('readonly_sharing')?'':'disabled'}>Share read-only</button></div>
         <p data-status role="status" class="te-error"></p><h4 class="font-bold">Day ${selectedDay} · ${esc(day.formatted_date||'')}</h4>
         ${(day.markers||[{label:'Hotel arrival',time:day.arrival_marker},{label:'Hotel checkout',time:day.departure_marker}]).filter(m=>m.time).map(m=>`<p class="te-marker">${esc(m.label)} · ${esc(m.time)}</p>`).join('')}
@@ -39,7 +43,7 @@ TravelModules.register('itinerary_editor', {
         <ol class="te-timeline">${blocks.map((b,index)=>{
           const id=T.occurrenceId(b), kind=b.type||b.slot_type||'activity', choice=T.acceptance(b), edit=editable&&activity(b)&&id;
           const disabled=!T.can('itinerary_preview')||b.pinned?'disabled':'';
-          return `<li class="te-stop" data-occurrence="${esc(id||'')}" ${edit&&!disabled?'draggable="true"':''}><div class="te-stop-time">${esc(b.time_range||[b.start_time,b.end_time].filter(Boolean).join(' – ')||'Time unavailable')}</div><article class="te-stop-content" data-kind="${esc(kind)}"><small>${index+1} · ${esc(b.slot_type_label||kind.replace(/_/g,' '))}${b.duration_minutes!=null?' · '+esc(b.duration_minutes)+' min':''}</small><h4>${esc(b.title||b.name)}</h4><p>${esc(b.neighborhood||b.location||'')}</p><p>${esc(T.publicText(b.description))}</p><p>${esc(money(b.cost_estimate))}${b.is_estimate?' · estimate':''}</p>
+          return `<li class="te-stop" data-occurrence="${esc(id||'')}" ${edit&&!disabled?'draggable="true"':''}><div class="te-stop-time">${esc(b.time_range||[b.start_time,b.end_time].filter(Boolean).join(' – ')||'Time unavailable')}</div><article class="te-stop-content" data-kind="${esc(kind)}"><small>${index+1} · ${esc(b.slot_type_label||kind.replace(/_/g,' '))}${b.duration_minutes!=null?' · '+esc(b.duration_minutes)+' min':''}</small><h4>${esc(b.title||b.name)}</h4><p>${esc(b.neighborhood||b.location||'')}</p><p>${esc(T.publicText(b.description))}</p><p>${esc(costLabel(b))}${b.is_estimate?' · estimate':''}</p>
           ${activity(b)?`<p>${choice==='unreviewed'?'Not reviewed':choice==='accepted'?'Accepted':'Rejected'}${b.pinned?' · Fixed booking / pinned':''}${b.must_visit?' · Must visit':''}</p>`:''}
           ${edit?`<div class="te-stop-actions"><button data-choice="accept" ${T.can('occurrence_acceptance')?'':'disabled'}>Accept</button><button data-choice="reject" ${T.can('occurrence_acceptance')?'':'disabled'}>Reject</button><button data-edit="earlier" ${disabled} aria-label="Move ${esc(b.title)} earlier">↑ Earlier</button><button data-edit="later" ${disabled} aria-label="Move ${esc(b.title)} later">↓ Later</button><button data-edit="move_day" ${disabled}>Move day</button><button data-edit="swap" ${disabled}>Swap</button><button data-edit="remove" ${disabled}>Remove</button><button data-edit="pin" ${T.can('itinerary_preview')?'':'disabled'}>${b.pinned?'Unpin':'Pin booking'}</button><button data-edit="must_visit" ${T.can('itinerary_preview')?'':'disabled'}>${b.must_visit?'Unmark':'Mark'} must visit</button></div>`:''}</article></li>`;
         }).join('')}</ol><p>Times and travel costs are estimates unless marked verified. Missing travel times must be resolved before finalizing.</p></section>`;
@@ -56,6 +60,7 @@ TravelModules.register('itinerary_editor', {
       container.querySelectorAll('[draggable=true]').forEach(row=>{
         row.addEventListener('dragstart',e=>{dragId=row.dataset.occurrence;e.dataTransfer.setData('text/plain',dragId);});row.addEventListener('dragover',e=>e.preventDefault());row.addEventListener('drop',e=>{e.preventDefault();const target=row.dataset.occurrence;if(dragId&&target&&dragId!==target)preview({operation:'reorder',target_activity_id:dragId,before_activity_id:target});dragId=null;});row.addEventListener('dragend',()=>{dragId=null;});
       });
+      container.querySelector('[data-balance]')?.addEventListener('click',()=>preview({operation:'rebalance'}));
       container.querySelector('[data-undo]')?.addEventListener('click',e=>action(e.currentTarget,async()=>{await api(endpoint('/undo'),{method:'POST',body:{token:data.undo_token}});await load();}));
       container.querySelector('[data-custom]')?.addEventListener('click',customActivity);
       container.querySelector('[data-expenses]').onclick=expenses;container.querySelector('[data-share]').onclick=share;
@@ -96,7 +101,7 @@ TravelModules.register('itinerary_editor', {
     }
     function printItinerary(){
       const frame=document.createElement('iframe');frame.title='Printable itinerary';frame.hidden=true;document.body.append(frame);const doc=frame.contentDocument;
-      doc.open();doc.write(`<!doctype html><html><head><title>Trip itinerary</title><style>body{font:14px sans-serif;color:#172033;padding:24px}h2{break-before:page}li{margin:12px 0;break-inside:avoid}small{display:block}</style></head><body><h1>${esc(data.trip?.destination_name)}</h1>${data.days.map(day=>`<h2>Day ${day.day_number}</h2>${day.note?`<p>${esc(T.publicText(day.note))}</p>`:''}<ol>${(day.timeline||[]).map(b=>`<li><strong>${esc(b.time_range)} · ${esc(b.title)}</strong><small>${esc(b.location||b.neighborhood||'')} · ${esc(money(b.cost_estimate))}</small></li>`).join('')}</ol>`).join('')}<p>Times and costs may be estimates.</p></body></html>`);doc.close();frame.contentWindow.focus();frame.contentWindow.print();setTimeout(()=>frame.remove(),1000);
+      doc.open();doc.write(`<!doctype html><html><head><title>Trip itinerary</title><style>body{font:14px sans-serif;color:#172033;padding:24px}h2{break-before:page}li{margin:12px 0;break-inside:avoid}small{display:block}</style></head><body><h1>${esc(data.trip?.destination_name)}</h1>${data.days.map(day=>`<h2>Day ${day.day_number}</h2>${day.note?`<p>${esc(T.publicText(day.note))}</p>`:''}<ol>${(day.timeline||[]).map(b=>`<li><strong>${esc(b.time_range)} · ${esc(b.title)}</strong><small>${esc(b.location||b.neighborhood||'')} · ${esc(costLabel(b))}</small></li>`).join('')}</ol>`).join('')}<p>Times and costs may be estimates.</p></body></html>`);doc.close();frame.contentWindow.focus();frame.contentWindow.print();setTimeout(()=>frame.remove(),1000);
     }
     await load();
   }

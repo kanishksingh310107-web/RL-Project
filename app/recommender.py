@@ -1338,6 +1338,7 @@ def score_destination_for_user(
         "image_url": dest.get("image_url"),
         "duration": dest.get("duration", "4 - 7 days"),
         "match_score": final_score,
+        "match_label": 'Strong preference fit' if not is_hard_conflict and final_score>=75 else 'Good preference fit' if not is_hard_conflict and final_score>=50 else 'Explore something different',
         "why_it_suits": why_text,
         "because_you_said": because_you_said,
         "is_hard_conflict": is_hard_conflict,

@@ -183,6 +183,8 @@ def test_packing_medication_and_allergy_profile(client, demo_trip, monkeypatch):
 
 def test_packing_without_itinerary_and_without_precision_profile(client, demo_user, monkeypatch):
     """Packing endpoint gracefully handles a new trip before itinerary generation."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     # Create trip without generating itinerary
     t_resp = client.post(
         f"/api/trips/{demo_user}",
@@ -197,6 +199,9 @@ def test_packing_without_itinerary_and_without_precision_profile(client, demo_us
     )
     assert t_resp.status_code == 200
     trip_id = t_resp.json()["id"]
+    from app.database import get_connection
+    with get_connection() as conn:
+        conn.execute("DELETE FROM precision_profiles WHERE user_id=?",(demo_user,))
 
     resp = client.get(f"/api/prep/{trip_id}/packing")
     assert resp.status_code == 200

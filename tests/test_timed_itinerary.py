@@ -199,6 +199,8 @@ def test_manali_destination_schedule(client, demo_user):
     rest time, and dinner/night walk.
     """
     # Create Manali trip
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     t_res = client.post(f"/api/trips/{demo_user}", json={
         "destination_id": "manali_spiti_india",
         "destination_name": "Manali & Spiti Valley",

@@ -39,7 +39,11 @@
 
   function lifecycle(ctx,snapshot) {
     if(!isCurrent(ctx)) return false;
-    if(window.TripExperience?.applySnapshot(ctx,snapshot)===false)return false;
+    if(window.TripExperience?.applySnapshot(ctx,snapshot)===false){
+      const latest=window.TripExperience?.getSnapshot(ctx.tripId);
+      if(!latest)return false;
+      snapshot=latest;
+    }
     state.snapshot=snapshot;
     const box=document.getElementById('cTripLifecycle');
     if(!box) return;
@@ -316,5 +320,6 @@
   }
 
   window.CTripRuntime={install,render,api,esc,label,ratingFields,readRatings,submitButton,lifecycle,isCurrent};
-  window.addEventListener('load',install);
+  if(document.readyState==='interactive'||document.readyState==='complete')install();
+  else window.addEventListener('DOMContentLoaded',install,{once:true});
 })();

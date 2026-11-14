@@ -44,6 +44,8 @@ def test_search_geocoding_no_silent_manali_fallback(monkeypatch):
 
 def test_trips_and_itineraries_retain_resolved_coordinates_on_switch(client, demo_user, monkeypatch):
     """Switching between Jodhpur and Manali trips preserves each trip's distinct coordinates and dates."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     monkeypatch.setattr("app.providers.geo.is_geoapify_configured", lambda: False)
 
     # Trip 1: Jodhpur, Rajasthan
@@ -211,6 +213,8 @@ def test_weather_unavailable_never_returns_other_destination(client, monkeypatch
 
 def test_prep_and_live_weather_alerts_use_trip_specific_coordinates(client, demo_user, monkeypatch):
     """Both /api/prep/{trip_id}/weather and /api/live/{trip_id}/weather-alerts must use the trip's actual coords."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     monkeypatch.setattr("app.providers.geo.is_geoapify_configured", lambda: False)
 
     r_jodhpur = client.post(

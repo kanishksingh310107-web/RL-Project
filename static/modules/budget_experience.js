@@ -23,12 +23,12 @@
     currentWorkspaceMode='budget';
     for(const id of ['workspacePreTrip','workspaceLiveTrip','workspacePostTrip'])document.getElementById(id)?.classList.add('hidden');
     for(const id of ['wsTabBtn-pre','wsTabBtn-live','wsTabBtn-post'])document.getElementById(id)?.setAttribute('aria-selected','false');
-    load();
+    return load();
   };
   function compactSummary(s) {
     compact.replaceChildren();compact.hidden=false;const heading=U.el('strong','Budget at a glance');compact.append(heading);
     for(const [title,key] of [['Total budget','total_budget'],['Spent so far','actual_spending'],['Estimated costs still to come','estimated_remaining_costs'],['Forecast final cost','forecast_final_cost'],['Available buffer','available_buffer']]) {
-      const cell=U.el('span');cell.append(U.el('small',title),U.el('b',A.money(s[key])));compact.append(cell);
+      const cell=U.el('span');cell.append(U.el('small',title),U.el('b',key==='actual_spending'&&s[key]===null?'Not entered':A.money(s[key])));compact.append(cell);
     }
     compact.append(U.button('Open budget',()=>window.switchWorkspaceMode('budget')));
   }
@@ -61,7 +61,7 @@
     panel.replaceChildren();heading();
     const metrics=U.el('dl',null,'ex-metrics');
     const fields=[['Total budget','total_budget'],['Planned cost','planned_cost'],['Spent so far','actual_spending'],['Estimated remaining costs','estimated_remaining_costs'],['Forecast final cost','forecast_final_cost'],['Available buffer','available_buffer']];
-    for(const [name,field] of fields){const cell=U.el('div');cell.append(U.el('dt',summary.forecast_complete===false&&field==='forecast_final_cost'?'Known-cost forecast (incomplete)':summary.forecast_complete===false&&field==='available_buffer'?'Balance before missing estimates':name),U.el('dd',field==='actual_spending'&&!ledger.length&&summary.actual_spending===0&&!summary.expenses_complete?'Not entered':A.money(summary[field])));metrics.append(cell);}panel.append(metrics);
+    for(const [name,field] of fields){const cell=U.el('div');cell.append(U.el('dt',summary.forecast_complete===false&&field==='forecast_final_cost'?'Known-cost forecast (incomplete)':summary.forecast_complete===false&&field==='available_buffer'?'Balance before missing estimates':name),U.el('dd',field==='actual_spending'&&!ledger.length&&(summary.actual_spending===null||summary.actual_spending===0&&!summary.expenses_complete)?'Not entered':A.money(summary[field])));metrics.append(cell);}panel.append(metrics);
     if(summary.over_budget>0)panel.append(U.el('p','Forecast exceeds your budget by '+A.money(summary.over_budget),'ex-warning'));
     panel.append(U.el('p','Forecast = recorded spending + estimated remaining costs. The emergency reserve stays protected unless you explicitly release it. Unrecorded expenses are not assumed to be zero.','ex-muted'));
     const actions=U.el('div',null,'ex-actions');const notice=U.status(panel);
@@ -136,7 +136,7 @@
         finally{inputs.forEach(n=>n.disabled=false);d.close.disabled=false;}
       });inFlight=false;
     };
-    f.addEventListener('input',()=>{f.dataset.dirty='true';});d.box.addEventListener('cancel',event=>{if(inFlight)event.preventDefault();});
+    f.addEventListener('input',()=>{f.dataset.dirty='true';});d.box.addEventListener('cancel',event=>{if(inFlight)event.preventDefault();});return d;
   }
   function allocations(trip,key) {
     const d=U.dialog('Plan your budget','Reserve stay, food and transport before choosing activities. Emergency money is protected. Amounts are allowances, not bookings.');const f=U.form('allocations');d.content.append(f);
@@ -175,6 +175,7 @@
           const card=U.el('article',null,'ex-option');card.append(U.el('h3',A.text(option.title||option.label)),U.el('strong',A.money(option.total_cost_inr)),U.el('p','Additional cost: '+A.money(option.additional_cost_inr)));
           U.lines(card,'What changes',option.changes);U.lines(card,'What stays the same',option.unchanged);U.lines(card,'Benefits',option.benefits);U.lines(card,'Trade-offs',option.tradeoffs);
           if(option.estimate_note)card.append(U.el('p',A.text(option.estimate_note),'ex-muted'));
+          if(option.itinerary?.days){const details=U.el('details');details.append(U.el('summary','View full itinerary'));for(const day of option.itinerary.days){details.append(U.el('h4','Day '+day.day_number));if(day.note)details.append(U.el('p',A.text(day.note),'ex-muted'));const list=U.el('ol');for(const block of day.timeline||[])list.append(U.el('li',(block.time_range||'Time to confirm')+' · '+A.text(block.title)));details.append(list);}card.append(details);}
           const use=U.button('Preview this option',()=>U.busy(use,d.notice,async()=>{const next=await A.budgetPreview(trip,option.id);U.confirmation('Review budget option',next.preview||next,{current:()=>key===A.contextKey(),confirm:token=>A.budgetConfirm(trip,token),done:async()=>{d.box.close();await refreshTrip(trip);}});}));
           const snapshot=window.TripExperience.getSnapshot(trip);
           const outsideLimit=A.amount(option.total_cost_inr)===null||A.amount(option.additional_cost_inr)===null||Number(option.additional_cost_inr)>Number(v.max_extra_inr)||Number(option.total_cost_inr)>Number(v.current_budget_inr)+Number(v.max_extra_inr);
@@ -190,7 +191,7 @@
   }
   function isOpen(trip){return open&&trip===A.tripId()&&context===A.contextKey(trip);}
   function restore(trip){if(!isOpen(trip))return;panel.hidden=false;for(const id of ['workspacePreTrip','workspaceLiveTrip','workspacePostTrip'])document.getElementById(id)?.classList.add('hidden');currentWorkspaceMode='budget';}
-  window.BudgetExperience={openOptions,open:()=>window.switchWorkspaceMode('budget'),refresh:load,refreshTrip,isOpen,restore};
+  window.BudgetExperience={async addShoppingExpense(){await window.switchWorkspaceMode('budget');const trip=A.tripId(),d=expenseForm(trip,A.contextKey());d.content.querySelector('[name=category]').value='shopping';},openOptions,open:()=>window.switchWorkspaceMode('budget'),refresh:load,refreshTrip,isOpen,restore};
   window.addEventListener('trip:runtime',event=>{
     clearAccount();
     const next=event.detail,key=A.contextKey(next.tripId);if(next.tripId===A.tripId())tab.disabled=false;

@@ -380,6 +380,19 @@ def run_itinerary_and_rl_tests(client, user_id):
     """Test suite for Adaptive Pre-Trip Itinerary Planner, LinUCB RL policy, feedback, and constraints."""
     print("\n--- Testing Adaptive Pre-Trip Itinerary Planner & LinUCB ---")
 
+    # Complete the now-mandatory Deep Personalisation before planning tests.
+    questions=client.get('/api/config/precision-questionnaire').json()['questions']
+    answers={}
+    for qid,question in questions.items():
+        options=question.get('options') or []
+        if question.get('type')=='single' and options:answers[qid]=options[0]['id']
+        elif question.get('type')=='multi':answers[qid]=[o['id'] for o in options] if qid=='d27_privacy_saving' else [options[0]['id']] if options else []
+        elif question.get('type')=='scale':answers[qid]=3
+        elif question.get('type')=='number':answers[qid]=question.get('min',1)
+    completed=client.post('/api/profile/precision/'+user_id,json={'answers':answers})
+    assert completed.status_code==200,completed.text
+    assert client.get('/api/profile/'+user_id+'/status').json()['complete']
+
     # 1. Trip Creation
     trip_payload = {
         "destination_id": "kyoto_japan",

@@ -333,6 +333,8 @@ def test_api_places_discover(client):
 
 def test_api_places_plan_dynamic_end_to_end(client, demo_user):
     """POST /api/places/plan-dynamic must plan a trip with discovered places without falling back to Delhi."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     payload = {
         "user_id": demo_user,
         "city": "Pune",

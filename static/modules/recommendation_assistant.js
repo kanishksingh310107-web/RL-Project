@@ -48,7 +48,7 @@
     send.disabled=s.inFlight||!A.can('assistant_chat');input.disabled=s.inFlight;clear.disabled=s.inFlight;
     await A.capabilities();if(!current(key))return;
     if(A.can('assistant_chat')) {
-      const caps=await A.capabilities();privacy.textContent=caps.conversation_persistence==='server'?'Conversations may be saved on the server. Use Clear chat to choose local clearing or request server deletion.':'Messages in this view are kept in memory for this session. Server retention is not confirmed; clearing the view alone does not delete server records.';
+      const caps=await A.capabilities();privacy.textContent=(caps.assistant_mode==='local'?'Free guide using your project data. No external AI service is called. ':'')+(caps.conversation_persistence==='server'?'Conversations may be saved on the server. Use Clear chat to choose local clearing or request server deletion.':'Messages in this view are kept in memory for this session. Server retention is not confirmed; clearing the view alone does not delete server records.');
       if(!s.inFlight)send.disabled=false;
     } else {
       privacy.textContent='The assistant is currently unavailable. Destination discovery and ordinary planning controls remain available.';send.disabled=true;
