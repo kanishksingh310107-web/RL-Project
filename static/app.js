@@ -123,6 +123,13 @@ function formatApiError(data, fallback = "An unexpected error occurred") {
   return String(detail);
 }
 
+function showAppNotice(message) {
+  let box=document.getElementById('appNotice');
+  if(!box){box=document.createElement('div');box.id='appNotice';box.className='fixed top-20 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[calc(100%-2rem)] rounded-xl border border-amber-200 bg-white p-4 text-sm text-slate-800 shadow-xl';box.setAttribute('role','alert');document.body.append(box);}
+  box.textContent=String(message||'Please retry.');box.hidden=false;
+  clearTimeout(box._hideTimer);box._hideTimer=setTimeout(()=>{box.hidden=true;},7000);
+}
+
 function formatOptionLabel(val) {
   if (!val) return "";
   const key = String(val);
@@ -205,7 +212,12 @@ async function loadQuestionnaireData() {
 }
 
 async function checkPersistedSession() {
-  const saved = localStorage.getItem("rl_travel_user");
+  const legacy = localStorage.getItem("rl_travel_user");
+  let legacyUser = null;
+  try { legacyUser = legacy ? JSON.parse(legacy) : null; } catch (_) {}
+  // Guest sessions are intentionally ephemeral; discard guest sessions from older builds.
+  if (legacyUser?.auth_provider === "guest") localStorage.removeItem("rl_travel_user");
+  const saved = sessionStorage.getItem("rl_travel_user") || (legacyUser?.auth_provider === "guest" ? null : legacy);
   if (saved) {
     let storedUser;
     try {
@@ -271,6 +283,13 @@ function updateNavUser() {
     navBadge.classList.add("hidden");
 
   }
+}
+
+function persistCurrentUser() {
+  if (!state.currentUser) return;
+  const guest=state.currentUser.auth_provider==='guest';
+  if(guest){localStorage.removeItem('rl_travel_user');sessionStorage.setItem('rl_travel_user',JSON.stringify(state.currentUser));}
+  else{sessionStorage.removeItem('rl_travel_user');sessionStorage.removeItem('rl_travel_guest_id');localStorage.setItem('rl_travel_user',JSON.stringify(state.currentUser));}
 }
 
 // Switch between views
@@ -364,7 +383,7 @@ async function sendAuthRequest(payload) {
     if (!res.ok) throw new Error(formatApiError(data, "Login failed"));
 
     state.currentUser = data;
-    localStorage.setItem("rl_travel_user", JSON.stringify(data));
+    persistCurrentUser();
     updateNavUser();
 
     if (data.has_profile) {
@@ -411,6 +430,8 @@ function handleManualAuth(e) {
 
 function logout() {
   localStorage.removeItem("rl_travel_user");
+  sessionStorage.removeItem("rl_travel_user");
+  sessionStorage.removeItem("rl_travel_guest_id");
   state.currentUser = null;
   state.currentProfile = null;
   state.detailedProfile = null;
@@ -739,6 +760,7 @@ async function handleProfileSubmit(e) {
   if (!home) { goToStep(1); setTimeout(()=>window.ResidenceForm?.read(),0); return; }
   Object.assign(state.basicAnswers,home);
   const submit = e.submitter || document.querySelector('#profileForm button[type="submit"]');
+  const generalError=document.getElementById('profileFormError');if(generalError){generalError.textContent='';generalError.classList.add('hidden');}
   if (submit) submit.disabled=true;
   const payload = {
     ...home,
@@ -773,7 +795,7 @@ async function handleProfileSubmit(e) {
     }
 
     state.currentUser.has_profile = true;
-    localStorage.setItem("rl_travel_user", JSON.stringify(state.currentUser));
+    persistCurrentUser();
     state.currentProfile = data;
 
 
@@ -789,7 +811,7 @@ async function handleProfileSubmit(e) {
         if(inline)inline.textContent=err.message;
         document.getElementById(target)?.focus();
       },0);
-    } else alert("Error: " + err.message);
+    } else if(generalError){generalError.textContent=err.message;generalError.classList.remove('hidden');generalError.scrollIntoView({block:'center',behavior:'smooth'});}
   } finally {
     if (submit) submit.disabled=false;
   }
@@ -844,6 +866,7 @@ async function loadUserProfile(userId) {
 }
 
 async function renderDashboard(profile) {
+  document.getElementById("dashBasicProfileCard")?.classList.add("hidden");
   document.getElementById("dashWelcomeName").textContent = `Welcome, ${state.currentUser.display_name}`;
   document.getElementById("dashSummaryText").textContent = profile.summary_text;
 
@@ -885,6 +908,22 @@ async function renderDashboard(profile) {
 
   // Load planned trips and active itinerary
   loadUserTrips();
+}
+
+function openAccountProfile() {
+  const existing=document.getElementById('accountProfileDialog');if(existing){existing.remove();return;}
+  const profile=state.currentProfile||{};
+  const overlay=document.createElement('div');overlay.id='accountProfileDialog';overlay.className='fixed inset-0 z-[90] bg-slate-900/50 flex items-center justify-center p-4';
+  const panel=document.createElement('section');panel.className='bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto';panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-label','Active travel profile');
+  const title=document.createElement('h2');title.className='text-lg font-bold text-slate-900';title.textContent='Active travel profile';
+  const summary=document.createElement('p');summary.className='text-sm text-slate-600 mt-2';summary.textContent=profile.summary_text||'Your travel profile is ready to personalize recommendations.';
+  const details=document.createElement('div');details.className='grid grid-cols-2 gap-3 mt-4 text-sm';
+  for(const [label,value] of [['Home', [profile.residence_city,profile.residence_state].filter(Boolean).join(', ')||'Not set'],['Travel experience',humanLabel(profile.travel_experience||'Occasional')],['Companions',humanLabel(profile.companions||'Solo')],['Budget',humanLabel(profile.budget_tier||'Mid range')],['Preferred weather',humanLabel(profile.preferred_climate||'Mild')]]){const item=document.createElement('div');item.className='rounded-xl bg-slate-50 border border-slate-100 p-3';const cap=document.createElement('small');cap.className='block text-slate-500';cap.textContent=label;const val=document.createElement('strong');val.className='text-slate-800';val.textContent=String(value);item.append(cap,val);details.append(item);}
+  const actions=document.createElement('div');actions.className='flex flex-wrap gap-2 mt-5';
+  const edit=document.createElement('button');edit.type='button';edit.className='px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold';edit.textContent='Edit setup';edit.onclick=()=>{overlay.remove();editProfile();};
+  const close=document.createElement('button');close.type='button';close.className='px-4 py-2 rounded-lg border border-slate-200 text-sm font-semibold';close.textContent='Close';close.onclick=()=>overlay.remove();
+  if(state.currentUser?.auth_provider!=='guest'){const deep=document.createElement('button');deep.type='button';deep.className='px-4 py-2 rounded-lg border border-indigo-200 text-indigo-700 text-sm font-semibold';deep.textContent='Deep personalisation';deep.onclick=()=>{overlay.remove();openPersonalProfileModal();};actions.append(deep);}
+  actions.append(edit,close);panel.append(title,summary,details,actions);overlay.append(panel);overlay.addEventListener('click',event=>{if(event.target===overlay)overlay.remove();});document.body.append(overlay);close.focus();
 }
 
 async function syncUnifiedProfileCard(userId) {
@@ -1474,7 +1513,7 @@ function planTripFromExplore() {
 // Toggle Shortlist
 async function toggleShortlist(destId, btnElement) {
   if (!state.currentUser) {
-    alert("Please sign in first.");
+    showAppNotice("Please sign in to open Deep Personalisation.");
     return;
   }
 
@@ -1571,6 +1610,10 @@ async function openPersonalProfileModal() {
     alert("Please sign in first.");
     return;
   }
+  if (state.currentUser.auth_provider === "guest") {
+    showAppNotice("Create an account or sign in with Google before completing Deep Personalisation. Your guest profile stays available for trip planning.");
+    return;
+  }
   try {
     if (!state.precision.bank) {
       const r = await fetch("/api/config/precision-questionnaire");
@@ -1606,10 +1649,9 @@ async function openPersonalProfileModal() {
     state.precision.tab = firstUnansSec ? firstUnansSec.id : state.precision.bank.sections[0].id;
     showPersonalPane("form");
     renderPersonalSection();
-    renderPastTripsInModal();
     openModal("personalProfileModal");
   } catch (err) {
-    alert("Error: " + err.message);
+    showAppNotice("Could not open Deep Personalisation: " + err.message);
   }
 }
 

@@ -157,15 +157,16 @@ def test_itinerary_check_requires_existing_itinerary_and_does_not_claim_guarante
     assert missing.json()['code'] == 'ITINERARY_NOT_FOUND'
 
 
-def test_assistant_unavailable_without_server_model_configuration(client, demo_user, monkeypatch):
+def test_assistant_chat_falls_back_without_server_model_configuration(client, demo_user, monkeypatch):
     monkeypatch.delenv('OPENAI_API_KEY', raising=False)
     caps = client.get('/api/experience/capabilities')
     assert caps.status_code == 200
-    assert caps.json()['assistant_chat'] is False
+    assert caps.json()['assistant_chat'] is True
     assert caps.json()['assistant_actions'] is False
     response = client.post('/api/assistant/chat', json={'user_id':demo_user,'message':'Why was this place recommended?'})
-    assert response.status_code == 503
-    assert response.json()['code'] == 'ASSISTANT_UNAVAILABLE'
+    assert response.status_code == 200
+    assert response.json()['model_configured'] is False
+    assert response.json()['trip_mutated'] is False
 
 
 def test_expense_and_budget_endpoints_enforce_trip_ownership(client, demo_user):

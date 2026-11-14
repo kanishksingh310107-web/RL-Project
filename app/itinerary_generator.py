@@ -135,6 +135,21 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     candidate_rows = cursor.fetchall()
     all_candidates = [dict(r) for r in candidate_rows]
 
+    # Sparse dynamic place results should not leave later trip days empty.
+    # Top up with nearby curated entries (deduplicated) before declaring a day unusable.
+    if len(all_candidates) < int(trip.get('duration_days') or 1):
+        from app.providers.geo import resolve_trip_location, haversine_distance_km
+        from app.activity_data import CURATED_ACTIVITIES
+        centre = resolve_trip_location(destination_id=trip['destination_id'], destination_name=trip['destination_name'],
+            lat=trip.get('destination_lat'), lon=trip.get('destination_lon'), allow_live_geocode=False)
+        existing_ids = {str(row.get('id')) for row in all_candidates}
+        if centre.get('lat') is not None and centre.get('lon') is not None:
+            nearby = [dict(row) for row in CURATED_ACTIVITIES if str(row.get('id')) not in existing_ids
+                and row.get('latitude') is not None and row.get('longitude') is not None
+                and haversine_distance_km(centre['lat'], centre['lon'], row['latitude'], row['longitude']) <= 120]
+            nearby.sort(key=lambda row: haversine_distance_km(centre['lat'], centre['lon'], row['latitude'], row['longitude']))
+            all_candidates.extend(nearby[:max(0, int(trip.get('duration_days') or 1) * 2 - len(all_candidates))])
+
     if not all_candidates:
         from app.providers.geo import resolve_trip_location, haversine_distance_km
         from app.activity_data import CURATED_ACTIVITIES
@@ -312,7 +327,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
         # Multi-city catalogue destinations are planned around the chosen centre.
         # Long-distance excursions require a separate destination/trip.
         all_candidates = [c for c in all_candidates if c.get('latitude') is not None and c.get('longitude') is not None
-            and haversine_distance_km(location['lat'],location['lon'],c['latitude'],c['longitude']) <= 40]
+            and haversine_distance_km(location['lat'],location['lon'],c['latitude'],c['longitude']) <= 120]
     from app.activity_data import CURATED_ACTIVITIES
     for candidate in all_candidates:
         if (candidate.get('neighborhood') or '').startswith('Central '):

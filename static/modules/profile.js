@@ -175,6 +175,8 @@
 
   function handleAuthFailure() {
     localStorage.removeItem("rl_travel_user");
+    sessionStorage.removeItem("rl_travel_user");
+    sessionStorage.removeItem("rl_travel_guest_id");
     if (typeof state !== "undefined") state.currentUser = null;
     if (typeof updateNavUser === "function") updateNavUser();
     if (typeof showView === "function") showView("auth");

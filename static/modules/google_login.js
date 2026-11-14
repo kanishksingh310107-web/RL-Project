@@ -34,7 +34,7 @@
         body:JSON.stringify({credential:response.credential}),signal:controller.signal});
       const user=await result.json();
       if(!result.ok)throw new Error(formatApiError(user,'Google sign-in failed. Please choose your account again.'));
-      state.currentUser=user;localStorage.setItem('rl_travel_user',JSON.stringify(user));updateNavUser();
+      state.currentUser=user;persistCurrentUser();updateNavUser();
       window.UserCurrency?.clear();
       if(user.has_profile)await loadUserProfile(user.user_id);
       else {resetAnswers();showView('onboarding');}

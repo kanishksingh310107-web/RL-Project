@@ -235,6 +235,7 @@
   const oldMode=window.switchWorkspaceMode;
   window.switchWorkspaceMode=mode=>{
     const current=getSnapshot(currentPlannedTripId);
+    if(mode==='budget'&&current){notice('');return oldMode(mode);}
     if(!access(current)[mode]){notice(current?'This section is locked until the trip reaches the right stage.':'Loading saved trip permissions. Please retry shortly.');return;}
     notice('');return oldMode(mode);
   };

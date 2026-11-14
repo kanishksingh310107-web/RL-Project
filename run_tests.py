@@ -313,7 +313,7 @@ def run_precision_tests(client, user_id):
     assert rec_offset_res.status_code == 200
     rec_offset_data = rec_offset_res.json()
     assert rec_offset_data["offset"] == 4
-    assert rec_offset_data["total_candidates"] == 16
+    assert rec_offset_data["total_candidates"] == 100
     assert len(rec_offset_data["recommended_for_you"]) >= 3
     print("[OK] Recommendation candidate rotation (offset pagination) verified")
 

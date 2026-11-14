@@ -164,8 +164,8 @@ class AccountInput(BaseModel):
         if self.mode == "signup":
             if "@" not in self.email:
                 raise ValueError("Enter a valid email address")
-            if len(self.password) < 10:
-                raise ValueError("Password must be at least 10 characters")
+            if not 8 <= len(self.password) <= 16:
+                raise ValueError("Password must be 8–16 characters")
             if not self.username:
                 raise ValueError("Choose a username")
             if self.confirm_password != self.password:

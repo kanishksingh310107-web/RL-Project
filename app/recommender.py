@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
+import re
 
 from app.data.india_destinations import DESTINATIONS_BY_ID
 
@@ -1086,6 +1087,61 @@ DESTINATIONS: List[Dict[str, Any]] = [
         "is_sample_data": True
     }
 ]
+
+# Pan-India recommendation coverage. These are destination areas/cities (not
+# claims about individual venues); live place lookup remains responsible for
+# confirming attraction-level options. Existing rich catalogue entries win.
+_INDIA_DESTINATION_NAMES = [
+    "Delhi", "Agra", "Lucknow", "Ayodhya", "Prayagraj", "Mathura & Vrindavan", "Khajuraho", "Orchha", "Gwalior", "Sarnath", "Chitrakoot",
+    "Nainital", "Mussoorie", "Dehradun", "Auli", "Jim Corbett", "Valley of Flowers", "Kedarnath", "Badrinath", "Ranikhet", "Almora",
+    "Shimla", "Dharamshala & McLeod Ganj", "Dalhousie", "Kasol", "Kullu", "Bir Billing", "Kinnaur", "Chamba", "Spiti Valley",
+    "Amritsar", "Chandigarh", "Patiala", "Jaisalmer", "Jodhpur", "Pushkar", "Ranthambore", "Mount Abu", "Bikaner", "Kumbhalgarh", "Bundi",
+    "Ahmedabad", "Rann of Kutch", "Gir National Park", "Somnath", "Dwarka", "Diu", "Mumbai", "Pune", "Lonavala", "Mahabaleshwar", "Ajanta & Ellora", "Nashik",
+    "Mysuru", "Bengaluru", "Badami", "Gokarna", "Chikmagalur", "Udupi", "Mangaluru", "Kodaikanal", "Chennai", "Mahabalipuram", "Madurai", "Rameswaram", "Thanjavur",
+    "Puducherry", "Alleppey", "Kochi", "Wayanad", "Varkala", "Kovalam", "Thekkady", "Hyderabad", "Visakhapatnam", "Araku Valley", "Kolkata", "Sundarbans",
+    "Shantiniketan", "Puri", "Bhubaneswar", "Konark", "Gangtok", "Pelling", "Kaziranga", "Guwahati", "Tawang", "Imphal", "Kohima", "Ziro Valley",
+    "Dibrugarh", "Majuli", "Aizawl", "Agartala", "Andaman Islands", "Lakshadweep", "Hampi", "Jaipur", "Udaipur", "Varanasi"
+]
+_INDIA_EXISTING_NAMES = {str(item.get('name', '')).casefold() for item in DESTINATIONS if item.get('country') == 'India'}
+_INDIA_EXISTING_IDS = {item.get('id') for item in DESTINATIONS}
+for _place in _INDIA_DESTINATION_NAMES:
+    if _place.casefold() in _INDIA_EXISTING_NAMES:
+        continue
+    _slug = re.sub(r'[^a-z0-9]+', '_', _place.casefold()).strip('_') + '_india'
+    if _slug in _INDIA_EXISTING_IDS:
+        continue
+    _text = _place.casefold()
+    if any(word in _text for word in ('mountain', 'valley', 'himalaya', 'auli', 'shimla', 'nainital', 'kasol', 'tawang', 'ziro', 'kinnaur')):
+        _tags, _climate, _style = ['mountains', 'nature', 'scenic_landscapes'], ['cool', 'cold'], 'nature'
+    elif any(word in _text for word in ('beach', 'island', 'coast', 'gokarna', 'varkala', 'kovalam', 'andaman', 'lakshadweep', 'diu')):
+        _tags, _climate, _style = ['beaches', 'nature', 'relaxation'], ['warm', 'tropical'], 'relaxed'
+    elif any(word in _text for word in ('park', 'sundarban', 'kaziranga', 'gir', 'corbett', 'ranthambore', 'valley of flowers')):
+        _tags, _climate, _style = ['wildlife', 'nature', 'photography'], ['mild', 'warm'], 'nature'
+    elif any(word in _text for word in ('temple', 'varanasi', 'sarnath', 'puri', 'somnath', 'dwarka', 'kedarnath', 'badrinath', 'rameswaram', 'mathura', 'ayodhya')):
+        _tags, _climate, _style = ['spiritual', 'culture', 'history'], ['warm', 'mild'], 'cultural'
+    else:
+        _tags, _climate, _style = ['culture', 'history', 'food', 'photography'], ['mild', 'warm'], 'balanced'
+    DESTINATIONS.append({
+        'id': _slug, 'name': _place, 'country': 'India',
+        'tagline': f"Explore {_place} and its surrounding region.",
+        'image_url': '', 'duration': '2–4 days', 'tags': _tags,
+        'style': _style, 'crowd_level': 'moderate', 'budget_tier': 'balanced',
+        'estimated_cost': 'Indicative; confirm current travel and stay costs',
+        'preferred_climate': _climate,
+        'suitable_companions': ['alone', 'partner', 'friends', 'family'],
+        'best_seasons': [], 'is_trending': False, 'is_seasonal': False,
+        'available_experiences': [f"Explore established visitor areas around {_place}"],
+        'travel_style_and_atmosphere': f"A varied city and regional visit in {_place}.",
+        'practical_considerations': 'Check current transport, local conditions and venue hours before booking.',
+        'limitations_or_uncertainties': 'Indicative destination-level profile; venue availability and current conditions are not verified.',
+        'avoidance_triggers': [], 'icon': 'fa-location-dot', 'is_sample_data': True
+    })
+
+# Keep recommendation candidates broad but bounded to the requested top 100.
+_india_rows = [item for item in DESTINATIONS if item.get('country') == 'India']
+_india_original = [item for item in _india_rows if item.get('id') in _INDIA_EXISTING_IDS]
+_india_expanded = [item for item in _india_rows if item.get('id') not in _INDIA_EXISTING_IDS]
+DESTINATIONS[:] = [item for item in DESTINATIONS if item.get('country') != 'India'] + _india_original + _india_expanded[:max(0, 100-len(_india_original))]
 
 
 def score_destination_for_user(

@@ -74,6 +74,7 @@
       if(!await window.ProfileGate.require())return;
       const result=await A.saveLegacy(canonicalId(item));if(typeof result.is_shortlisted!=='boolean')throw new Error('The saved state could not be read. Refresh your recommendations before retrying.');
       item.is_shortlisted=result.is_shortlisted;save.textContent=result.is_shortlisted?'Saved · remove':'Save for later';save.setAttribute('aria-pressed',String(result.is_shortlisted));notice.textContent=result.is_shortlisted?'Destination saved.':'Destination removed from saved places.';
+      await loadShelves();
     }));actionBar.append(save);box.append(actionBar);feedbackControls(item,box,context);return box;
   }
   function explore(item,context) {
@@ -160,7 +161,11 @@
   });
   async function loadShelves() {
     checkOwner();if(!A.uid())return;const account=A.uid();await A.capabilities();if(account!==A.uid()||!A.can('discovery'))return;
-    try{const response=await A.shelves();if(account!==A.uid())return;shelves.replaceChildren();if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
+    try{const [response,saved]=await Promise.all([A.shelves(),A.savedPlaces()]);if(account!==A.uid())return;shelves.replaceChildren();if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
+      const savedSection=U.el('section');savedSection.append(U.el('h3','Your saved places'));const savedGrid=U.el('div',null,'ex-result-grid');
+      for(const item of saved.destinations||[])savedGrid.append(card(item,{}));
+      if(!savedGrid.childElementCount)savedGrid.append(U.el('p','Places you save will appear here.','ex-muted'));
+      savedSection.append(savedGrid);shelves.append(savedSection);
       const groups=Array.isArray(response.groups)?response.groups:[];
       for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>!isHome(item));if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',A.text(group.title)));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
     }catch(error){if(account===A.uid())U.unavailable(shelves,error.message,loadShelves);}

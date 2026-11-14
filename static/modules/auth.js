@@ -3,7 +3,7 @@
   const byId = (id) => document.getElementById(id);
   const oldFetch = window.fetch.bind(window);
   window.fetch = (input, init = {}) => {
-    const saved = localStorage.getItem("rl_travel_user");
+    const saved = sessionStorage.getItem("rl_travel_user") || localStorage.getItem("rl_travel_user");
     let user = null;
     try { user = saved ? JSON.parse(saved) : null; } catch (_) {}
     if (user && user.token) {
@@ -43,7 +43,7 @@
     confirm.append(cLabel, cInput, cError);
     const nameWrap = byId("manualNameWrap");
     if (nameWrap) nameWrap.after(wrap); else form.prepend(wrap);
-    const pass = byId("manualPassword"); if (pass) { pass.minLength = 10; pass.autocomplete = "new-password"; pass.after(confirm); }
+    const pass = byId("manualPassword"); if (pass) { pass.minLength = 8; pass.maxLength = 16; pass.autocomplete = "new-password"; pass.after(confirm); }
     const passwordError = document.createElement("p"); passwordError.id = "aPasswordError"; passwordError.className = "hidden mt-1 text-xs text-rose-600";
     if (pass) pass.after(passwordError);
   }
@@ -53,7 +53,7 @@
     const signup = typeof emailAuthMode !== "undefined" && emailAuthMode === "signup";
     byId("aUsernameWrap")?.classList.toggle("hidden", !signup);
     byId("aConfirmWrap")?.classList.toggle("hidden", !signup);
-    const pass = byId("manualPassword"); if (pass) { pass.autocomplete = signup ? "new-password" : "current-password"; pass.minLength = signup ? 10 : 1; }
+    const pass = byId("manualPassword"); if (pass) { pass.autocomplete = signup ? "new-password" : "current-password"; pass.minLength = signup ? 8 : 1; pass.maxLength = signup ? 16 : 128; }
   }
 
   async function continueAsGuest(button) {
@@ -61,15 +61,18 @@
     if (button) { button.disabled = true; button.textContent = "Opening your guest profile…"; }
     if (message) { message.textContent = ""; message.classList.add("hidden"); }
     try {
-      let guestId = localStorage.getItem("rl_travel_guest_id");
+      // Guest identity is tab-session scoped so a fresh site visit starts clean.
+      localStorage.removeItem("rl_travel_guest_id");
+      const prior = JSON.parse(sessionStorage.getItem("rl_travel_user") || "null");
+      let guestId = prior?.auth_provider === "guest" ? sessionStorage.getItem("rl_travel_guest_id") : null;
       if (!guestId) {
         guestId = (window.crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
-        localStorage.setItem("rl_travel_guest_id", guestId);
+        sessionStorage.setItem("rl_travel_guest_id", guestId);
       }
       const response = await fetch("/api/account/guest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ guest_id: guestId }) });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "object" ? data.detail.detail : (data.detail || "Guest sign-in failed. Try again."));
-      state.currentUser = data; localStorage.setItem("rl_travel_user", JSON.stringify(data)); updateNavUser();
+      state.currentUser = data; sessionStorage.setItem("rl_travel_user", JSON.stringify(data)); updateNavUser();
       if (data.has_profile) await loadUserProfile(data.user_id); else showView("onboarding");
     } catch (error) {
       if (message) { message.textContent = error.message; message.classList.remove("hidden"); }
@@ -118,8 +121,8 @@
     }
     const password = byId("manualPassword");
     const passwordError = byId("aPasswordError");
-    if (payload.mode === "signup" && password && !(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,128}$/.test(password.value))) {
-      passwordError.textContent = "Use 10–128 characters with an uppercase letter, lowercase letter, and number.";
+    if (payload.mode === "signup" && password && !(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,16}$/.test(password.value))) {
+      passwordError.textContent = "Use 8–16 characters with an uppercase letter, lowercase letter, and number.";
       passwordError.classList.remove("hidden"); password.focus(); return;
     }
     password?.addEventListener("input", () => passwordError?.classList.add("hidden"), { once: true });
@@ -134,7 +137,7 @@
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: identity, password: payload.password, mode: payload.mode, username: username?.value.trim(), display_name: byId("manualName")?.value.trim() || username?.value.trim(), confirm_password: confirm?.value }) });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.detail === "object" ? data.detail.detail : (data.detail || "Could not sign in. Try again."));
-      state.currentUser = data; localStorage.setItem("rl_travel_user", JSON.stringify(data)); updateNavUser();
+      state.currentUser = data; sessionStorage.removeItem("rl_travel_user"); sessionStorage.removeItem("rl_travel_guest_id"); localStorage.setItem("rl_travel_user", JSON.stringify(data)); updateNavUser();
       if (data.has_profile) await loadUserProfile(data.user_id); else showView("onboarding");
     } catch (error) {
       if (message) { message.textContent = error.message; message.classList.remove("hidden"); }
@@ -147,8 +150,9 @@
   if (typeof oldToggle === "function") window.toggleEmailAuthMode = function () { oldToggle(); updateFields(); };
   const oldLogout = window.logout;
   if (typeof oldLogout === "function") window.logout = function () {
-    fetch("/api/account/logout", { method: "POST" }).catch(() => {
-  const byId = (id) => document.getElementById(id);});
+    fetch("/api/account/logout", { method: "POST" }).catch(() => {});
+    sessionStorage.removeItem("rl_travel_user");
+    sessionStorage.removeItem("rl_travel_guest_id");
     return oldLogout();
   };
   document.addEventListener("click", (event) => { if (event.target.closest("#emailModeToggle")) setTimeout(updateFields, 0); });
