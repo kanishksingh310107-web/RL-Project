@@ -9,7 +9,8 @@ from datetime import date, timezone
 from zoneinfo import ZoneInfo
 import secrets
 import hashlib
-from pydantic import BaseModel, Field, field_validator
+import re
+from pydantic import BaseModel, Field, StrictBool, field_validator, model_validator
 
 from app.models import (
     AuthRequest, AuthResponse, ShortProfileCreate, ProfileResponse,
@@ -58,9 +59,13 @@ router = APIRouter(prefix="/api")
 
 class ExpenseCreate(BaseModel):
     category: str
-    amount_inr: int = Field(ge=0, le=1_000_000_000, strict=True)
+    amount_inr: int = Field(gt=0, le=1_000_000_000, strict=True)
     note: str = Field('', max_length=500)
-    spent_on: str
+    spent_on: Optional[str] = None
+    idempotency_key: Optional[str] = Field(None, min_length=12, max_length=128)
+    paid_by: Optional[str] = Field(None, max_length=80)
+    planned_cost_key: Optional[str] = Field(None, max_length=40)
+    is_final_for_planned_cost: StrictBool = False
 
     @field_validator('category')
     @classmethod
@@ -77,17 +82,38 @@ class ExpenseCreate(BaseModel):
             return ''
         if not isinstance(value, str):
             raise ValueError('Enter a text note.')
-        return value.strip()
+        return re.sub(r'<[^>]*>', '', value).strip()
 
     @field_validator('spent_on')
     @classmethod
     def valid_spent_date(cls, value):
+        if value is None:
+            return value
         try:
             if date.fromisoformat(value).isoformat() != value:
                 raise ValueError
         except (TypeError, ValueError) as exc:
             raise ValueError('Use a valid YYYY-MM-DD expense date.') from exc
         return value
+
+    @field_validator('idempotency_key', 'paid_by', 'planned_cost_key', mode='before')
+    @classmethod
+    def trim_expense_text(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError('Enter text or leave the field blank.')
+        value=re.sub(r'<[^>]*>', '', value).strip()
+        return value or None
+
+    @model_validator(mode='after')
+    def validate_planned_link(self):
+        categories={'accommodation','food','intercity_travel','local_transport','activities','shopping','other'}
+        if self.planned_cost_key and self.planned_cost_key not in categories:
+            raise ValueError('Choose a known planned budget category.')
+        if self.is_final_for_planned_cost and not self.planned_cost_key:
+            raise ValueError('A final planned cost entry must be linked to a planned category.')
+        return self
 
 
 def _verified_trip_owner(request: Request, trip_id: str):
@@ -1576,37 +1602,45 @@ def list_archived_trips(user_id: str, request: Request):
 @router.post('/trips/{trip_id}/expenses')
 def add_trip_expense(trip_id: str, payload: ExpenseCreate, request: Request):
     trip, actor = _verified_trip_owner(request, trip_id)
-    from app.db_migrations_core_upgrade import migrate_core_upgrade
-    expense_id = str(uuid.uuid4())
+    from app.db_migrations_d import migrate_d
+    from app.recommendation_budget import budget_summary
+    spent_on = payload.spent_on or trip['start_date']
+    if not trip['start_date'] <= spent_on <= trip['end_date']:
+        raise HTTPException(422, {'detail':'Expense date must fall within the trip dates.','code':'INVALID_EXPENSE','field':'spent_on'})
+    if payload.planned_cost_key and payload.planned_cost_key not in {'accommodation','food','intercity_travel','local_transport','activities','shopping','other'}:
+        raise HTTPException(422, {'detail':'Choose a known planned budget category.','code':'INVALID_EXPENSE','field':'planned_cost_key'})
     with get_connection() as conn:
-        migrate_core_upgrade(conn)
-        conn.execute('''INSERT INTO trip_expenses(id,trip_id,user_id,category,amount_inr,note,spent_on)
-            VALUES(?,?,?,?,?,?,?)''', (expense_id,trip_id,actor,payload.category,payload.amount_inr,payload.note,payload.spent_on))
+        migrate_d(conn)
+        existing = conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=? AND idempotency_key=?',
+            (trip_id, actor, payload.idempotency_key)).fetchone() if payload.idempotency_key else None
+        if existing:
+            expenses, summary = budget_summary(conn, trip)
+            return {'expense':dict(existing),'expenses':expenses,'budget':summary,'idempotent_replay':True}
+        expense_id = str(uuid.uuid4())
+        inserted = conn.execute('''INSERT OR IGNORE INTO trip_expenses(id,trip_id,user_id,category,amount_inr,note,spent_on,idempotency_key,paid_by,
+            planned_cost_key,is_final_for_planned_cost,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (expense_id,trip_id,actor,payload.category,payload.amount_inr,payload.note,spent_on,payload.idempotency_key,
+             payload.paid_by.strip() if payload.paid_by else None,payload.planned_cost_key,int(payload.is_final_for_planned_cost),datetime.now(timezone.utc).isoformat()))
+        if inserted.rowcount == 0 and payload.idempotency_key:
+            existing = conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=? AND idempotency_key=?',
+                (trip_id, actor, payload.idempotency_key)).fetchone()
+            if existing:
+                rows, summary = budget_summary(conn, trip)
+                return {'expense':dict(existing),'expenses':rows,'budget':summary,'idempotent_replay':True}
         conn.commit()
-        rows = [dict(r) for r in conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=? ORDER BY spent_on,id',(trip_id,actor))]
-        planned = _hydrate_trip_row(trip)['cost_estimate']
-    actual = {key: 0 for key in ('shopping','transport','food','stay','activities','other')}
-    for row in rows:
-        actual[row['category']] += row['amount_inr']
-    return {'expense': rows[-1], 'expenses': rows, 'planned_vs_actual': {
-        'currency':'INR', 'planned_total_inr':int(round(planned['total'])),
-        'actual_total_inr':sum(actual.values()), 'actual_by_category_inr':actual,
-        'planned_categories_inr':{key:int(round(value['per_party'])) for key,value in planned['cost_breakdown'].items()}}}
+        rows, summary = budget_summary(conn, trip)
+    return {'expense': next(r for r in rows if r['id']==expense_id), 'expenses':rows, 'budget':summary,'idempotent_replay':False}
 
 
 @router.get('/trips/{trip_id}/expenses')
 def get_trip_expenses(trip_id: str, request: Request):
     trip, actor = _verified_trip_owner(request, trip_id)
-    from app.db_migrations_core_upgrade import migrate_core_upgrade
+    from app.db_migrations_d import migrate_d
+    from app.recommendation_budget import budget_summary
     with get_connection() as conn:
-        migrate_core_upgrade(conn)
-        rows = [dict(r) for r in conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=? ORDER BY spent_on,id',(trip_id,actor))]
-    actual = {key: sum(r['amount_inr'] for r in rows if r['category']==key)
-              for key in ('shopping','transport','food','stay','activities','other')}
-    planned = _hydrate_trip_row(trip)['cost_estimate']
-    return {'expenses':rows,'planned_vs_actual':{'currency':'INR','planned_total_inr':int(round(planned['total'])),
-        'actual_total_inr':sum(actual.values()),'actual_by_category_inr':actual,
-        'planned_categories_inr':{key:int(round(value['per_party'])) for key,value in planned['cost_breakdown'].items()}}}
+        migrate_d(conn)
+        rows, summary = budget_summary(conn, trip)
+    return {'expenses':rows,'budget':summary}
 
 
 @router.post('/trips/{trip_id}/share')
