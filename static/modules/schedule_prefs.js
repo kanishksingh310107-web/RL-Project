@@ -194,7 +194,7 @@
         } else if (url.includes("/api/places/plan-dynamic")) {
           const result = await response.clone().json();
           if (result.trip?.id) await generateTimedSchedule(result.trip.id, result.trip.user_id);
-        } else if (method === "PATCH" && url.match(/\/api\/trips\/[^/?]+/)) {
+        } else if (method === "PATCH" && /^\/api\/trips\/[^/]+$/.test(new URL(url,location.href).pathname)) {
           const result = await response.clone().json();
           if (result.id) await generateTimedSchedule(result.id, result.user_id);
         } else if (method === "POST" && ((url.includes("/api/trip-actions/") && /\/(confirm|undo|reschedule|swap|switch-days)(?:[?#]|$)/.test(url)) || url.includes("/api/itinerary/feedback/")) && typeof currentPlannedTripId !== "undefined") {
