@@ -114,8 +114,8 @@
   function clearChat(s,key) {
     if(s.inFlight)return;
     const d=U.dialog('Clear this conversation?','Clearing the view removes on-screen messages only. Server deletion is separate and requires a successful server response.');
-    d.actions.prepend(U.button('Clear this view',()=>{sessions.delete(key);d.box.close();if(current(key))render();}));
-    if(s.conversationId){const erase=U.button('Delete saved conversation',()=>U.busy(erase,d.notice,async()=>{if(!current(key))throw new Error('The account or trip changed.');await A.clearConversation(s.conversationId);sessions.delete(key);d.box.close();if(current(key)){await render();drawer.notice.textContent='The server confirmed conversation deletion.';}}),'ex-danger');d.actions.prepend(erase);}
+    d.actions.prepend(U.button('Clear this view',()=>{A.clearChat(context().trip);sessions.delete(key);d.box.close();if(current(key))render();}));
+    if(s.conversationId){const erase=U.button('Delete saved conversation',()=>U.busy(erase,d.notice,async()=>{if(!current(key))throw new Error('The account or trip changed.');await A.clearConversation(s.conversationId);A.clearChat(context().trip);sessions.delete(key);d.box.close();if(current(key)){await render();drawer.notice.textContent='The server confirmed conversation deletion.';}}),'ex-danger');d.actions.prepend(erase);}
   }
   window.addEventListener('hashchange',()=>{visibility();if(drawer)render();});
   window.addEventListener('trip:runtime',()=>{if(drawer)render();});

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, StrictInt, StrictBool
 
 from app.database import CONNECTION_OVERRIDE, get_connection
 from app.modules.live import c_call_existing
@@ -31,6 +31,7 @@ class Preview(BaseModel):
     activity: Optional[dict] = None
     budget_total_inr: Optional[StrictInt] = Field(None,ge=0,le=1_000_000_000)
     budget_allocations: Optional[dict[str,dict]] = None
+    budget_reserve_released: StrictBool = False
     planning_priority: Optional[Literal['must_do','nice_to_do','avoid']] = None
 
 
@@ -56,7 +57,8 @@ def state(conn, trip_id):
     trip=dict(conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone())
     prefs=conn.execute('SELECT * FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone()
     budget=conn.execute('SELECT * FROM trip_budget_allocations WHERE trip_id=?',(trip_id,)).fetchone() if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_budget_allocations'").fetchone() else None
-    fingerprint=hashlib.sha256(json.dumps([trip,dict(prefs) if prefs else None,rows,dict(budget) if budget else None],sort_keys=True,default=str).encode()).hexdigest()
+    expenses=[dict(r) for r in conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? ORDER BY id',(trip_id,))]
+    fingerprint=hashlib.sha256(json.dumps([trip,dict(prefs) if prefs else None,rows,dict(budget) if budget else None,expenses],sort_keys=True,default=str).encode()).hexdigest()
     return itinerary['id'], rows, fingerprint
 
 
@@ -91,7 +93,7 @@ async def apply(request,trip_id,actor,payload):
                 error(422,'Unknown planned budget category.','INVALID_BUDGET','budget_allocations')
             allocations={}
             for key,line in payload.budget_allocations.items():
-                if set(line)-{'planned_inr','basis','unit_amount_inr','people','days','rooms','nights'}:
+                if set(line)-{'planned_inr','basis','unit_amount_inr','people','days','rooms','nights','status'}:
                     error(422,'Unsupported allocation fields.','INVALID_BUDGET','budget_allocations')
                 amount=line.get('planned_inr')
                 if isinstance(amount,bool) or not isinstance(amount,int) or amount<0:
@@ -101,6 +103,7 @@ async def apply(request,trip_id,actor,payload):
             normal=sum(line['planned_inr'] for key,line in allocations.items() if key!='emergency_reserve')
             if normal+reserved>payload.budget_total_inr:
                 error(422,'Allocations exceed the proposed total budget.','BUDGET_ALLOCATION_EXCEEDS_TOTAL','budget_total_inr')
+            allocations['_reserve_released'] = payload.budget_reserve_released
             conn.execute('''INSERT INTO trip_budget_allocations(trip_id,user_id,total_budget_inr,allocations_json,updated_at)
                 VALUES(?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(trip_id) DO UPDATE SET user_id=excluded.user_id,
                 total_budget_inr=excluded.total_budget_inr,allocations_json=excluded.allocations_json,updated_at=CURRENT_TIMESTAMP''',

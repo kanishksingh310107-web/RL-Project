@@ -25,6 +25,13 @@ def migrate_d(conn: sqlite3.Connection) -> None:
             requested_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS d_assistant_rate_limit ON assistant_request_limits(user_id,requested_at);
+        CREATE TABLE IF NOT EXISTS assistant_message_replays (
+            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            request_key TEXT NOT NULL,
+            request_hash TEXT NOT NULL,
+            response_json TEXT,
+            PRIMARY KEY(user_id,request_key)
+        );
         CREATE TABLE IF NOT EXISTS trip_expenses (
             id TEXT PRIMARY KEY,
             trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
@@ -50,6 +57,9 @@ def migrate_d(conn: sqlite3.Connection) -> None:
     conn.execute("""CREATE UNIQUE INDEX IF NOT EXISTS d_expense_idempotency
         ON trip_expenses(trip_id,user_id,idempotency_key) WHERE idempotency_key IS NOT NULL""")
     conn.execute('CREATE INDEX IF NOT EXISTS d_expense_trip_date ON trip_expenses(trip_id,spent_on,id)')
+    replay_cols = {r[1] for r in conn.execute('PRAGMA table_info(assistant_message_replays)')}
+    if 'conversation_id' not in replay_cols:
+        conn.execute('ALTER TABLE assistant_message_replays ADD COLUMN conversation_id TEXT')
     activity_cols = {r[1] for r in conn.execute('PRAGMA table_info(itinerary_activities)')}
     if 'planning_priority' not in activity_cols:
         conn.execute("ALTER TABLE itinerary_activities ADD COLUMN planning_priority TEXT NOT NULL DEFAULT 'nice_to_do'")

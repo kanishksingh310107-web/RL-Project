@@ -1615,7 +1615,7 @@ def add_trip_expense(trip_id: str, payload: ExpenseCreate, request: Request):
             (trip_id, actor, payload.idempotency_key)).fetchone() if payload.idempotency_key else None
         if existing:
             expenses, summary = budget_summary(conn, trip)
-            return {'expense':dict(existing),'expenses':expenses,'budget':summary,'idempotent_replay':True}
+            return {'expense':dict(existing),'expenses':expenses,'budget':summary,'planned_vs_actual':summary,'idempotent_replay':True}
         expense_id = str(uuid.uuid4())
         inserted = conn.execute('''INSERT OR IGNORE INTO trip_expenses(id,trip_id,user_id,category,amount_inr,note,spent_on,idempotency_key,paid_by,
             planned_cost_key,is_final_for_planned_cost,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)''',
@@ -1626,10 +1626,10 @@ def add_trip_expense(trip_id: str, payload: ExpenseCreate, request: Request):
                 (trip_id, actor, payload.idempotency_key)).fetchone()
             if existing:
                 rows, summary = budget_summary(conn, trip)
-                return {'expense':dict(existing),'expenses':rows,'budget':summary,'idempotent_replay':True}
+                return {'expense':dict(existing),'expenses':rows,'budget':summary,'planned_vs_actual':summary,'idempotent_replay':True}
         conn.commit()
         rows, summary = budget_summary(conn, trip)
-    return {'expense': next(r for r in rows if r['id']==expense_id), 'expenses':rows, 'budget':summary,'idempotent_replay':False}
+    return {'expense': next(r for r in rows if r['id']==expense_id), 'expenses':rows, 'budget':summary,'planned_vs_actual':summary,'idempotent_replay':False}
 
 
 @router.get('/trips/{trip_id}/expenses')
@@ -1640,7 +1640,7 @@ def get_trip_expenses(trip_id: str, request: Request):
     with get_connection() as conn:
         migrate_d(conn)
         rows, summary = budget_summary(conn, trip)
-    return {'expenses':rows,'budget':summary}
+    return {'expenses':rows,'budget':summary,'planned_vs_actual':summary}
 
 
 @router.post('/trips/{trip_id}/share')

@@ -92,12 +92,13 @@ def test_late_response_for_previous_account_is_not_displayed():
 
 def test_expense_idempotency_key_and_linked_payment_contract():
     expression="""let calls=[];fetch=async(url,options)=>{calls.push({url,method:options.method,body:options.body?JSON.parse(options.body):null,headers:options.headers});return {ok:true,status:200,json:async()=>url.includes('capabilities')?{expense_tracking:true}:{saved:true}}};
-A.capabilities().then(()=>A.saveExpense('trip',{amount_inr:3000,category:'accommodation',planned_item_id:'stay-1',payment_state:'partial'},'expense-key')).then(()=>calls.at(-1))"""
+A.capabilities().then(()=>A.saveExpense('trip',{amount_inr:3000,category:'accommodation',planned_item_id:'accommodation',payment_state:'partial'},'expense-key')).then(()=>calls.at(-1))"""
     result=javascript(expression)
     assert result['headers']['Idempotency-Key']=='expense-key'
     assert result['body']['idempotency_key']=='expense-key'
-    assert result['body']['payment_state']=='partial'
-    assert result['body']['planned_item_id']=='stay-1'
+    assert result['body']['is_final_for_planned_cost'] is False
+    assert result['body']['planned_cost_key']=='accommodation'
+    assert result['body']['category']=='stay'
 
 
 def test_comparison_rejects_four_destinations_without_a_request():
@@ -111,8 +112,10 @@ def test_network_error_retains_retry_guidance():
 
 def test_assistant_proposal_paths_ignore_model_supplied_urls():
     expression="""let calls=[];fetch=async(url,options)=>{calls.push(url);return {ok:true,status:200,json:async()=>({assistant_actions:true})}};
-A.capabilities().then(()=>A.assistantPreview('id/with/slashes','trip')).then(()=>calls.at(-1))"""
-    assert javascript(expression)=='/api/assistant/proposals/id%2Fwith%2Fslashes/preview'
+A.capabilities().then(()=>A.assistantPreview('id/with/slashes','trip')).catch(e=>({message:e.message,calls}))"""
+    result=javascript(expression)
+    assert 'fresh proposal' in result['message']
+    assert result['calls']==['/api/experience/capabilities']
 
 
 def test_main_menu_does_not_keep_a_previous_trip_as_assistant_context():

@@ -9,7 +9,7 @@
   const compact=U.el('aside',null,'ex-budget-compact');compact.id='exBudgetCompact';compact.hidden=true;
   document.getElementById('cTripLifecycle')?.after(compact);display.append(panel);
   const tab=U.button('Budget & expenses',()=>window.switchWorkspaceMode('budget'),'ex-button');tab.id='exBudgetTab';tab.setAttribute('aria-controls',panel.id);tab.setAttribute('aria-expanded','false');
-  document.getElementById('wsTabBtn-post')?.parentElement.after(tab);
+  tab.disabled=true;document.getElementById('wsTabBtn-post')?.parentElement.after(tab);
   let open=false,epoch=0,summary=null,ledger=[],context=null,lastStatus=null,compactKey=null,account=A.uid();
   function clearAccount(force=false){if(!force&&account===A.uid())return;account=A.uid();epoch++;summary=null;ledger=[];context=null;compactKey=null;open=false;panel.hidden=true;panel.replaceChildren();compact.hidden=true;compact.replaceChildren();tab.setAttribute('aria-expanded','false');}
   new MutationObserver(()=>clearAccount()).observe(document.getElementById('dashboardView'),{attributes:true,attributeFilter:['class']});
@@ -20,6 +20,7 @@
     if(mode!=='budget'){open=false;panel.hidden=true;tab.setAttribute('aria-expanded','false');return rawMode(mode);}
     const trip=A.tripId();if(!trip||!window.TripExperience.getSnapshot(trip))return;
     open=true;panel.hidden=false;tab.setAttribute('aria-expanded','true');
+    currentWorkspaceMode='budget';
     for(const id of ['workspacePreTrip','workspaceLiveTrip','workspacePostTrip'])document.getElementById(id)?.classList.add('hidden');
     for(const id of ['wsTabBtn-pre','wsTabBtn-live','wsTabBtn-post'])document.getElementById(id)?.setAttribute('aria-selected','false');
     load();
@@ -60,7 +61,7 @@
     panel.replaceChildren();heading();
     const metrics=U.el('dl',null,'ex-metrics');
     const fields=[['Total budget','total_budget'],['Planned cost','planned_cost'],['Spent so far','actual_spending'],['Estimated remaining costs','estimated_remaining_costs'],['Forecast final cost','forecast_final_cost'],['Available buffer','available_buffer']];
-    for(const [name,field] of fields){const cell=U.el('div');cell.append(U.el('dt',name),U.el('dd',field==='actual_spending'&&!ledger.length&&summary.actual_spending===0&&!summary.expenses_complete?'Not entered':A.money(summary[field])));metrics.append(cell);}panel.append(metrics);
+    for(const [name,field] of fields){const cell=U.el('div');cell.append(U.el('dt',summary.forecast_complete===false&&field==='forecast_final_cost'?'Known-cost forecast (incomplete)':summary.forecast_complete===false&&field==='available_buffer'?'Balance before missing estimates':name),U.el('dd',field==='actual_spending'&&!ledger.length&&summary.actual_spending===0&&!summary.expenses_complete?'Not entered':A.money(summary[field])));metrics.append(cell);}panel.append(metrics);
     if(summary.over_budget>0)panel.append(U.el('p','Forecast exceeds your budget by '+A.money(summary.over_budget),'ex-warning'));
     panel.append(U.el('p','Forecast = recorded spending + estimated remaining costs. The emergency reserve stays protected unless you explicitly release it. Unrecorded expenses are not assumed to be zero.','ex-muted'));
     const actions=U.el('div',null,'ex-actions');const notice=U.status(panel);
@@ -113,10 +114,11 @@
     if(legacy){categoryOptions.splice(0,categoryOptions.length,...[['stay','Stay'],['food','Food'],['transport','Transport'],['activities','Activities'],['shopping','Shopping'],['other','Other']]);}
     U.field(f,'amount_inr','Amount (whole INR)',{type:'number',min:1,max:1000000000,value:existing?.amount_inr??existing?.amount??'',required:true});
     U.field(f,'category','Category',{options:categoryOptions,value:existing?.category||'food',required:true});
-    U.field(f,'spent_on','Date',{type:'date',value:existing?.spent_on||U.today(),required:true});
+    const today=U.today(),dateDefault=summary?.start_date&&today<summary.start_date?summary.start_date:summary?.end_date&&today>summary.end_date?summary.end_date:today;
+    U.field(f,'spent_on','Date',{type:'date',value:existing?.spent_on||dateDefault,min:summary?.start_date,max:summary?.end_date,required:true});
     U.field(f,'description','Description (optional)',{value:existing?.description||existing?.note||'',maxlength:500});
     if(!legacy) {
-      U.field(f,'paid_by','Paid by (optional)',{value:existing?.paid_by||'',maxlength:100,help:'For recordkeeping only; this does not settle a group bill.'});
+      U.field(f,'paid_by','Paid by (optional)',{value:existing?.paid_by||'',maxlength:80,help:'For recordkeeping only; this does not settle a group bill.'});
       const plans=(summary?.planned_items||[]).map(p=>[p.id,`${p.label||p.category} · ${A.money(p.estimated_remaining_inr)} estimated remaining`]);
       U.field(f,'planned_item_id','Link to planned cost (optional)',{options:[['','Unlinked expense'],...plans],value:existing?.planned_item_id||'',help:'A linked payment reduces the remaining estimate. A deposit does not mark the full cost paid.'});
       U.field(f,'payment_state','Payment status',{options:[['partial','Partial payment / deposit'],['final','Final payment — no further cost expected']],value:existing?.payment_state||'partial'});
@@ -186,11 +188,13 @@
     window.dispatchEvent(new CustomEvent('experience:trip-updated',{detail:{tripId:trip}}));
     if(open)await load();await window.TripExperience?.route();
   }
-  window.BudgetExperience={openOptions,open:()=>window.switchWorkspaceMode('budget'),refresh:load,refreshTrip};
+  function isOpen(trip){return open&&trip===A.tripId()&&context===A.contextKey(trip);}
+  function restore(trip){if(!isOpen(trip))return;panel.hidden=false;for(const id of ['workspacePreTrip','workspaceLiveTrip','workspacePostTrip'])document.getElementById(id)?.classList.add('hidden');currentWorkspaceMode='budget';}
+  window.BudgetExperience={openOptions,open:()=>window.switchWorkspaceMode('budget'),refresh:load,refreshTrip,isOpen,restore};
   window.addEventListener('trip:runtime',event=>{
     clearAccount();
-    const next=event.detail,key=A.contextKey(next.tripId);
-    if(open&&(context!==key||(lastStatus&&lastStatus!==next.snapshot.status))){open=false;panel.hidden=true;tab.setAttribute('aria-expanded','false');}
+    const next=event.detail,key=A.contextKey(next.tripId);if(next.tripId===A.tripId())tab.disabled=false;
+    if(open&&(context!==key||(lastStatus&&lastStatus!==next.snapshot.status))){open=false;panel.hidden=true;tab.setAttribute('aria-expanded','false');rawMode(next.snapshot.status==='completed'?'post':next.snapshot.status==='live'?'live':'pre');}
     lastStatus=next.snapshot.status;
     if(summary&&context===key)compactSummary(summary);else{compact.hidden=true;loadCompact(next.tripId);}
   });

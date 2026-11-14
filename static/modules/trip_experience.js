@@ -239,16 +239,19 @@
     notice('');return oldMode(mode);
   };
   Trip.applySnapshot=(ctx,next)=>{
-    if(ctx.tripId!==currentPlannedTripId)return;
+    if(ctx.tripId!==currentPlannedTripId)return false;
+    const previous=getSnapshot(ctx.tripId);
+    if(previous&&Number(next.runtime?.version||0)<Number(previous.runtime?.version||0))return false;
     snapshot=next;snapshotTrip=ctx.tripId;
     const allowed=access(next);
     ['pre','live','post'].forEach(mode=>{const btn=el('wsTabBtn-'+mode);if(btn){btn.disabled=!allowed[mode];btn.setAttribute('aria-disabled',String(!allowed[mode]));btn.title=allowed[mode]?'':mode==='live'?'Start this trip to unlock live activities.':'Complete the trip to unlock feedback.';}});
     document.querySelectorAll('[onclick="editSelectedTrip()"],[onclick="regenerateEntireItinerary()"],[onclick="deleteSelectedTrip()"],#preSubContent-stay button').forEach(button=>{button.disabled=!allowed.edit;});
     const preferred=next.status==='completed'?'post':next.status==='live'?'live':'pre';
-    if(!allowed[currentWorkspaceMode])oldMode(preferred);
+    if(!allowed[currentWorkspaceMode]&&!window.BudgetExperience?.isOpen(ctx.tripId))oldMode(preferred);
     el('itinSummaryNotes').textContent=next.status==='completed'?(next.closed_out?'Archived trip · feedback saved':'Trip ended · finish your feedback'):'Your personalised itinerary.';
     if(next.status==='completed') [...el('userTripsSelect').options].filter(option=>option.value===ctx.tripId).forEach(option=>option.remove());
     window.dispatchEvent(new CustomEvent('trip:runtime',{detail:{tripId:ctx.tripId,snapshot:next}}));
+    return true;
   };
   async function listTrips() {
     const box=el('teTripList');box.hidden=false;box.innerHTML='<p role="status">Loading your trips…</p>';
@@ -292,13 +295,17 @@
         await loadCapabilities();
         const next=await api(`/api/trips/${encodeURIComponent(id)}/runtime?${query()}`);
         if(epoch!==routeEpoch)return;
-        currentPlannedTripId=id; snapshot=next;snapshotTrip=id;
+        currentPlannedTripId=id;
+        const previous=getSnapshot(id);
+        if(!previous||Number(next.runtime?.version||0)>=Number(previous.runtime?.version||0)){snapshot=next;snapshotTrip=id;}
         // Explicit selection avoids auto-generation while resuming a live or archived trip.
         const itinerary=await api(`/api/itinerary/${encodeURIComponent(id)}?${query()}`);
         if(epoch!==routeEpoch)return;
         currentItinerary=itinerary;renderItinerary(itinerary);
-        Trip.applySnapshot(getWorkspaceContext(),next);
-        oldMode(next.status==='completed'?'post':next.status==='live'?'live':'pre');
+        const effective=getSnapshot(id)||next;
+        Trip.applySnapshot(getWorkspaceContext(),effective);
+        if(window.BudgetExperience?.isOpen(id))window.BudgetExperience.restore(id);
+        else oldMode(effective.status==='completed'?'post':effective.status==='live'?'live':'pre');
         if(match[2]){if(next.status!=='draft'){notice('Reopen a finalized trip before editing. Live and completed trips cannot be edited.');return;}await editSelectedTrip();await fillExperience(id);restoreDraft();}
       }
       view.querySelector('h2,h3')?.setAttribute('tabindex','-1');view.querySelector('h2,h3')?.focus();

@@ -402,12 +402,24 @@ def _timed_itinerary_data(trip_id: str,request: Request):
 def get_timed_itinerary_view(trip_id: str, request: Request):
     view=_timed_itinerary_data(trip_id,request)
     for day in view.get('days',[]):
+        categories = {}
+        activity_minutes = 0
+        travel_minutes = 0
         for block in day.get('timeline',[]):
             if block.get('type')=='activity':
+                category = block.get('category') or 'Experiences'
+                categories[category] = categories.get(category,0)+1
+                activity_minutes += int(block.get('duration_minutes') or 0)
+                block['priority'] = block.get('planning_priority','nice_to_do')
                 block['acceptance_status']=block.get('status','proposed')
                 block['pinned']=bool(block.get('is_pinned') or block.get('is_fixed_booking'))
                 if block.get('latitude') is not None and block.get('longitude') is not None:
                     block['coordinates']=[block['latitude'],block['longitude']]
+            elif block.get('type')=='transit':
+                travel_minutes += int(block.get('duration_minutes') or 0)
+        day.update(theme=max(categories,key=categories.get).replace('_',' ').title() if categories else 'Open time',
+                   active_hours=round(activity_minutes/60,1),travel_minutes=travel_minutes,
+                   order_explanation='Follows your saved activity order, with estimated transfers and scheduled breaks.')
     with get_connection() as conn:
         history=conn.execute('SELECT id FROM trip_edit_history WHERE trip_id=? AND undone_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 1',(trip_id,)).fetchone()
         view['undo_token']=history['id'] if history else None

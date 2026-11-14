@@ -38,9 +38,9 @@
   }
 
   function lifecycle(ctx,snapshot) {
-    if(!isCurrent(ctx)) return;
+    if(!isCurrent(ctx)) return false;
+    if(window.TripExperience?.applySnapshot(ctx,snapshot)===false)return false;
     state.snapshot=snapshot;
-    window.TripExperience?.applySnapshot(ctx,snapshot);
     const box=document.getElementById('cTripLifecycle');
     if(!box) return;
     const action=snapshot.status==='draft'?'Finalize itinerary':snapshot.status==='finalized'?'Start trip':null;
@@ -90,7 +90,7 @@
     try {
       const snapshot=await api(ctx,'/runtime',null,'GET');
       if(getWorkspaceContext().tripId===requestTrip) {
-        lifecycle(ctx,snapshot);
+        if(lifecycle(ctx,snapshot)===false)return;
         if(resumedTrip!==requestTrip) {
           resumedTrip=requestTrip;
           if(snapshot.status==='live') switchWorkspaceMode('live');
@@ -139,6 +139,8 @@
 
   function renderSnapshot(container,ctx,snapshot) {
     if(!isCurrent(ctx)) return;
+    const latest=window.TripExperience?.getSnapshot(ctx.tripId);
+    if(latest&&Number(snapshot.runtime?.version||0)<Number(latest.runtime?.version||0))snapshot=latest;
     lifecycle(ctx,snapshot);
     if(snapshot.status==='completed') {
       container.innerHTML='<p class="text-sm font-semibold">Trip completed.</p><p class="text-xs">Open POST-TRIP to save or resume the required feedback.</p><button class="'+button+' mt-3" data-c-post>Open post-trip feedback</button>';

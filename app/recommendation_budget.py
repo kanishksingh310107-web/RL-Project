@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 import requests
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError, field_validator, model_validator
 
 from app.database import get_connection
 from app.modules.trip_actions import _require_trip_owner
@@ -84,7 +84,7 @@ class DiscoveryInput(BaseModel):
     user_id: Optional[str] = Field(None, min_length=1, max_length=100)
     mode: Literal['known_destination', 'help_choose', 'explore_budget'] = 'help_choose'
     destination_id: Optional[str] = Field(None, min_length=1, max_length=120)
-    origin: Optional[str] = Field(None, min_length=2, max_length=120)
+    origin: Optional[str] = Field(None, min_length=2, max_length=200)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     duration_days: Optional[StrictInt] = Field(None, ge=1, le=90)
@@ -98,6 +98,7 @@ class DiscoveryInput(BaseModel):
     transport: Optional[Literal['walking', 'public_transit', 'taxi', 'driving', 'flight', 'train', 'bus']] = None
     accessibility: list[str] = Field(default_factory=list, max_length=20)
     walking_limit_minutes: Optional[StrictInt] = Field(None, ge=0, le=1440)
+    walking_limit_km: Optional[float] = Field(None,ge=0,le=100,allow_inf_nan=False)
 
     @field_validator('origin', 'mood', mode='before')
     @classmethod
@@ -111,10 +112,11 @@ class DiscoveryInput(BaseModel):
 
     @field_validator('interests', 'accessibility', mode='before')
     @classmethod
-    def clean_tags(cls, values):
+    def clean_tags(cls, values, info):
         if values is None:
             return []
-        if not isinstance(values, list) or any(not isinstance(x, str) or not x.strip() or len(x) > 60 or '<' in x or '>' in x for x in values):
+        limit = 500 if info.field_name=='accessibility' else 60
+        if not isinstance(values, list) or any(not isinstance(x, str) or not x.strip() or len(x) > limit or '<' in x or '>' in x for x in values):
             raise ValueError('Use a list of non-empty labels, each up to 60 characters.')
         return list(dict.fromkeys(x.strip().casefold() for x in values))
 
@@ -152,12 +154,21 @@ class AllocationLine(BaseModel):
     amount_inr: StrictInt = Field(ge=0, le=1_000_000_000)
     basis: Literal['total', 'per_person_day', 'per_room_night'] = 'total'
     rooms: Optional[StrictInt] = Field(None, ge=1, le=30)
+    status: Literal['estimated', 'booked'] = 'estimated'
+
+    @model_validator(mode='after')
+    def explicit_room_count(self):
+        if self.basis=='per_room_night' and self.rooms is None:
+            raise ValueError('Enter the number of rooms for a room/night allowance.')
+        return self
 
 
 class BudgetAllocationInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     total_budget_inr: Optional[StrictInt] = Field(None, ge=0, le=1_000_000_000)
     allocations: dict[str, AllocationLine]
+    version: Optional[str] = None
+    release_emergency_reserve: StrictBool = False
 
     @field_validator('allocations')
     @classmethod
@@ -171,6 +182,7 @@ class BudgetAllocationInput(BaseModel):
 class BudgetComparisonInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
     max_additional_budget_inr: StrictInt = Field(ge=0, le=1_000_000_000)
+    current_budget_inr: Optional[StrictInt] = Field(None,ge=0,le=1_000_000_000)
     priorities: list[str] = Field(default_factory=list, max_length=10)
 
     @field_validator('priorities', mode='before')
@@ -267,7 +279,7 @@ def _allocation_summary(conn, trip, expenses):
                          (trip_id, trip['user_id'])).fetchone()
     if saved:
         allocations = json.loads(saved['allocations_json'])
-        total = int(saved['total_budget_inr'])
+        total = int(trip.get('total_budget') or 0)
         source = 'user_allocated'
     else:
         estimate = _cost_summary(trip)
@@ -292,19 +304,27 @@ def _allocation_summary(conn, trip, expenses):
             unlinked_actual[category] = unlinked_actual.get(category, 0) + int(expense['amount_inr'])
         if expense.get('is_final_for_planned_cost') and expense.get('planned_cost_key'):
             finals.add(expense['planned_cost_key'])
+    released = bool(allocations.pop('_reserve_released', False))
     planned = {key: int(line.get('planned_inr', 0)) for key, line in allocations.items()}
     remaining = {}
+    actual_allocated = {key:linked_actual.get(key,0) for key in CATEGORIES}
+    for expense_key,value in unlinked_actual.items():
+        if expense_key != 'transport':
+            key = 'accommodation' if expense_key == 'stay' else expense_key
+            actual_allocated[key] = actual_allocated.get(key,0) + value
     transport_remaining = unlinked_actual.get('transport', 0)
     for key, amount in planned.items():
         expense_key = {'accommodation': 'stay', 'local_transport': 'transport', 'intercity_travel': 'transport'}.get(key, key)
         used = linked_actual.get(key, 0)
         if key in ('local_transport', 'intercity_travel'):
-            unlinked = min(amount, transport_remaining)
+            unlinked = min(max(0,amount-used), transport_remaining)
             transport_remaining -= unlinked
             used += unlinked
+            actual_allocated[key] += unlinked
         else:
             used += unlinked_actual.get(expense_key, 0)
         remaining[key] = 0 if key in finals else max(0, amount - used)
+    actual_allocated['local_transport'] += transport_remaining
     reserve = planned.get('emergency_reserve', 0)
     remaining_normal = sum(value for key, value in remaining.items() if key != 'emergency_reserve')
     has_expenses = bool(expenses)
@@ -318,10 +338,25 @@ def _allocation_summary(conn, trip, expenses):
         'estimated_remaining_costs_inr': remaining_normal,
         'estimated_remaining_by_category_inr': {k: v for k, v in remaining.items() if k != 'emergency_reserve'},
         'forecast_final_cost_inr': forecast,
-        'available_buffer_inr': total - forecast,
+        'available_buffer_inr': total - forecast - (0 if released else reserve),
         'over_budget_inr': max(0, forecast - total),
-        'emergency_reserve_inr': reserve, 'emergency_reserve_released': False,
-        'can_spend_reserve_for_normal_activities': False,
+        'emergency_reserve_inr': reserve, 'emergency_reserve_released': released,
+        'can_spend_reserve_for_normal_activities': released,
+        'planned_total_inr': sum(v for k,v in planned.items() if k != 'emergency_reserve'),
+        'version': saved['updated_at']+':'+str(total) if saved else 'unsaved',
+        'travellers_count': trip['travellers_count'],
+        'start_date': trip['start_date'], 'end_date': trip['end_date'],
+        'allocations': [dict(category=key, planned_inr=planned.get(key),
+            amount_inr=allocations.get(key,{}).get('unit_amount_inr',planned.get(key)),
+            basis=allocations.get(key,{}).get('basis','total') if allocations.get(key,{}).get('basis') in ('total','per_person_day','per_room_night') else 'total',
+            status=allocations.get(key,{}).get('status','estimated'),
+            actual_inr=actual_allocated.get(key) if has_expenses else None,
+            estimated_remaining_inr=remaining.get(key),
+            basis_label=('Per room / night' if allocations.get(key,{}).get('basis')=='per_room_night' else 'Per person / day' if allocations.get(key,{}).get('basis')=='per_person_day' else 'Whole-party total')) for key in sorted(CATEGORIES)],
+        'planned_items': [dict(id=key,label=key.replace('_',' ').title(),estimated_remaining_inr=value) for key,value in remaining.items() if key!='emergency_reserve'],
+        'rooms': next((line.get('rooms') for line in allocations.values() if line.get('rooms')), None),
+        'warnings': ['Some category estimates have not been entered; the forecast is incomplete.'] if set(planned) != CATEGORIES else [],
+        'forecast_complete': set(planned) == CATEGORIES,
     }
 
 
@@ -341,6 +376,7 @@ def experience_capabilities():
         'day_options': True,
         'assistant_chat': bool(os.getenv('OPENAI_API_KEY', '').strip()),
         'assistant_actions': bool(os.getenv('OPENAI_API_KEY', '').strip()),
+        'conversation_persistence': 'server',
         'assistant_unavailable_reason': None if os.getenv('OPENAI_API_KEY', '').strip() else 'Model service is not configured on the server.',
     }
 
@@ -399,7 +435,7 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
     ranked = []
     accessibility_terms = {str(x).casefold() for x in payload.accessibility}
     profile_avoidances = set()
-    if payload.walking_limit_minutes is not None:
+    if payload.walking_limit_minutes is not None or payload.walking_limit_km is not None:
         accessibility_terms.add('walking_limit')
     if detailed:
         try:
@@ -489,7 +525,7 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
             'start_date': start, 'end_date': end, 'duration_days': day_count,
             'estimate_limitations': ['Indicative INR cost model, not live fares or lodging inventory.', 'Sample activity values may be curated estimates.'] +
                 (['Requested travel mode is not priced by the model; intercity estimates use its public-transit assumption.'] if payload.transport in ('flight','train','bus','driving') else []) +
-                (['Walking distances and accessibility details are incomplete in the destination catalogue.'] if payload.walking_limit_minutes is not None or payload.accessibility else []),
+                (['Walking distances and accessibility details are incomplete in the destination catalogue.'] if payload.walking_limit_minutes is not None or payload.walking_limit_km is not None or payload.accessibility else []),
             'confidence': cost['confidence'], 'saved': dest['id'] in shortlist,
             'feedback_action': feedback_by.get(dest['id'])})
     ranked.sort(key=lambda d: (-d['_rank_score'], d['estimated_total_cost_inr'], d['destination_id']))
@@ -512,7 +548,7 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
         unavailable_filters.append('max_travel_minutes')
     if payload.max_distance_km is not None and origin_coords[0] is None:
         unavailable_filters.append('max_distance_km')
-    if payload.walking_limit_minutes is not None:
+    if payload.walking_limit_minutes is not None or payload.walking_limit_km is not None:
         unavailable_filters.append('walking_limit_minutes')
     if payload.accessibility:
         unavailable_filters.append('accessibility_detail')
@@ -520,7 +556,7 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
         'count': len(ranked), 'date_basis': 'provided_dates' if payload.start_date else 'flexible_duration',
         'filters_not_evaluable': unavailable_filters,
         'distance_basis':'straight_line_haversine' if origin_coords[0] is not None else 'unavailable',
-        'limitations': ['No live crowd data is available; crowd tags are catalogue descriptions, not verified current conditions.'] +
+        'limitations': ['No live crowd data is available; crowd tags are catalogue descriptions, not verified current conditions.'] + (['Requested travel-time limits could not be checked because verified route durations are unavailable.'] if payload.max_travel_minutes is not None else []) +
             (['Some activities are screened using stated mobility conflicts; this is not a complete accessibility audit.'] if accessibility_terms else [])}
 
 
@@ -538,6 +574,43 @@ def discovery_feedback(payload: DiscoveryFeedback, request: Request):
         conn.commit()
     return {'recorded': True, 'action': payload.action, 'destination_id': payload.destination_id,
         'saved': payload.action == 'save_for_later', 'source_of_truth': 'shortlisted_destinations' if payload.action == 'save_for_later' else 'discovery_feedback'}
+
+
+@router.get('/api/discovery/recommendations')
+def discovery_shelves(request: Request):
+    actor = _actor(request)
+    with get_connection() as conn:
+        profile = _profile(conn, actor)
+    # A clearly labelled sample context, never an assumed commitment or saved trip.
+    result = discover_suggestions(DiscoveryInput(duration_days=3, comfortable_budget_inr=50000,
+        party_size=1, trip_type='solo', origin=profile.get('residence_city')), request)
+    result['sample_context'] = 'Indicative 3-day solo trip, up to INR 50,000; enter your own dates, party and budget to refine.'
+    return result
+
+
+class DestinationComparison(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    destination_ids: list[str] = Field(min_length=2,max_length=3)
+    context: DiscoveryInput
+
+    @field_validator('destination_ids')
+    @classmethod
+    def unique_ids(cls, value):
+        if len(set(value)) != len(value) or any(not x.strip() or len(x)>120 for x in value):
+            raise ValueError('Choose two or three different destinations.')
+        return value
+
+
+@router.post('/api/discovery/compare')
+def compare_destinations(payload: DestinationComparison, request: Request):
+    _actor(request)
+    choices = []
+    for destination in payload.destination_ids:
+        query = payload.context.model_copy(update={'mode':'known_destination','destination_id':destination})
+        result = discover_suggestions(query, request)
+        if result['recommendations']:
+            choices.extend(result['recommendations'])
+    return {'destinations':choices, 'comparison_basis':payload.context.model_dump(mode='json')}
 
 
 @router.get('/api/trips/{trip_id}/budget')
@@ -563,20 +636,27 @@ def set_budget(trip_id: str, payload: BudgetAllocationInput, request: Request):
             'unit_amount_inr': line.amount_inr, 'people': party if line.basis == 'per_person_day' else None,
             'days': days if line.basis == 'per_person_day' else None,
             'rooms': (line.rooms or rooms) if line.basis == 'per_room_night' else None,
-            'nights': nights if line.basis == 'per_room_night' else None}
+            'nights': nights if line.basis == 'per_room_night' else None, 'status':line.status}
     total = payload.total_budget_inr if payload.total_budget_inr is not None else int(trip.get('total_budget') or 0)
     planned = sum(item['planned_inr'] for key, item in normalized.items() if key != 'emergency_reserve')
     reserve = normalized.get('emergency_reserve', {}).get('planned_inr', 0)
     if planned + reserve > total:
         fail(422, 'Allocations plus the emergency reserve exceed the total budget.', 'BUDGET_ALLOCATION_EXCEEDS_TOTAL', 'allocations')
     with get_connection() as conn:
+        from app.trip_preview import require_draft
+        conn.execute('BEGIN IMMEDIATE')
+        require_draft(conn, trip_id)
+        current = conn.execute('SELECT updated_at FROM trip_budget_allocations WHERE trip_id=?',(trip_id,)).fetchone()
+        if payload.version is not None and payload.version != (current['updated_at']+':'+str(int(trip.get('total_budget') or 0)) if current else 'unsaved'):
+            fail(409,'The budget changed. Reload it before saving.','STALE_BUDGET','version')
+        normalized['_reserve_released'] = payload.release_emergency_reserve
         conn.execute('''INSERT INTO trip_budget_allocations(trip_id,user_id,total_budget_inr,allocations_json,updated_at)
             VALUES(?,?,?,?,?) ON CONFLICT(trip_id) DO UPDATE SET user_id=excluded.user_id,
             total_budget_inr=excluded.total_budget_inr,allocations_json=excluded.allocations_json,updated_at=excluded.updated_at''',
             (trip_id, actor, total, json.dumps(normalized), datetime.now(timezone.utc).isoformat()))
         conn.execute('UPDATE trips SET total_budget=? WHERE id=? AND user_id=?', (total, trip_id, actor))
         conn.commit()
-        _, summary = budget_summary(conn, trip)
+        _, summary = budget_summary(conn, dict(trip,total_budget=total))
     return summary
 
 
@@ -591,6 +671,10 @@ def budget_options(trip_id: str, payload: BudgetComparisonInput, request: Reques
         interests = set(json.loads(profile['interests'] or '[]')) if profile else set()
         interests.update(payload.priorities)
         current_budget = _allocation_summary(conn, trip, [dict(r) for r in conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=?', (trip_id, trip['user_id']))])
+        stored = conn.execute('SELECT allocations_json FROM trip_budget_allocations WHERE trip_id=?',(trip_id,)).fetchone()
+        original_allocations = json.loads(stored['allocations_json']) if stored else {}
+    if payload.current_budget_inr is not None and payload.current_budget_inr != current_budget['total_budget_inr']:
+        fail(409,'Use the saved total budget as the comparison baseline. Edit allocations first to change it.','BUDGET_BASELINE_CHANGED','current_budget_inr')
     baseline = estimate_cost(trip, activities)
     base_total = int(baseline['total'])
     current_forecast = current_budget['forecast_final_cost_inr']
@@ -600,19 +684,21 @@ def budget_options(trip_id: str, payload: BudgetComparisonInput, request: Reques
     tier_order = ['hostel', 'budget', 'mid_range', 'boutique', 'luxury']
     from app.core.cost_model import canonical_tier
     current_tier = canonical_tier(trip.get('accommodation_tier'))
-    if current_tier in tier_order and tier_order.index(current_tier) < len(tier_order) - 1:
+    if current_tier in tier_order and tier_order.index(current_tier) < len(tier_order) - 1 and original_allocations.get('accommodation',{}).get('status')!='booked' and (not payload.priorities or 'stay_comfort' in payload.priorities):
         upgraded = dict(trip, accommodation_tier=tier_order[tier_order.index(current_tier) + 1])
         comfort = estimate_cost(upgraded, activities)
         comfort_delta = max(0, int(comfort['total']) - base_total)
         cost_keys = {'accommodation':'accommodation','food':'food','intercity_travel':'intercity_transit',
             'local_transport':'local_transit','activities':'activities','shopping':'shopping','other':'necessary_extras'}
-        proposed_allocations = {key:{'planned_inr':int(round(comfort['cost_breakdown'][source]['per_party'])), 'basis':'estimate'}
-            for key,source in cost_keys.items()}
-        proposed_allocations['emergency_reserve']={'planned_inr':int(round(comfort['cost_breakdown']['contingency_buffer']['per_party'])),'basis':'estimate'}
-        proposed_total = max(current_budget['total_budget_inr'], current_forecast + comfort_delta)
+        proposed_allocations = {key:{'planned_inr':amount,'basis':'total'} for key,amount in current_budget['planned_category_totals_inr'].items()}
+        proposed_allocations.update({key:line for key,line in original_allocations.items() if key in CATEGORIES})
+        # Extra-budget exploration preserves the user's other allowances and reserve.
+        proposed_allocations.setdefault('accommodation',{'planned_inr':0,'basis':'total'})['planned_inr'] += comfort_delta
+        proposed_allocations['accommodation'].update(basis='total',unit_amount_inr=proposed_allocations['accommodation']['planned_inr'])
+        proposed_total = max(current_budget['total_budget_inr'], current_forecast + comfort_delta + current_budget['emergency_reserve_inr'], sum(line['planned_inr'] for line in proposed_allocations.values()))
         candidates.append({'id': 'more_comfort', 'label': 'Allow more comfort', 'total_cost_inr': current_forecast + comfort_delta,
             'new_total_budget_inr':proposed_total,
-            'preview_request':{'operation':'budget_allocation','budget_total_inr':proposed_total,'budget_allocations':proposed_allocations},
+            'preview_request':{'operation':'budget_allocation','budget_total_inr':proposed_total,'budget_allocations':proposed_allocations,'budget_reserve_released':current_budget['emergency_reserve_released']},
             'changes': ['Increase the indicative accommodation allowance by one tier.'],
             'stays_the_same': ['Destination', 'Dates', 'Party size', 'Activities'],
             'benefits': ['More accommodation allowance, based on the project estimate model.'],
@@ -650,7 +736,7 @@ def budget_options(trip_id: str, payload: BudgetComparisonInput, request: Reques
         options = options[:1]
     return {'baseline_total_cost_inr': baseline_spend, 'baseline_estimated_trip_cost_inr':base_total,
         'max_additional_budget_inr': payload.max_additional_budget_inr,
-        'options': options, 'saved_trip_mutated': False}
+        'options': options, 'keep_current_recommended':len(options)==1, 'saved_trip_mutated': False}
 
 
 @router.get('/api/trips/{trip_id}/itinerary-check')
@@ -782,6 +868,15 @@ def itinerary_check(trip_id: str, request: Request):
                 'occurrence_ids':[a['id'] for a in rows if a.get('is_fixed_booking')],
                 'explanation':'Fixed booking times are user supplied and should be verified against the provider.',
                 'resolutions':['Compare itinerary timings with the booking confirmation.']})
+    for index,finding in enumerate(findings):
+        finding['id'] = f'finding-{index}'
+        finding['advice'] = [r for r in finding.get('resolutions',[]) if isinstance(r,str)]
+        finding['resolutions'] = []
+        if finding['kind'] in ('repeated_activity','overlap','intensity'):
+            target=next((r for r in reversed(rows) if r['id'] in finding['occurrence_ids'] and r['status']=='proposed' and not r.get('is_pinned') and not r.get('is_fixed_booking') and not r.get('must_visit') and r.get('planning_priority')!='must_do'),None)
+            if target:
+                finding['resolutions']=[{'id':'remove-extra','label':'Preview removing '+target['title'],
+                    'preview_request':{'operation':'remove','target_activity_id':target['id']}}]
     confirmed = [x for x in findings if x['severity'] == 'confirmed']
     return {'trip_id':trip_id,'passed':not confirmed,'guarantee':False,'day_summaries':day_summaries,
         'confirmed_problems':confirmed,'warnings':[x for x in findings if x['severity'] != 'confirmed'],
@@ -789,7 +884,8 @@ def itinerary_check(trip_id: str, request: Request):
 
 
 @router.get('/api/trips/{trip_id}/day-options')
-def day_options(trip_id: str, request: Request, day_number: Optional[int] = None):
+def day_options(trip_id: str, request: Request, day_number: Optional[int] = None,
+                goal: Optional[Literal['less_walking','local_experiences','lower_cost','more_downtime']] = None):
     trip, actor = _require_trip_owner(request, trip_id)
     with get_connection() as conn:
         itinerary = conn.execute('SELECT id FROM itineraries WHERE trip_id=?', (trip_id,)).fetchone()
@@ -805,7 +901,7 @@ def day_options(trip_id: str, request: Request, day_number: Optional[int] = None
         loads = {d: sum(int(r.get('duration_minutes') or 0) for r in rows if r['day_number'] == d) for d in days}
         options = []
         for target_day in ([day_number] if day_number else days):
-            movable = [r for r in rows if r['day_number'] == target_day and r['status'] == 'proposed' and not r.get('is_pinned') and not r.get('is_fixed_booking')]
+            movable = [r for r in rows if r['day_number'] == target_day and r['status'] == 'proposed' and not r.get('is_pinned') and not r.get('is_fixed_booking') and not r.get('must_visit') and r.get('planning_priority')!='must_do']
             if not movable:
                 continue
             try:
@@ -847,7 +943,14 @@ def day_options(trip_id: str, request: Request, day_number: Optional[int] = None
                     'preview_request':{'operation':'remove','target_activity_id':activity['id']}})
             if len(options) >= 2:
                 break
+    if goal == 'lower_cost':
+        options = [o for o in options if o['estimated_cost_change_inr'] < 0]
+    elif goal == 'more_downtime':
+        options = [o for o in options if o['id'].startswith(('downtime-', 'lighter-day-'))]
+    elif goal in ('less_walking','local_experiences'):
+        options = []  # These goals need walking/locality data the catalogue does not reliably provide.
     return {'trip_id':trip_id,'day_options':options[:2],
+        'message': 'Verified walking or local-experience data is unavailable; no suitable alternative can be promised.' if goal in ('less_walking','local_experiences') else None,
         'confirmation_flow':'POST /api/trip-actions/{trip_id}/preview then POST /api/trip-actions/{trip_id}/confirm',
         'saved_itinerary_mutated':False,'preserved_constraints':['completed activities','pinned activities','fixed bookings']}
 
@@ -863,6 +966,8 @@ def edit_expense(trip_id: str, expense_id: str, payload: ExpenseEdit, request: R
         values = dict(row)
         values.update(updates)
         category = str(values.get('category') or '').strip().lower()
+        if category not in EXPENSE_CATEGORIES:
+            fail(422,'Choose a supported expense category.','INVALID_EXPENSE','category')
         amount = values.get('amount_inr')
         if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
             fail(422, 'Amount must be a positive whole INR amount.', 'INVALID_EXPENSE', 'amount_inr')
@@ -876,6 +981,8 @@ def edit_expense(trip_id: str, expense_id: str, payload: ExpenseEdit, request: R
         note = values.get('note') or ''
         paid_by = values.get('paid_by')
         key = values.get('planned_cost_key')
+        if key == 'emergency_reserve' or (values.get('is_final_for_planned_cost') and not key):
+            fail(422,'A final payment needs a valid planned cost link.','INVALID_EXPENSE','planned_cost_key')
         conn.execute('''UPDATE trip_expenses SET category=?,amount_inr=?,spent_on=?,note=?,paid_by=?,planned_cost_key=?,
             is_final_for_planned_cost=?,updated_at=? WHERE id=? AND trip_id=? AND user_id=?''',
             (category, amount, spent.isoformat(), str(note).strip()[:500], str(paid_by).strip()[:80] if paid_by else None,
@@ -949,8 +1056,7 @@ def _require_trip_owner_from_conn(conn, trip_id, actor):
     return dict(trip), actor
 
 
-@router.post('/api/assistant/chat')
-async def assistant_chat(payload: AssistantInput, request: Request):
+async def _assistant_chat(payload: AssistantInput, request: Request):
     actor = _actor(request, payload.user_id)
     api_key = os.getenv('OPENAI_API_KEY', '').strip()
     if not api_key:
@@ -1016,4 +1122,80 @@ async def assistant_chat(payload: AssistantInput, request: Request):
         'proposal':proposal,'preview':preview,'confirmation_required':bool(proposal),
         'confirmed_changes':[],'trip_mutated':False,'model_configured':True,
         'confirmation_endpoint':f'/api/trip-actions/{payload.trip_id}/confirm' if proposal else None}
+
+
+@router.post('/api/assistant/chat')
+async def assistant_chat(payload: AssistantInput, request: Request):
+    actor = _actor(request, payload.user_id)
+    key = request.headers.get('Idempotency-Key')
+    if not key:
+        return await _assistant_chat(payload, request)
+    if len(key)>128 or not key.strip():
+        fail(422,'Use a valid request identifier.','INVALID_REQUEST_KEY','idempotency_key')
+    digest = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
+    with get_connection() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute('SELECT * FROM assistant_message_replays WHERE user_id=? AND request_key=?',(actor,key)).fetchone()
+        if row:
+            if row['request_hash'] != digest:
+                fail(409,'This request identifier was already used for a different message.','REQUEST_KEY_CONFLICT')
+            if row['response_json'] is None:
+                fail(409,'This message is still being processed. Retry shortly.','MESSAGE_IN_PROGRESS')
+            return json.loads(row['response_json'])
+        conversation_id = hashlib.sha256((actor+':'+(payload.trip_id or 'general')).encode()).hexdigest()
+        conn.execute('INSERT INTO assistant_message_replays(user_id,request_key,request_hash,conversation_id) VALUES(?,?,?,?)',(actor,key,digest,conversation_id))
+    try:
+        response = await _assistant_chat(payload, request)
+        response['conversation_id'] = conversation_id
+    except Exception:
+        with get_connection() as conn:
+            conn.execute('DELETE FROM assistant_message_replays WHERE user_id=? AND request_key=?',(actor,key))
+        raise
+    with get_connection() as conn:
+        conn.execute('UPDATE assistant_message_replays SET response_json=? WHERE user_id=? AND request_key=?',(json.dumps(response),actor,key))
+    return response
+
+
+@router.delete('/api/assistant/conversations/{conversation_id}')
+def delete_assistant_conversation(conversation_id: str, request: Request):
+    actor = _actor(request)
+    with get_connection() as conn:
+        conn.execute('DELETE FROM assistant_message_replays WHERE user_id=? AND conversation_id=?',(actor,conversation_id))
+    return {'deleted':True}
+
+
+class DayPreferences(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    intensity: Literal['relaxed','balanced','active']
+    walking_limit_km: Optional[float] = Field(None,ge=0,le=100,allow_inf_nan=False)
+    accessibility_notes: str = Field('',max_length=500)
+    priorities: list[dict[str,str]] = Field(default_factory=list,max_length=2000)
+
+
+@router.patch('/api/trips/{trip_id}/day-options/preferences')
+def day_preferences(trip_id: str, payload: DayPreferences, request: Request):
+    _, actor = _require_trip_owner(request, trip_id)
+    from app.trip_preview import require_draft, AtomicConnection
+    from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
+    with get_connection() as conn:
+        conn.execute('BEGIN IMMEDIATE')
+        require_draft(conn, trip_id)
+        trip=dict(conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone())
+        rows={r['id']:dict(r) for r in conn.execute('SELECT ia.* FROM itinerary_activities ia JOIN itineraries i ON i.id=ia.itinerary_id WHERE i.trip_id=?',(trip_id,))}
+        seen=set()
+        for line in payload.priorities:
+            if set(line)!={'occurrence_id','priority'} or line['priority'] not in ('must_do','nice_to_do','avoid'):
+                fail(422,'Choose a valid priority for each activity.','INVALID_PRIORITY','priorities')
+            target=rows.get(line['occurrence_id'])
+            if not target: fail(404,'Activity occurrence not found.','ACTIVITY_NOT_FOUND','priorities')
+            if target['id'] in seen: fail(422,'Each activity can have only one priority.','DUPLICATE_ACTIVITY','priorities')
+            seen.add(target['id'])
+            if target.get('is_fixed_booking') or target.get('is_pinned'):
+                fail(409,'Pinned activities and fixed bookings stay protected.','PINNED_ACTIVITY','priorities')
+            conn.execute('UPDATE itinerary_activities SET planning_priority=? WHERE id=?',(line['priority'],target['id']))
+        prefs=json.loads(trip.get('trip_preferences_json') or '{}')
+        prefs.update(walking_limit_km=payload.walking_limit_km,accessibility_notes=re.sub(r'<[^>]*>','',payload.accessibility_notes).strip())
+        conn.execute('UPDATE trips SET travel_pace=?,trip_preferences_json=? WHERE id=?',(payload.intensity,json.dumps(prefs),trip_id))
+        regenerate_timed_itinerary_for_trip(AtomicConnection(conn),trip_id,actor)
+    return {'saved':True,'message':'Preferences saved. Walking estimates remain unavailable where route data is missing.'}
 

@@ -3379,9 +3379,13 @@ function renderItinerary(itin) {
   if (window.TravelModules?.itinerary_editor) {
     window.TravelModules.itinerary_editor.render(document.getElementById('workspaceEditorContainer'), getWorkspaceContext());
   }
-  // Ensure Pre-trip daily itinerary tab is active
-  switchWorkspaceMode("pre");
-  switchPreSubtab("itin");
+  // Integration: a late itinerary refresh preserves the selected trip stage and budget view.
+  const renderedTripId = itin.trip_id || currentPlannedTripId;
+  const tripRuntime = window.TripExperience?.getSnapshot(renderedTripId);
+  if (window.BudgetExperience?.isOpen(renderedTripId)) window.BudgetExperience.restore(renderedTripId);
+  else switchWorkspaceMode(tripRuntime?.status === 'completed' ? 'post' : tripRuntime?.status === 'live' ? 'live' : 'pre');
+  if (!tripRuntime || ['draft', 'finalized'].includes(tripRuntime.status)) switchPreSubtab("itin");
+  // end Integration: preserve workspace selection.
 
   // Load and display weather for this specific trip's resolved coordinates & dates
   loadItineraryLiveWeather({

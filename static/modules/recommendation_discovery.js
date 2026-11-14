@@ -113,7 +113,7 @@
     U.field(f,'trip_type','Trip type',{options:[['solo','Solo'],['couple','Couple'],['friends','Friends'],['family','Family — adults, with or without children']],value:discoveryContext.trip_type||'solo'});
     for(const [key,title,value] of [['adults','Adults',1],['children','Children',0],['seniors','Seniors',0]])U.field(f,key,title,{type:'number',min:key==='adults'?1:0,max:30,value:discoveryContext[key]??value,required:true});
     U.field(f,'mood','What kind of trip feels right?',{options:[['mixed','A mix'],['relaxing','Relaxing'],['adventure','Adventure'],['nature','Nature'],['food','Food'],['culture','Culture']],value:discoveryContext.mood||'mixed'});
-    U.field(f,'max_travel_hours','Maximum travel time (hours, optional)',{type:'number',min:0,max:100,value:discoveryContext.max_travel_hours||''});
+    U.field(f,'max_travel_hours','Maximum travel time (hours, optional)',{type:'number',min:0.1,max:24,value:discoveryContext.max_travel_hours||''});
     U.field(f,'transport','Preferred transport',{options:[['any','Any'],['train','Train'],['flight','Flight'],['road','Road']],value:discoveryContext.transport||'any'});
     U.field(f,'walking_limit_km','Comfortable walking per day (km, optional)',{type:'number',min:0,max:100,value:profile.walking_limit_km||''});
     U.field(f,'accessibility','Accessibility or comfort needs (optional)',{type:'textarea',value:profile.accessibility_needs||'',maxlength:500});
@@ -160,7 +160,7 @@
   });
   async function loadShelves() {
     checkOwner();if(!A.uid())return;const account=A.uid();await A.capabilities();if(account!==A.uid()||!A.can('discovery'))return;
-    try{const response=await A.request('/api/discovery/recommendations');if(account!==A.uid())return;shelves.replaceChildren();
+    try{const response=await A.shelves();if(account!==A.uid())return;shelves.replaceChildren();if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
       const groups=Array.isArray(response.groups)?response.groups:[];
       for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>!isHome(item));if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',A.text(group.title)));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
     }catch(error){if(account===A.uid())U.unavailable(shelves,error.message,loadShelves);}

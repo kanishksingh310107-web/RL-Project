@@ -50,6 +50,7 @@
           const findings=result.findings.filter(f=>severities.includes(f.severity)||title==='Information unavailable'&&!['error','conflict','warning','unavailable','unknown','info'].includes(f.severity));
           if(!findings.length)continue;const section=U.el('section');section.append(U.el('h3',title));
           for(const finding of findings){const card=U.el('article',null,'ex-finding');card.append(U.el('h4',A.text(finding.title||finding.code?.replace(/_/g,' ')||title)),U.el('p',A.text(finding.message||finding.explanation)));
+            U.lines(card,'Suggested next steps',finding.advice);
             if(finding.day_number)card.append(U.el('small','Day '+finding.day_number));
             if(finding.occurrence_ids?.length)card.append(U.el('small','Affected activities: '+finding.occurrence_ids.join(', ')));
             for(const resolution of finding.resolutions||[]) {
@@ -94,10 +95,10 @@
     U.field(f,'walking_limit_km','Maximum comfortable walking per day (km, optional)',{type:'number',min:0,max:100,value:tripData.walking_limit_km??''});
     U.field(f,'accessibility_notes','Accessibility or fatigue needs (optional)',{type:'textarea',value:tripData.accessibility_notes||'',maxlength:500});
     const blocks=(data.days||[]).flatMap(day=>(day.timeline||[]).filter(b=>b.type==='activity').map(b=>({...b,day_number:day.day_number})));
-    for(const block of blocks){const field=U.field(f,'priority_'+window.TripExperience.occurrenceId(block),`Day ${block.day_number}: ${block.title}`,{options:[['nice_to_do','Nice to do'],['must_do','Must do'],['avoid','Avoid']],value:block.priority||(block.must_visit?'must_do':'nice_to_do')});field.disabled=!!block.is_fixed_booking;if(field.disabled)field.closest('label').append(U.el('small','Fixed booking — protected.'));}
+    for(const block of blocks){const field=U.field(f,'priority_'+window.TripExperience.occurrenceId(block),`Day ${block.day_number}: ${block.title}`,{options:[['nice_to_do','Nice to do'],['must_do','Must do'],['avoid','Avoid']],value:block.priority||(block.must_visit?'must_do':'nice_to_do')});field.disabled=!!block.is_fixed_booking||!!block.is_pinned;if(field.disabled)field.closest('label').append(U.el('small','Fixed booking — protected.'));}
     const save=U.el('button','Save preferences','ex-primary');save.type='submit';f.append(save);
     f.onsubmit=event=>{event.preventDefault();const v=U.values(f),e={};if(v.walking_limit_km!==''&&(!Number.isFinite(Number(v.walking_limit_km))||Number(v.walking_limit_km)<0||Number(v.walking_limit_km)>100))e.walking_limit_km='Use 0–100 km, or leave blank.';if(v.accessibility_notes.trim().length>500)e.accessibility_notes='Use 500 characters or fewer.';if(!U.errors(f,e))return;
-      U.busy(save,d.notice,async()=>{if(key!==A.contextKey()||runtime(trip)?.status!=='draft')throw new Error('The trip is no longer editable.');await A.itineraryPreferences(trip,{intensity:v.intensity,walking_limit_km:v.walking_limit_km===''?null:Number(v.walking_limit_km),accessibility_notes:v.accessibility_notes.trim(),priorities:blocks.filter(b=>!b.is_fixed_booking).map(b=>({occurrence_id:window.TripExperience.occurrenceId(b),priority:v['priority_'+window.TripExperience.occurrenceId(b)]}))});d.box.close();await window.BudgetExperience?.refreshTrip(trip);});};
+      U.busy(save,d.notice,async()=>{if(key!==A.contextKey()||runtime(trip)?.status!=='draft')throw new Error('The trip is no longer editable.');await A.itineraryPreferences(trip,{intensity:v.intensity,walking_limit_km:v.walking_limit_km===''?null:Number(v.walking_limit_km),accessibility_notes:v.accessibility_notes.trim(),priorities:blocks.filter(b=>!b.is_fixed_booking&&!b.is_pinned).map(b=>({occurrence_id:window.TripExperience.occurrenceId(b),priority:v['priority_'+window.TripExperience.occurrenceId(b)]}))});d.box.close();await window.BudgetExperience?.refreshTrip(trip);});};
   }
   window.ItineraryInsights={check:checkItinerary,dayOptions,selectedDay:trip=>selected.get(trip)||1};
 })();

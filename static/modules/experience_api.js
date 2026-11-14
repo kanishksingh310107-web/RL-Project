@@ -3,6 +3,21 @@
   'use strict';
   const categories=['accommodation','food','intercity_transport','local_transport','activities','shopping','emergency_reserve','other'];
   const flags=['discovery','budget_options','expense_tracking','itinerary_check','day_options','assistant_chat','assistant_actions'];
+  const serverCategory=c=>c==='intercity_transport'?'intercity_travel':c;
+  const clientCategory=c=>c==='intercity_travel'?'intercity_transport':c;
+  const previews=new Map(),assistantPreviews=new Map(),conversations=new Map();
+  function discoveryBody(v={}) {
+    const party=v.party||v;
+    return {origin:v.origin||null,...(v.date_mode==='dates'?{start_date:v.start_date,end_date:v.end_date}:{duration_days:Number(v.duration_days||3)}),comfortable_budget_inr:Number(v.total_budget||50000),party_size:Number(party.adults||1)+Number(party.children||0)+Number(party.seniors||0),trip_type:v.trip_type||'solo',mood:v.mood==='mixed'?null:v.mood,transport:v.transport==='any'?null:v.transport==='road'?'driving':v.transport||null,...(v.max_travel_hours!=null&&v.max_travel_hours!==''?{max_travel_minutes:Math.round(Number(v.max_travel_hours)*60)}:{}),walking_limit_km:v.walking_limit_km==null||v.walking_limit_km===''?null:Number(v.walking_limit_km),accessibility:v.accessibility?[v.accessibility]:[]};
+  }
+  function destination(d) {
+    return {...d,estimated_total_inr:d.estimated_total_inr??d.estimated_total_cost_inr,tradeoff:d.tradeoff||d.trade_off,estimate_note:d.estimate_note||(d.estimate_limitations||[]).join(' '),is_shortlisted:d.is_shortlisted??d.saved,comparison_basis:typeof d.comparison_basis==='string'?d.comparison_basis:`${d.duration_days||3} days · same party and cost scope`,sample_itinerary:Array.isArray(d.sample_itinerary)&&d.sample_itinerary[0]?.name?[{day_number:1,activities:d.sample_itinerary.map(a=>a.name)}]:d.sample_itinerary};
+  }
+  function expense(d) {return {...d,category:({stay:'accommodation',transport:'local_transport'})[d.category]||d.category,description:d.note,planned_item_id:clientCategory(d.planned_cost_key),payment_state:d.is_final_for_planned_cost?'final':'partial'};}
+  function expenseBody(v) {return {amount_inr:v.amount_inr,category:({accommodation:'stay',intercity_transport:'transport',local_transport:'transport'})[v.category]||v.category,spent_on:v.spent_on,note:v.description||'',paid_by:v.paid_by||null,planned_cost_key:v.planned_item_id?serverCategory(v.planned_item_id):null,is_final_for_planned_cost:!!v.planned_item_id&&v.payment_state==='final'};}
+  const optionKey=(trip,kind,id)=>`${contextKey(trip)}:${kind}:${id}`;
+  async function previewOption(trip,kind,id) {const proposal=previews.get(optionKey(trip,kind,id));if(!proposal)throw new Error('Request fresh options before previewing this change.');return request(tripPath(trip,'').replace('/api/trips/','/api/trip-actions/')+'/preview',{method:'POST',body:proposal});}
+  const confirmPreview=(trip,token)=>request(`/api/trip-actions/${id(trip)}/confirm`,{method:'POST',body:{token}});
   const user=()=>typeof state!=='undefined'?state.currentUser:null;
   const uid=()=>user()?.user_id || null;
   const tripId=()=>typeof getWorkspaceContext==='function'?getWorkspaceContext().tripId:null;
@@ -36,6 +51,7 @@
     if(values.trip_type==='solo'&&(size!==1||Number(values.adults)!==1))e.trip_type='Solo requires exactly one adult.';
     if(!['relaxing','adventure','nature','food','culture','mixed'].includes(values.mood))e.mood='Choose a mood or a mix.';
     for(const key of ['max_travel_hours','walking_limit_km'])if(values[key]!==''&&(!Number.isFinite(Number(values[key]))||Number(values[key])<0||Number(values[key])>100))e[key]='Enter a value between 0 and 100, or leave blank.';
+    if(values.max_travel_hours!==''&&values.max_travel_hours!=null&&(!Number.isFinite(Number(values.max_travel_hours))||Number(values.max_travel_hours)<=0||Number(values.max_travel_hours)>24))e.max_travel_hours='Enter more than 0 and up to 24 hours, or leave blank.';
     if(String(values.accessibility||'').length>500)e.accessibility='Use 500 characters or fewer.';
     return e;
   }
@@ -44,13 +60,13 @@
     if(!categories.includes(v.category))e.category='Choose an expense category.';
     if(!isoDate(v.spent_on))e.spent_on='Choose a valid expense date.';
     if(String(v.description||'').trim().length>500)e.description='Use 500 characters or fewer.';
-    if(String(v.paid_by||'').trim().length>100)e.paid_by='Use 100 characters or fewer.';
+    if(String(v.paid_by||'').trim().length>80)e.paid_by='Use 80 characters or fewer.';
     return e;
   }
   function normalizeSummary(data) {
     if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('The budget summary could not be read. Please retry.');
     const s=data.summary||data.budget||data;
-    return {...s,total_budget:amount(s.total_budget_inr??s.total_budget),planned_cost:amount(s.planned_total_inr??s.planned_cost),actual_spending:amount(s.actual_spending_inr??s.actual_total_inr??s.actual_spending),estimated_remaining_costs:amount(s.estimated_remaining_costs_inr??s.estimated_remaining_inr??s.estimated_remaining_costs),forecast_final_cost:amount(s.forecast_final_cost_inr??s.forecast_total_inr??s.forecast_final_cost),available_buffer:amount(s.available_buffer_inr??s.buffer_inr??s.available_buffer),over_budget:amount(s.over_budget_inr??s.over_budget),allocations:Array.isArray(s.allocations)?s.allocations:[]};
+    return {...s,total_budget:amount(s.total_budget_inr??s.total_budget),planned_cost:amount(s.planned_total_inr??s.planned_cost),actual_spending:amount(s.actual_spending_inr??s.actual_total_inr??s.actual_spending),estimated_remaining_costs:amount(s.estimated_remaining_costs_inr??s.estimated_remaining_inr??s.estimated_remaining_costs),forecast_final_cost:amount(s.forecast_final_cost_inr??s.forecast_total_inr??s.forecast_final_cost),available_buffer:amount(s.available_buffer_inr??s.buffer_inr??s.available_buffer),over_budget:amount(s.over_budget_inr??s.over_budget),allocations:Array.isArray(s.allocations)?s.allocations.map(a=>({...a,category:clientCategory(a.category)})):[],planned_items:(s.planned_items||[]).map(p=>({...p,id:clientCategory(p.id)}))};
   }
   function contextKey(trip=workspaceTrip()) {return `${uid()||''}:${trip||''}`;}
   let caps={},capsUser=null,capsPromise=null;
@@ -85,33 +101,36 @@
   const keyed=(key,body)=>({method:'POST',headers:{'Idempotency-Key':key},body:{...body,idempotency_key:key}});
   const API={
     capabilities,can,request,contextKey,nonce,uid,user,tripId,workspaceTrip,esc,text,amount,money,integer,isoDate,discoveryErrors,expenseErrors,normalizeSummary,categories,
-    async discover(body){requireFeature('discovery');return request('/api/discovery/recommendations',{method:'POST',body});},
-    async feedback(body){requireFeature('discovery');return request('/api/discovery/feedback',keyed(nonce(),body));},
-    async compare(ids,context={}){requireFeature('discovery');if(ids.length<2||ids.length>3||new Set(ids).size!==ids.length)throw new Error('Select two or three different destinations.');return request('/api/discovery/compare',{method:'POST',body:{destination_ids:ids,context}});},
+    async discover(body){requireFeature('discovery');const r=await request('/api/discovery/suggestions',{method:'POST',body:discoveryBody(body)});return {...r,recommendations:r.recommendations.map(destination),assumptions:r.limitations};},
+    async shelves(){const r=await request('/api/discovery/recommendations');return {...r,groups:Array.isArray(r.groups)?r.groups:Object.entries(r.groups||{}).map(([key,entries])=>({title:key.replace(/_/g,' '),destinations:entries.map(destination)}))};},
+    async feedback(body){requireFeature('discovery');return request('/api/discovery/feedback',{method:'POST',body:{destination_id:body.destination_id,action:body.action,reason:({too_expensive:'cost',too_far:'distance',too_crowded:'crowding',wrong_activity_type:'unsuitable_activities',not_interested:'other'})[body.reason]||body.reason||null}});},
+    async compare(ids,context={}){requireFeature('discovery');if(ids.length<2||ids.length>3||new Set(ids).size!==ids.length)throw new Error('Select two or three different destinations.');const r=await request('/api/discovery/compare',{method:'POST',body:{destination_ids:ids,context:discoveryBody(context)}});return {...r,destinations:r.destinations.map(destination)};},
     legacyRecommendations:()=>request(`/api/recommendations/${id(uid())}`),
     saveLegacy:destination=>request(`/api/shortlist/${id(uid())}`,{method:'POST',body:{destination_id:destination}}),
     async budget(trip){requireFeature('expense_tracking');return normalizeSummary(await request(tripPath(trip,'/budget')));},
-    async allocate(trip,body){requireFeature('expense_tracking');return request(tripPath(trip,'/budget'),{method:'PUT',body});},
-    async expenses(trip){requireFeature('expense_tracking');return request(tripPath(trip,'/expenses'));},
-    async saveExpense(trip,body,key,expenseId){requireFeature('expense_tracking');return request(tripPath(trip,'/expenses')+(expenseId?'/'+id(expenseId):''),expenseId?{method:'PATCH',body}:keyed(key,body));},
+    async allocate(trip,body){requireFeature('expense_tracking');const allocations=Object.fromEntries(body.allocations.filter(a=>a.amount_inr!==null).map(a=>[serverCategory(a.category),{amount_inr:a.amount_inr,basis:a.basis,status:a.status,...(a.basis==='per_room_night'?{rooms:body.rooms}:{})}]));return request(tripPath(trip,'/budget'),{method:'PUT',body:{total_budget_inr:body.total_budget_inr,allocations,version:body.version,release_emergency_reserve:body.release_emergency_reserve}});},
+    async expenses(trip){requireFeature('expense_tracking');const r=await request(tripPath(trip,'/expenses'));return {...r,expenses:r.expenses.map(expense)};},
+    async saveExpense(trip,body,key,expenseId){requireFeature('expense_tracking');body=expenseBody(body);return request(tripPath(trip,'/expenses')+(expenseId?'/'+id(expenseId):''),expenseId?{method:'PATCH',body}:keyed(key,body));},
     async deleteExpense(trip,expenseId){requireFeature('expense_tracking');return request(tripPath(trip,'/expenses/')+id(expenseId),{method:'DELETE'});},
     async legacyExpenses(trip){return request(tripPath(trip,'/expenses'));},
     async legacyAddExpense(trip,body){return request(tripPath(trip,'/expenses'),{method:'POST',body});},
-    async budgetOptions(trip,body){requireFeature('budget_options');return request(tripPath(trip,'/budget-options'),{method:'POST',body});},
-    async budgetPreview(trip,optionId){requireFeature('budget_options');return request(tripPath(trip,'/budget-options/preview'),{method:'POST',body:{option_id:optionId}});},
-    async budgetConfirm(trip,token){requireFeature('budget_options');return request(tripPath(trip,'/budget-options/confirm'),keyed(token,{token}));},
-    async check(trip){requireFeature('itinerary_check');return request(tripPath(trip,'/itinerary-check'),{method:'POST',body:{}});},
-    async checkPreview(trip,findingId,resolutionId){requireFeature('itinerary_check');return request(tripPath(trip,'/itinerary-check/preview'),{method:'POST',body:{finding_id:findingId,resolution_id:resolutionId}});},
-    async checkConfirm(trip,token){requireFeature('itinerary_check');return request(tripPath(trip,'/itinerary-check/confirm'),keyed(token,{token}));},
-    async dayOptions(trip,day,goal){requireFeature('day_options');return request(tripPath(trip,'/day-options'),{method:'POST',body:{day_number:day,goal}});},
-    async dayPreview(trip,optionId){requireFeature('day_options');return request(tripPath(trip,'/day-options/preview'),{method:'POST',body:{option_id:optionId}});},
-    async dayConfirm(trip,token){requireFeature('day_options');return request(tripPath(trip,'/day-options/confirm'),keyed(token,{token}));},
+    async budgetOptions(trip,body){requireFeature('budget_options');const r=await request(tripPath(trip,'/budget-options'),{method:'POST',body:{max_additional_budget_inr:body.max_extra_inr,current_budget_inr:body.current_budget_inr,priorities:[body.priority]}});return {...r,options:r.options.map(o=>{if(o.preview_request)previews.set(optionKey(trip,'budget',o.id),o.preview_request);return {...o,title:o.label||o.title,unchanged:o.stays_the_same||o.unchanged,tradeoffs:o.trade_offs||o.tradeoffs,can_apply:!!o.preview_request,estimate_note:(o.estimate_limitations||[]).join(' ')};})};},
+    async budgetPreview(trip,optionId){requireFeature('budget_options');return previewOption(trip,'budget',optionId);},
+    async budgetConfirm(trip,token){requireFeature('budget_options');return confirmPreview(trip,token);},
+    async check(trip){requireFeature('itinerary_check');const r=await request(tripPath(trip,'/itinerary-check'));for(const f of r.findings)for(const fix of f.resolutions||[])if(fix.preview_request)previews.set(optionKey(trip,'check',f.id+':'+fix.id),fix.preview_request);return {...r,findings:r.findings.map(f=>({...f,title:f.title||f.kind?.replace(/_/g,' '),severity:f.severity==='confirmed'?'conflict':f.severity,resolutions:(f.resolutions||[]).filter(x=>typeof x==='object')}))};},
+    async checkPreview(trip,findingId,resolutionId){requireFeature('itinerary_check');return previewOption(trip,'check',findingId+':'+resolutionId);},
+    async checkConfirm(trip,token){requireFeature('itinerary_check');return confirmPreview(trip,token);},
+    async dayOptions(trip,day,goal){requireFeature('day_options');const r=await request(tripPath(trip,`/day-options?day_number=${Number(day)}&goal=${encodeURIComponent(goal)}`));return {...r,options:(r.day_options||r.options||[]).map(o=>{if(o.preview_request)previews.set(optionKey(trip,'day',o.id),o.preview_request);return {...o,title:o.label||o.title,benefits:[o.explanation],tradeoffs:[o.trade_off],cost_delta_inr:o.estimated_cost_change_inr,can_apply:!!o.preview_request};})};},
+    async dayPreview(trip,optionId){requireFeature('day_options');return previewOption(trip,'day',optionId);},
+    async dayConfirm(trip,token){requireFeature('day_options');return confirmPreview(trip,token);},
     async itineraryPreferences(trip,body){requireFeature('day_options');return request(tripPath(trip,'/day-options/preferences'),{method:'PATCH',body});},
-    async chat(body,key){requireFeature('assistant_chat');return request('/api/assistant/messages',keyed(key,body));},
-    async assistantPreview(proposalId,trip){requireFeature('assistant_actions');return request('/api/assistant/proposals/'+id(proposalId)+'/preview',{method:'POST',body:{trip_id:trip||null}});},
-    async assistantConfirm(proposalId,token,trip){requireFeature('assistant_actions');return request('/api/assistant/proposals/'+id(proposalId)+'/confirm',keyed(token,{token,trip_id:trip||null}));},
+    async chat(body,key){requireFeature('assistant_chat');const context=contextKey(body.trip_id),history=conversations.get(context)||[];const r=await request('/api/assistant/chat',{method:'POST',headers:{'Idempotency-Key':key},body:{message:body.message,trip_id:body.trip_id,conversation:history}});conversations.set(context,[...history,{role:'user',content:body.message},{role:'assistant',content:r.answer}].slice(-6));const p=r.preview?.preview;const proposals=[];if(p?.token&&r.proposal){assistantPreviews.set(`${context}:${p.token}`,p);proposals.push({id:p.token,trip_id:body.trip_id,action_type:({swap:'swap_activity',remove:'remove_activity',reschedule:'adjust_schedule',move_day:'move_activity'})[r.proposal.operation],summary:p.summary,title:'Suggested itinerary change'});}return {reply:r.answer,message_id:key,conversation_id:r.conversation_id,proposals};},
+    async assistantPreview(proposalId,trip){requireFeature('assistant_actions');const p=assistantPreviews.get(`${contextKey(trip)}:${proposalId}`);if(!p)throw new Error('Ask for a fresh proposal before previewing.');return {preview:p};},
+    async assistantConfirm(proposalId,token,trip){requireFeature('assistant_actions');if(proposalId!==token||!assistantPreviews.has(`${contextKey(trip)}:${proposalId}`))throw new Error('Ask for a fresh proposal.');return confirmPreview(trip,token);},
     async clearConversation(conversationId){return request('/api/assistant/conversations/'+id(conversationId),{method:'DELETE'});},
-    async exportExpenses(trip){requireFeature('expense_tracking');return tripPath(trip,'/expenses/export');}
+    clearChat(trip){conversations.delete(contextKey(trip));},
+    async exportExpenses(trip){requireFeature('expense_tracking');return tripPath(trip,'/expenses/export.csv');}
   };
+  window.addEventListener?.('trip:context-cleared',()=>{previews.clear();assistantPreviews.clear();conversations.clear();});
   window.ExperienceAPI=API;
 })();

@@ -56,6 +56,14 @@
     d.close.textContent='Cancel';d.content.append(el('p',A.text(proposal.summary||proposal.title||'Proposed change')));
     if(proposal.time_impact)d.content.append(el('p','Timing: '+A.text(proposal.time_impact)));
     if(proposal.budget_impact)d.content.append(el('p','Budget: '+A.text(proposal.budget_impact)));
+    if(A.amount(proposal.budget_total_inr)!==null)d.content.append(el('strong','Proposed total budget: '+A.money(proposal.budget_total_inr)));
+    if(proposal.budget_allocations){
+      const list=el('dl',null,'ex-metrics');
+      for(const [category,line] of Object.entries(proposal.budget_allocations)){
+        if(!A.categories.includes(category==='intercity_travel'?'intercity_transport':category))continue;
+        const row=el('div');row.append(el('dt',category.replace(/_/g,' ')),el('dd',A.money(line.planned_inr)));list.append(row);
+      }d.content.append(list);
+    }
     if(A.amount(proposal.cost_delta_inr)!==null)d.content.append(el('p','Estimated cost change: '+A.money(proposal.cost_delta_inr)));
     lines(d.content,'Warnings',proposal.warnings);lines(d.content,'What changes',proposal.changes);
     if(Array.isArray(proposal.timeline)){const list=el('ol');for(const block of proposal.timeline)list.append(el('li',`${block.day_number?'Day '+block.day_number+' · ':''}${block.time_range||'Time unavailable'} · ${block.title||''}`));d.content.append(list);}

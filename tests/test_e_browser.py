@@ -17,13 +17,13 @@ def experience(static_url):
     runtime={'trip_id':'trip-1','status':'draft','phase':'draft','runtime':{'current_day':1,'version':1},'total_days':3,'today':[],'schedule':[],'runs':[],'closed_out':False}
     summary={'total_budget_inr':30000,'planned_total_inr':8000,'actual_spending_inr':0,'estimated_remaining_costs_inr':8000,'forecast_final_cost_inr':8000,'available_buffer_inr':22000,'travellers_count':2,'rooms':1,'version':1,
              'allocations':[{'category':'accommodation','amount_inr':8000,'basis':'total','planned_inr':8000,'actual_inr':None,'estimated_remaining_inr':8000}],
-             'planned_items':[{'id':'stay-1','category':'accommodation','label':'Stay','estimated_remaining_inr':8000}]}
+             'planned_items':[{'id':'accommodation','category':'accommodation','label':'Stay','estimated_remaining_inr':8000}]}
     destinations=[{'id':key,'name':title,'reasons':['You enjoy heritage walks.'],'estimated_total_inr':20000+index*2000,'match_score':51,'tradeoff':'Busy on weekends','comparison_basis':'3 days · 2 adults','sample_itinerary':[{'day_number':1,'activities':['Heritage walk']}]} for index,(key,title) in enumerate([('hampi_india','Hampi'),('udaipur_mewar_india','Udaipur'),('jaipur_jodhpur_india','Jaipur'),('kerala_alleppey_india','Alleppey')])]
     proposal={'id':'proposal-1','action_type':'update_budget','title':'Use a lower-cost plan','summary':'Review your budget allocation.'}
 
     def recalculate():
         actual=sum(item['amount_inr'] for item in expenses)
-        remaining=0 if any(item.get('payment_state')=='final' for item in expenses) else max(0,8000-actual)
+        remaining=0 if any(item.get('is_final_for_planned_cost') for item in expenses) else max(0,8000-actual)
         summary.update(actual_spending_inr=actual,estimated_remaining_costs_inr=remaining,forecast_final_cost_inr=actual+remaining,available_buffer_inr=30000-actual-remaining)
         summary['allocations'][0].update(actual_inr=actual if expenses else None,estimated_remaining_inr=remaining)
 
@@ -43,7 +43,8 @@ def experience(static_url):
         elif path=='itinerary/trip-1':result={'id':'itin-1','trip_id':'trip-1','destination_name':'Hampi','total_days':3,'total_estimated_cost':8000,'days':[{'day_number':1,'activities':[]}]}
         elif path=='trip-actions/trip-1/timed-view':result={'trip':trip,'itinerary':{'id':'itin-1'},'days':[{'day_number':1,'theme':'Heritage and sunset','order_explanation':'Nearby stops reduce travel.','total_cost':2000,'timeline':[{'id':'occ-1','activity_id':'place','type':'activity','title':'Heritage walk','time_range':'10:00 – 11:00','cost_estimate':100,'acceptance_status':'unreviewed'}]}]}
         elif path=='recommendations/owner':result={'recommended_for_you':destinations,'trending_trips':[],'seasonal_and_upcoming':[]}
-        elif path=='discovery/recommendations':result={'groups':[{'title':'Within your budget','destinations':destinations}]} if method=='GET' else {'destinations':destinations[:3]}
+        elif path=='discovery/recommendations':result={'groups':[{'title':'Within your budget','destinations':destinations}]}
+        elif path=='discovery/suggestions':result={'recommendations':destinations[:3]}
         elif path=='discovery/compare':result={'destinations':[item for item in destinations if item['id'] in body['destination_ids']]}
         elif path=='discovery/feedback':result={'saved':True,'message':'Preference saved.'}
         elif path=='shortlist/owner':result={'is_shortlisted':True}
@@ -55,18 +56,18 @@ def experience(static_url):
                 record={**body,'id':'expense-1'};expenses.append(record);recalculate();result={'expense':record}
         elif path=='trips/trip-1/expenses/expense-1' and method=='PATCH':expenses[0].update(body);recalculate();result={'expense':expenses[0]}
         elif path=='trips/trip-1/expenses/expense-1' and method=='DELETE':expenses.clear();recalculate();result={'deleted':True}
-        elif path=='trips/trip-1/expenses/export':
+        elif path=='trips/trip-1/expenses/export.csv':
             route.fulfill(status=200,content_type='text/csv',body='category,amount_inr\nfood,650\n');return
-        elif path=='trips/trip-1/budget-options':result={'options':[{'id':'comfort','title':'More comfort','total_cost_inr':50000 if options['oversized_budget'] else 25000,'additional_cost_inr':20000 if options['oversized_budget'] else 5000,'changes':['Better-located stay allowance'],'unchanged':['Dates and party'],'tradeoffs':['Higher spend']}]}
-        elif path.endswith('/budget-options/preview') or path.endswith('/day-options/preview') or path.endswith('/itinerary-check/preview') or path=='assistant/proposals/proposal-1/preview':
+        elif path=='trips/trip-1/budget-options':result={'options':[{'id':'comfort','title':'More comfort','total_cost_inr':50000 if options['oversized_budget'] else 25000,'additional_cost_inr':20000 if options['oversized_budget'] else 5000,'changes':['Better-located stay allowance'],'unchanged':['Dates and party'],'tradeoffs':['Higher spend'],'preview_request':{'operation':'budget_allocation','budget_total_inr':35000,'budget_allocations':{}}}]}
+        elif path=='trip-actions/trip-1/preview':
             if options['preview_fails']:status,result=503,{'detail':'Preview unavailable. Your trip is unchanged.'}
             else:result={'preview':{'token':'preview-token','summary':'Review the changed costs and times.','cost_delta_inr':5000}}
         elif path.endswith('/confirm'):result={'status':'applied','message':'Change confirmed.'}
         elif path=='trips/trip-1/itinerary-check':result={'findings':[{'id':'finding-1','severity':'warning','message':'Travel time is an estimate.','resolutions':[{'id':'fix-1','label':'Review a shorter route'}]}]}
-        elif path=='trips/trip-1/day-options':result={'options':[{'id':'day-choice','title':'Less walking','changes':['Fewer transfers'],'total_cost_inr':1800,'cost_delta_inr':-200,'tradeoffs':['One less stop']}]}
-        elif path=='assistant/messages':
+        elif path=='trips/trip-1/day-options':result={'options':[{'id':'day-choice','title':'Less walking','changes':['Fewer transfers'],'total_cost_inr':1800,'cost_delta_inr':-200,'tradeoffs':['One less stop'],'preview_request':{'operation':'remove','target_activity_id':'occ-1'}}]}
+        elif path=='assistant/chat':
             if options['chat_fails']:status,result=503,{'detail':'Assistant temporarily unavailable. Retry your message.'}
-            else:result={'reply':'<img src=x onerror="window.chatInjected=true"> Here are your options.','conversation_id':'conv-1','message_id':body['idempotency_key'],'proposals':[proposal],'sources':[{'title':'Unsafe source','url':'javascript:alert(1)'}]}
+            else:result={'answer':'<img src=x onerror="window.chatInjected=true"> Here are your options.','proposal':{'operation':'remove','target_activity_id':'occ-1'},'preview':{'preview':{'token':'preview-token','summary':'Remove the selected activity'}}}
         elif path=='assistant/conversations/conv-1':result={'deleted':True}
         route.fulfill(status=status,json=result)
 
@@ -112,7 +113,7 @@ def test_discovery_inline_errors_keep_entered_values(experience):
     playwright.expect(dialog.locator('[data-error-for=start_date]')).to_contain_text('future')
     playwright.expect(dialog.locator('[data-error-for=total_budget]')).to_contain_text('whole-rupee')
     playwright.expect(dialog.locator('[name=total_budget]')).to_have_value('25000.5')
-    assert not any(path=='discovery/recommendations' and method=='POST' for method,path,_,_ in writes)
+    assert not any(path=='discovery/suggestions' and method=='POST' for method,path,_,_ in writes)
 
 
 def test_budget_uses_server_remaining_costs_not_unspent_cash(experience):
@@ -125,7 +126,7 @@ def test_budget_uses_server_remaining_costs_not_unspent_cash(experience):
 def test_linked_partial_payment_edit_and_delete(experience):
     page,_,writes,_,_=experience;open_budget(page)
     page.locator('#exBudgetPane').get_by_role('button',name='Add expense',exact=True).click();dialog=page.get_by_role('dialog')
-    dialog.locator('[name=amount_inr]').fill('3000');dialog.locator('[name=category]').select_option('accommodation');dialog.locator('[name=planned_item_id]').select_option('stay-1')
+    dialog.locator('[name=amount_inr]').fill('3000');dialog.locator('[name=category]').select_option('accommodation');dialog.locator('[name=planned_item_id]').select_option('accommodation')
     dialog.get_by_role('button',name='Save expense').click()
     playwright.expect(page.locator('#exBudgetPane')).to_contain_text('5,000')
     row=page.locator('#exBudgetPane .ex-expenses li').first;row.get_by_role('button',name='Edit',exact=True).click();dialog=page.get_by_role('dialog')
@@ -135,7 +136,7 @@ def test_linked_partial_payment_edit_and_delete(experience):
     page.get_by_role('dialog').get_by_role('button',name='Delete expense',exact=True).click()
     playwright.expect(page.locator('#exBudgetPane')).to_contain_text('No expenses entered yet.')
     create=next(body for method,path,body,_ in writes if method=='POST' and path.endswith('/expenses'))
-    assert create['payment_state']=='partial' and create['planned_item_id']=='stay-1'
+    assert create['is_final_for_planned_cost'] is False and create['planned_cost_key']=='accommodation'
 
 
 def test_failed_expense_has_field_error_and_retains_amount(experience):
@@ -169,8 +170,10 @@ def test_assistant_reply_is_text_and_retry_reuses_request_key(experience):
     assert chat.locator('.ex-chat-assistant img').count()==0
     assert chat.locator('a[href^="javascript:"]').count()==0
     assert page.evaluate('window.chatInjected===true') is False
-    calls=[body for _,path,body,_ in writes if path=='assistant/messages']
-    assert len(calls)==2 and calls[0]['idempotency_key']==calls[1]['idempotency_key']
+    calls=[body for _,path,body,_ in writes if path=='assistant/chat']
+    assert len(calls)==2 and calls[0]==calls[1]
+    keys=[headers['idempotency-key'] for _,path,_,headers in writes if path=='assistant/chat']
+    assert keys[0]==keys[1]
 
 
 def test_assistant_requires_explicit_confirmation_and_respects_completed_trip(experience):
@@ -179,7 +182,7 @@ def test_assistant_requires_explicit_confirmation_and_respects_completed_trip(ex
     assert not any(path.endswith('/confirm') for _,path,_,_ in writes)
     confirmation=page.get_by_role('dialog').filter(has=page.get_by_role('heading',name='Confirm assistant suggestion'));confirmation.get_by_role('button',name='Cancel',exact=True).click()
     runtime['status']='completed'
-    page.evaluate("TripExperience.applySnapshot({tripId:'trip-1'}, {status:'completed',runtime:{current_day:3},total_days:3,closed_out:true})")
+    page.evaluate("TripExperience.applySnapshot({tripId:'trip-1'}, {status:'completed',runtime:{current_day:3,version:2},total_days:3,closed_out:true})")
     playwright.expect(chat.get_by_role('button',name='Review proposal')).to_be_disabled()
 
 
@@ -233,4 +236,23 @@ def test_saved_places_reuse_existing_shortlist_and_refinement_is_explicit(experi
     assert any(path=='shortlist/owner' for _,path,_,_ in writes)
     card.get_by_role('button',name='Not for me',exact=True).click();page.get_by_role('dialog').get_by_role('button',name='Too expensive',exact=True).click()
     playwright.expect(page.get_by_role('dialog')).to_have_count(0)
-    assert any(path=='discovery/feedback' and body['reason']=='too_expensive' for _,path,body,_ in writes)
+    assert any(path=='discovery/feedback' and body['reason']=='cost' for _,path,body,_ in writes)
+
+
+def test_budget_pane_survives_same_phase_runtime_refresh(experience):
+    page,_,_,_,runtime=experience;open_budget(page)
+    page.evaluate('renderItinerary(currentItinerary)')
+    page.evaluate('next=>TripExperience.applySnapshot(getWorkspaceContext(),next)',runtime)
+    playwright.expect(page.locator('#exBudgetPane')).to_be_visible()
+    playwright.expect(page.locator('#workspacePreTrip')).to_be_hidden()
+    assert page.evaluate('currentWorkspaceMode')=='budget'
+
+
+def test_stale_runtime_response_cannot_revert_started_trip(experience):
+    page,_,_,_,runtime=experience;open_trip(page)
+    newer={**runtime,'status':'live','phase':'activity','runtime':{**runtime['runtime'],'version':5}}
+    page.evaluate('next=>TripExperience.applySnapshot(getWorkspaceContext(),next)',newer)
+    accepted=page.evaluate('next=>TripExperience.applySnapshot(getWorkspaceContext(),next)',runtime)
+    assert accepted is False
+    assert page.evaluate('TripExperience.getSnapshot("trip-1").status')=='live'
+    playwright.expect(page.locator('#wsTabBtn-live')).to_be_enabled()
