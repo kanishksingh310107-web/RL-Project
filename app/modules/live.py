@@ -235,7 +235,26 @@ def c_actor(request,payload=None):
     actor = body or query
     if not actor or len(actor)>100:
         c_error(422,'A non-empty user_id is required.','INVALID_INPUT','user_id')
+    authorization = request.headers.get('authorization', '')
+    if not authorization.startswith('Bearer '):
+        c_error(403,'Sign in to continue.','AUTH_REQUIRED')
+    with get_connection() as conn:
+        session = conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (hashlib.sha256(authorization[7:].strip().encode()).hexdigest(), c_now())).fetchone()
+    if not session:
+        c_error(403,'Your session has expired. Please sign in again.','SESSION_EXPIRED')
+    if session['user_id'] != actor:
+        c_error(403,'This trip belongs to another user.','NOT_OWNER')
     return actor
+
+
+def c_publish_feedback(conn, draft, submitted_at):
+    fields = ('trip_id','user_id','ratings_json','trip_type','would_revisit','liked','disliked','notes',
+              'per_place_ratings_json','delivery_started_at')
+    conn.execute('INSERT OR IGNORE INTO post_trip_feedback(' + ','.join(fields) + ',submitted_at) VALUES(' +
+                 ','.join('?' for _ in range(len(fields)+1)) + ')',
+                 tuple(draft.get(key) for key in fields)+(submitted_at,))
+    conn.execute('UPDATE trip_runtime SET post_feedback_draft_json=NULL WHERE trip_id=?',(draft['trip_id'],))
 
 
 @contextmanager
@@ -256,6 +275,10 @@ def c_transaction(trip_id,actor):
                 # preview is revalidated against the current itinerary on retry.
                 conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL WHERE trip_id=?',(trip_id,))
         runtime=c_runtime(conn,trip_id)
+        if runtime['status']=='live' and not runtime['operation_in_flight'] and runtime['preview_json']:
+            preview=json.loads(runtime['preview_json'])
+            if preview.get('confirmed') and c_adjustment_applied(conn,trip_id,preview):
+                c_finish_adjustment(conn,trip_id,preview['token'])
         if runtime['status']=='completed' and not runtime['operation_in_flight']:
             saved=conn.execute('SELECT submitted_at,delivery_started_at FROM post_trip_feedback WHERE trip_id=?',(trip_id,)).fetchone()
             if saved and saved['delivery_started_at'] and not saved['submitted_at']:
@@ -264,6 +287,11 @@ def c_transaction(trip_id,actor):
                     # Learning committed immediately before a connection/process
                     # failure: reconcile completion, never send the ratings twice.
                     conn.execute('UPDATE post_trip_feedback SET submitted_at=? WHERE trip_id=?',(delivered['submitted_at'],trip_id))
+            draft=json.loads(runtime['post_feedback_draft_json']) if runtime['post_feedback_draft_json'] else None
+            if draft and draft.get('delivery_started_at'):
+                delivered=conn.execute('SELECT submitted_at FROM live_postrip WHERE trip_id=?',(trip_id,)).fetchone()
+                if delivered:
+                    c_publish_feedback(conn,draft,delivered['submitted_at'])
         yield conn,dict(trip)
 
 
@@ -272,9 +300,17 @@ def c_runtime(conn,trip_id):
 
 
 def c_schedule(conn,trip_id):
-    return [dict(row) for row in conn.execute('''SELECT ia.* FROM itinerary_activities ia
+    rows = [dict(row) for row in conn.execute('''SELECT ia.* FROM itinerary_activities ia
         JOIN itineraries i ON i.id=ia.itinerary_id WHERE i.trip_id=? AND ia.status!='rejected'
         ORDER BY ia.day_number,ia.order_index,ia.id''',(trip_id,))]
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone():
+        custom = conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone()
+        timed = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='timed_itineraries'").fetchone()
+        if custom and timed and conn.execute('SELECT 1 FROM timed_itineraries WHERE trip_id=?',(trip_id,)).fetchone():
+            scheduled = {(r[0],r[1]) for r in conn.execute("SELECT day_number,activity_id FROM timed_itinerary_slots WHERE trip_id=? AND slot_type='activity'",(trip_id,))}
+            # Historical runs survive later changes to the remaining schedule.
+            rows = [row for row in rows if (row['day_number'],row['activity_id']) in scheduled or c_run(conn,trip_id,row['id'])]
+    return rows
 
 
 def c_slot(conn,trip_id,activity_id):
@@ -359,6 +395,20 @@ def c_fingerprint(conn,trip_id):
     return hashlib.sha256(json.dumps([(s['id'],s['activity_id'],s['day_number'],s['order_index']) for s in c_schedule(conn,trip_id)]).encode()).hexdigest()
 
 
+def c_adjustment_applied(conn,trip_id,preview):
+    schedule=[dict(r) for r in conn.execute('''SELECT ia.* FROM itinerary_activities ia
+        JOIN itineraries i ON i.id=ia.itinerary_id WHERE i.trip_id=? AND ia.status!='rejected' ''',(trip_id,))]
+    if preview['operation']=='remove':
+        return not any(s['activity_id']==preview['catalogue_activity_id'] for s in schedule)
+    return any(s['id']==preview['target_activity_id'] and s['activity_id']==preview['replacement_activity_id'] for s in schedule)
+
+
+def c_finish_adjustment(conn,trip_id,token):
+    conn.execute('''UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL,pending_decision_json=NULL,preview_json=NULL,
+        last_confirmation_token=?,version=version+1 WHERE trip_id=?''',(token,trip_id))
+    c_advance(conn,trip_id)
+
+
 def c_snapshot(conn,trip):
     tid = trip['id']
     runtime = c_runtime(conn,tid)
@@ -376,6 +426,8 @@ def c_snapshot(conn,trip):
     review = next((s for s in schedule if pending and s['id']==pending['itinerary_activity_id']),None)
     feedback = conn.execute('SELECT * FROM post_trip_feedback WHERE trip_id=?',(tid,)).fetchone()
     feedback = dict(feedback) if feedback else None
+    if feedback is None and runtime['post_feedback_draft_json']:
+        feedback = json.loads(runtime['post_feedback_draft_json'])
     for row in runs:
         row['ratings'] = json.loads(row['ratings_json'] or '{}')
     if feedback:
@@ -580,7 +632,8 @@ async def c_call_existing(request,method,path,payload=None):
     token = C_MUTATION_CAPABILITY.set(request.path_params.get('trip_id'))
     try:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=request.app),base_url='http://internal') as client:
-            response = await client.request(method,path,json=payload,timeout=20)
+            response = await client.request(method,path,json=payload,timeout=20,
+                headers={'Authorization':request.headers.get('Authorization','')})
         if response.status_code>=400:
             c_error(503,'The existing recommendation/feedback service could not complete the request. Your trip state is unchanged; please retry.',
                     'DOWNSTREAM_UNAVAILABLE')
@@ -662,7 +715,9 @@ async def c_confirm(trip_id: str,request: Request,payload: CConfirm):
         slot = c_slot(conn,trip_id,preview['target_activity_id'])
         c_upcoming(conn,trip_id,slot)
         if c_fingerprint(conn,trip_id)!=preview['fingerprint']: c_error(409,'The itinerary changed. Request a fresh preview.','STALE_PREVIEW')
-        conn.execute('UPDATE trip_runtime SET operation_in_flight=1,operation_started_at=? WHERE trip_id=?',(c_now(),trip_id))
+        preview['confirmed']=True
+        conn.execute('UPDATE trip_runtime SET operation_in_flight=1,operation_started_at=?,preview_json=? WHERE trip_id=?',
+                     (c_now(),json.dumps(preview),trip_id))
     try:
         if preview['operation']=='swap':
             await c_call_existing(request,'POST',f'/api/live/{trip_id}/replan',{
@@ -672,14 +727,17 @@ async def c_confirm(trip_id: str,request: Request,payload: CConfirm):
         else:
             await c_call_existing(request,'DELETE',f"/api/trip-actions/{trip_id}/activity/{preview['catalogue_activity_id']}?user_id={actor}")
     except Exception as exc:
-        with get_connection() as conn:
+        with c_transaction(trip_id,actor) as (conn,trip):
+            # The endpoint may have committed before its response was lost.
+            # Accept that exact confirmed result instead of applying it twice.
+            if c_adjustment_applied(conn,trip_id,preview):
+                c_finish_adjustment(conn,trip_id,payload.token)
+                return c_snapshot(conn,trip)
             conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL WHERE trip_id=?',(trip_id,))
         if isinstance(exc,HTTPException): raise
         c_error(503,'The itinerary update failed. Your preview has been kept; retry or leave the itinerary as it is.','DOWNSTREAM_UNAVAILABLE')
     with c_transaction(trip_id,actor) as (conn,trip):
-        conn.execute('''UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL,pending_decision_json=NULL,preview_json=NULL,
-            last_confirmation_token=?,version=version+1 WHERE trip_id=?''',(payload.token,trip_id))
-        c_advance(conn,trip_id)
+        c_finish_adjustment(conn,trip_id,payload.token)
         return c_snapshot(conn,trip)
 
 
@@ -700,12 +758,12 @@ async def c_post_feedback(trip_id: str,request: Request,payload: CPostFeedback):
             slot = c_slot(conn,trip_id,item.activity_id)
             if set(item.ratings)-set(c_applicable(slot)): c_error(422,'A per-place rating parameter does not apply to that activity.','INVALID_RATINGS','per_place_ratings')
             places.append({'activity_id':slot['id'],'catalogue_activity_id':slot['activity_id'],'ratings':item.ratings})
-        conn.execute('''INSERT INTO post_trip_feedback(trip_id,user_id,ratings_json,trip_type,would_revisit,liked,disliked,notes,per_place_ratings_json)
-            VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(trip_id) DO UPDATE SET ratings_json=excluded.ratings_json,trip_type=excluded.trip_type,
-            would_revisit=excluded.would_revisit,liked=excluded.liked,disliked=excluded.disliked,notes=excluded.notes,per_place_ratings_json=excluded.per_place_ratings_json''',
-            (trip_id,actor,json.dumps(payload.ratings),payload.trip_type,payload.would_revisit,payload.liked or '',payload.disliked or '',payload.notes,json.dumps(places)))
+        draft = dict(trip_id=trip_id,user_id=actor,ratings_json=json.dumps(payload.ratings),trip_type=payload.trip_type,
+                     would_revisit=payload.would_revisit,liked=payload.liked or '',disliked=payload.disliked or '',
+                     notes=payload.notes,per_place_ratings_json=json.dumps(places),submitted_at=None,
+                     delivery_started_at=None if payload.draft else c_now())
+        conn.execute('UPDATE trip_runtime SET post_feedback_draft_json=? WHERE trip_id=?',(json.dumps(draft),trip_id))
         if payload.draft: return c_snapshot(conn,trip)
-        conn.execute('UPDATE post_trip_feedback SET delivery_started_at=? WHERE trip_id=?',(c_now(),trip_id))
         conn.execute('UPDATE trip_runtime SET operation_in_flight=1,operation_started_at=? WHERE trip_id=?',(c_now(),trip_id))
     try:
         if not already_delivered:
@@ -726,7 +784,7 @@ async def c_post_feedback(trip_id: str,request: Request,payload: CPostFeedback):
         if isinstance(exc,HTTPException): raise
         c_error(503,'Feedback could not be submitted. Your saved draft has been kept; please retry.','DOWNSTREAM_UNAVAILABLE')
     with c_transaction(trip_id,actor) as (conn,trip):
-        conn.execute('UPDATE post_trip_feedback SET submitted_at=? WHERE trip_id=?',(c_now(),trip_id))
+        c_publish_feedback(conn,draft,c_now())
         conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL,version=version+1 WHERE trip_id=?',(trip_id,))
         return c_snapshot(conn,trip)
 
@@ -742,6 +800,7 @@ class CRuntimeGuard(BaseHTTPMiddleware):
         patterns = [
             (r'^/api/trip-actions/([^/]+)/(.+)$','edit'),
             (r'^/api/itinerary/generate/([^/]+)$','edit'),
+            (r'^/api/itinerary/timed/generate/([^/]+)$','edit'),
             (r'^/api/plan/generate/([^/]+)$','edit'),
             (r'^/api/plan/([^/]+)(?:/.*)?$','edit'),
             (r'^/api/stay/([^/]+)/(?:select|replan|hotel-first-preview)$','edit'),

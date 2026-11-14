@@ -12,10 +12,12 @@ from app.modules import live
 
 @pytest.fixture
 def c_trip(client):
-    auth=client.post('/api/auth',json={'provider':'email','identifier':'person-c@example.test',
-        'password':'pass1234','display_name':'Person C','mode':'signup'})
+    from app.db_migrations_a import migrate_a
+    migrate_a()
+    auth=client.post('/api/account/guest',json={'guest_id':'person_c_runtime_test_identity'})
     assert auth.status_code==200,auth.text
     demo_user=auth.json()['user_id']
+    client.headers['Authorization']='Bearer '+auth.json()['token']
     profile=client.post('/api/profile/'+demo_user,json={'travel_goals':['culture'],
         'place_interests':['historic'],'preferred_climate':'cool','budget_tier':'mid_range','companions':'partner'})
     assert profile.status_code==200,profile.text
@@ -95,7 +97,7 @@ def test_c_full_path_resume_labels_feedback_and_learning(client,c_trip):
     ended=call(client,trip,'/activities/c-first/end',{'outcome':'early_ended'})
     assert ended['phase']=='activity_review' and ended['pending_review']['run']['ended_at']
     from main import app
-    reloaded=TestClient(app).get(f"/api/trips/{trip['trip_id']}/runtime?user_id={trip['user_id']}").json()
+    reloaded=TestClient(app).get(f"/api/trips/{trip['trip_id']}/runtime?user_id={trip['user_id']}",headers=dict(client.headers)).json()
     assert reloaded==ended
     call(client,trip,'/activities/c-food/start',expected=409)
     ratings={key:5 for key in ended['pending_review']['applicable_rating_keys']}
@@ -451,3 +453,88 @@ def test_c_learning_summary_includes_occurrence_reviews(client,c_trip):
     response=client.get(f"/api/live/{c_trip['user_id']}/learning-summary?caller_user_id={c_trip['user_id']}")
     assert response.status_code==200,response.text
     assert response.json()['total_evaluations_processed']==1
+
+
+def test_c_session_required_and_owner_id_cannot_be_forged(client,c_trip):
+    url=f"/api/trips/{c_trip['trip_id']}/runtime?user_id={c_trip['user_id']}"
+    token=client.headers.pop('Authorization')
+    missing=client.get(url)
+    assert missing.status_code==403 and missing.json()['code']=='AUTH_REQUIRED'
+    other=client.post('/api/account/guest',json={'guest_id':'different_c_account_identity'}).json()
+    client.headers['Authorization']='Bearer '+other['token']
+    forged=client.get(url)
+    assert forged.status_code==403 and forged.json()['code']=='NOT_OWNER'
+    client.headers['Authorization']=token
+    assert client.get(url).status_code==200
+    with get_connection() as conn:
+        conn.execute('UPDATE auth_sessions SET expires_at=? WHERE user_id=?',('2000-01-01T00:00:00+00:00',c_trip['user_id']))
+    expired=client.get(url)
+    assert expired.status_code==403 and expired.json()['code']=='SESSION_EXPIRED'
+
+
+def test_c_draft_not_published_to_history_until_submission(client,c_trip):
+    finish(client,c_trip)
+    body=feedback(draft=True)
+    call(client,c_trip,'/post-feedback',body)
+    assert snapshot(client,c_trip)['post_feedback']['liked']=='Gardens'
+    with get_connection() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM post_trip_feedback WHERE trip_id=?',(c_trip['trip_id'],)).fetchone()[0]==0
+    history=client.get('/api/profile/history')
+    assert history.status_code==200,history.text
+    assert not any(row.get('trip_id')==c_trip['trip_id'] for row in history.json()['entries'])
+    call(client,c_trip,'/post-feedback',feedback())
+    assert any(row.get('trip_id')==c_trip['trip_id'] for row in client.get('/api/profile/history').json()['entries'])
+
+
+def test_c_migration_preserves_unpublished_feedback(client,c_trip):
+    from app.db_migrations_c import migrate_c
+    finish(client,c_trip)
+    with get_connection() as conn:
+        conn.execute('INSERT INTO post_trip_feedback(trip_id,user_id,notes) VALUES(?,?,?)',
+                     (c_trip['trip_id'],c_trip['user_id'],'Preserve my unfinished answer'))
+    migrate_c();migrate_c()
+    assert snapshot(client,c_trip)['post_feedback']['notes']=='Preserve my unfinished answer'
+    with get_connection() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM post_trip_feedback WHERE trip_id=?',(c_trip['trip_id'],)).fetchone()[0]==0
+
+
+def test_c_lost_delivery_response_publishes_once_on_reload(client,c_trip,monkeypatch):
+    finish(client,c_trip)
+    original=live.c_call_existing
+    async def delivered_then_disconnected(*args,**kwargs):
+        await original(*args,**kwargs)
+        raise RuntimeError('response disconnected after commit')
+    monkeypatch.setattr(live,'c_call_existing',delivered_then_disconnected)
+    call(client,c_trip,'/post-feedback',feedback(),expected=503)
+    assert snapshot(client,c_trip)['closed_out']
+    call(client,c_trip,'/post-feedback',feedback())
+    with get_connection() as conn:
+        for table in ('post_trip_feedback','live_postrip','core_trip_feedback'):
+            assert conn.execute(f'SELECT COUNT(*) FROM {table} WHERE trip_id=?',(c_trip['trip_id'],)).fetchone()[0]==1
+
+
+@pytest.mark.parametrize('operation',['swap','remove'])
+def test_c_lost_adjustment_response_resumes_committed_change(client,c_trip,monkeypatch,operation):
+    start(client,c_trip);end_review(client,c_trip,'change')
+    body={'target_activity_id':'c-food','operation':operation}
+    if operation=='swap':
+        suggestions=client.get(f"/api/trips/{c_trip['trip_id']}/suggestions?user_id={c_trip['user_id']}").json()
+        body['replacement_activity_id']=suggestions['alternatives'][0]['id']
+    preview=call(client,c_trip,'/adjustments/preview',body)['preview']
+    original=live.c_call_existing
+    async def committed_then_disconnected(*args,**kwargs):
+        await original(*args,**kwargs)
+        raise RuntimeError('response disconnected after commit')
+    downstream=AsyncMock(side_effect=committed_then_disconnected)
+    monkeypatch.setattr(live,'c_call_existing',downstream)
+    result=call(client,c_trip,'/adjustments/confirm',{'token':preview['token']})
+    assert result['preview'] is None and result['pending_decision'] is None
+    assert result['runtime']['operation_in_flight']==0
+    assert result['runtime']['last_confirmation_token']==preview['token']
+    if operation=='swap':
+        assert result['current_activity']['catalogue_activity_id']==body['replacement_activity_id']
+    else:
+        assert result['current_activity'] is None and result['phase']=='awaiting_day_end'
+    assert snapshot(client,c_trip)==result
+    call(client,c_trip,'/adjustments/confirm',{'token':preview['token']})
+    assert downstream.await_count==1

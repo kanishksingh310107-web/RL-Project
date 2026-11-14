@@ -1,5 +1,5 @@
 # Data models for auth and traveller profile
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import List, Optional, Dict, Any
 
 # Auth models
@@ -260,12 +260,25 @@ class ShortlistResponse(BaseModel):
 # =============================================================
 
 class Party(BaseModel):
-    adults: int = Field(1, ge=1, le=30)
-    children: int = Field(0, ge=0, le=30)
-    seniors: int = Field(0, ge=0, le=30)
+    adults: int = Field(1, ge=1, le=30, strict=True)
+    children: int = Field(0, ge=0, le=30, strict=True)
+    seniors: int = Field(0, ge=0, le=30, strict=True)
 
 
 class TripCreate(BaseModel):
+    @field_validator('accommodation_tier','travel_pace','transit_pref')
+    @classmethod
+    def valid_trip_option(cls,value,info):
+        options = {
+            'accommodation_tier': {'hostel','budget','mid_range','boutique','luxury','budget_hostel','budget_hotel',
+                'budget_guesthouse','balanced','boutique_hotel','heritage','resort','apartment','homestay'},
+            'travel_pace': {'relaxed','balanced','active','packed'},
+            'transit_pref': {'public_transit','taxi','rental_car','scooter','walking','bus_metro','train','cab','cab_rental','walk','auto'},
+        }
+        value=value.strip().lower()
+        if value not in options[info.field_name]:
+            raise ValueError('Choose a valid '+info.field_name.replace('_',' ')+'.')
+        return value
     schedule_prefs: Optional[Dict[str, Any]] = None
     party: Optional[Party] = None
     @model_validator(mode='after')
@@ -293,7 +306,7 @@ class TripCreate(BaseModel):
     start_date: str # YYYY-MM-DD
     end_date: str # YYYY-MM-DD
     duration_days: Optional[int] = None
-    travellers_count: int = Field(1, ge=1, le=30)
+    travellers_count: int = Field(1, ge=1, le=30, strict=True)
     companions: Optional[str] = "solo"
     has_children: Optional[bool] = False
     has_elderly: Optional[bool] = False

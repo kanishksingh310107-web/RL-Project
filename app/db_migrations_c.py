@@ -1,4 +1,5 @@
 """Person C's idempotent execution/review schema. No history/profile writes."""
+import json
 from app.database import get_connection
 
 
@@ -58,6 +59,18 @@ def migrate_c(conn=None):
     columns = {row[1] for row in conn.execute('PRAGMA table_info(trip_runtime)')}
     if 'operation_started_at' not in columns:
         conn.execute('ALTER TABLE trip_runtime ADD COLUMN operation_started_at TEXT')
+    if 'post_feedback_draft_json' not in columns:
+        conn.execute('ALTER TABLE trip_runtime ADD COLUMN post_feedback_draft_json TEXT')
     feedback_columns = {row[1] for row in conn.execute('PRAGMA table_info(post_trip_feedback)')}
     if 'delivery_started_at' not in feedback_columns:
         conn.execute('ALTER TABLE post_trip_feedback ADD COLUMN delivery_started_at TEXT')
+    # Only published feedback belongs in the shared history input. Preserve
+    # unfinished submissions in C's runtime, including their delivery marker.
+    cursor = conn.execute('SELECT * FROM post_trip_feedback WHERE submitted_at IS NULL')
+    names = [column[0] for column in cursor.description]
+    for row in cursor.fetchall():
+        draft = dict(zip(names, row))
+        conn.execute('INSERT OR IGNORE INTO trip_runtime(trip_id) VALUES(?)', (draft['trip_id'],))
+        conn.execute('UPDATE trip_runtime SET post_feedback_draft_json=COALESCE(post_feedback_draft_json,?) WHERE trip_id=?',
+                     (json.dumps(draft), draft['trip_id']))
+        conn.execute('DELETE FROM post_trip_feedback WHERE trip_id=? AND submitted_at IS NULL', (draft['trip_id'],))

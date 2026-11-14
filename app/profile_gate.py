@@ -210,8 +210,8 @@ def require_profile_complete(user: dict = Depends(current_user), request: Reques
     if requested_user_id and requested_user_id != user["id"]:
         _error(403, "You cannot plan trips for another account", "USER_MISMATCH", "user_id")
     with get_connection() as conn:
-        row = conn.execute("SELECT profile_complete FROM user_profile WHERE user_id=?", (user["id"],)).fetchone()
-    if not row or not row[0]:
+        complete = _refresh_complete(conn, user["id"])
+    if not complete:
         _error(403, "Complete your personalization questionnaire first", "PROFILE_INCOMPLETE")
     return user
 
@@ -319,7 +319,8 @@ def _history_list(conn, user_id: str):
             trip_cols = {r[1] for r in conn.execute("PRAGMA table_info(trips)")} if "trips" in tables else set()
             destination_field = "destination_name" if "destination_name" in trip_cols else ("destination" if "destination" in trip_cols else None)
             destination_expr = f"t.{destination_field}" if destination_field else "f.trip_id"
-            for r in conn.execute(f"SELECT f.trip_id,f.ratings_json,f.trip_type,f.would_revisit,f.notes,{destination_expr} AS destination FROM post_trip_feedback f " + ("LEFT JOIN trips t ON t.id=f.trip_id " if destination_field else "") + "WHERE f.user_id=?", (user_id,)):
+            published = " AND f.submitted_at IS NOT NULL" if "submitted_at" in cols else ""
+            for r in conn.execute(f"SELECT f.trip_id,f.ratings_json,f.trip_type,f.would_revisit,f.notes,{destination_expr} AS destination FROM post_trip_feedback f " + ("LEFT JOIN trips t ON t.id=f.trip_id " if destination_field else "") + "WHERE f.user_id=?" + published, (user_id,)):
                 if not conn.execute("SELECT 1 FROM travel_history WHERE user_id=? AND trip_id=?", (user_id, r["trip_id"])).fetchone():
                     excluded = conn.execute("SELECT 1 FROM travel_history_exclusions WHERE user_id=? AND trip_id=?", (user_id, r["trip_id"])).fetchone()
                     if excluded:

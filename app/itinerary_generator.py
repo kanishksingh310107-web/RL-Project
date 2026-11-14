@@ -598,6 +598,12 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
     if not row:
         return None
 
+    custom_schedule = None
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone():
+        if conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone():
+            from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
+            custom_schedule = regenerate_timed_itinerary_for_trip(conn, trip_id, user_id)
+
     itin_id = row[0]
     total_days = row[4]
     start_dt = datetime.strptime(row[11], "%Y-%m-%d")
@@ -614,6 +620,10 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
         ORDER BY ia.day_number ASC, ia.order_index ASC
     """, (itin_id,))
     act_rows = cursor.fetchall()
+    if custom_schedule is not None:
+        scheduled = {(day['day_number'], slot['activity_id']) for day in custom_schedule['days']
+                     for slot in day['slots'] if slot['slot_type']=='activity'}
+        act_rows = [row for row in act_rows if (row[2],row[4]) in scheduled]
 
     days_dict = {}
     for d in range(1, total_days + 1):
@@ -692,7 +702,7 @@ def get_itinerary_details(conn, user_id: str, trip_id: str) -> Optional[Dict[str
         "total_days": total_days,
         "status": row[5],
         "total_estimated_cost": row[6],
-        "summary_notes": row[7],
+        "summary_notes": ' '.join(filter(None, [row[7]] + ([day['note'] for day in custom_schedule['days']] if custom_schedule else []))),
         "days": list(days_dict.values()),
         "created_at": str(row[8]),
         "updated_at": str(row[9])

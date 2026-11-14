@@ -12,7 +12,7 @@ def test_unified_trip_creation_and_persistence(client):
     })
     assert auth_resp.status_code == 200
     user_id = auth_resp.json()["user_id"]
-    client.headers.update({"Authorization": f"Bearer {auth_resp.json()['token']}"})
+    client.headers['Authorization'] = 'Bearer ' + auth_resp.json()['token']
 
     # 2. Create basic profile
     profile_payload = {
@@ -31,8 +31,8 @@ def test_unified_trip_creation_and_persistence(client):
     }
     p_resp = client.post(f"/api/profile/{user_id}", json=profile_payload)
     assert p_resp.status_code == 200
-    history_resp = client.post("/api/profile/history/choice", json={"choice": "none"})
-    assert history_resp.status_code == 200, history_resp.text
+    history = client.post('/api/profile/history/choice', json={'choice': 'none'})
+    assert history.status_code == 200, history.text
 
     # 3. Create a trip with companion specs, children, elderly, departure, and trip-specific preferences
     trip_payload = {
@@ -138,7 +138,7 @@ def test_companion_filtering_logic():
     assert "peaceful_monastery" in ids_kids
 
 
-def test_dynamic_trip_planning_with_companions(client):
+def test_dynamic_trip_planning_with_companions(client, onboard_user):
     # Test dynamic trip planning with companion parameters
     auth_resp = client.post("/api/auth", json={
         "provider": "email",
@@ -147,6 +147,7 @@ def test_dynamic_trip_planning_with_companions(client):
         "display_name": "Dynamic Tester"
     })
     user_id = auth_resp.json()["user_id"]
+    onboard_user(auth_resp.json())
 
     plan_payload = {
         "user_id": user_id,

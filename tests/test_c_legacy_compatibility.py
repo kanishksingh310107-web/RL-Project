@@ -6,18 +6,22 @@ fixtures adapt setup only; every original test body/assertion is reused.
 import importlib.util
 from pathlib import Path
 import pytest
+from app.database import get_connection
 
 
 @pytest.fixture
 def demo_user(client):
-    response=client.post('/api/auth',json={'provider':'email','identifier':'c-legacy@example.test',
-        'password':'pass1234','display_name':'C legacy regression','mode':'signup'})
+    from app.db_migrations_a import migrate_a
+    migrate_a()
+    response=client.post('/api/account/guest',json={'guest_id':'person_c_legacy_test_identity'})
     assert response.status_code==200,response.text
     user=response.json()['user_id']
-    client.headers.update({'Authorization':f"Bearer {response.json()['token']}"})
+    client.headers['Authorization']='Bearer '+response.json()['token']
     profile=client.post('/api/profile/'+user,json={'travel_goals':['nature','culture'],
         'place_interests':['mountains','historic'],'preferred_climate':'cool','budget_tier':'mid_range','companions':'partner'})
     assert profile.status_code==200,profile.text
+    # This fixture exercises C's legacy assertions, independently of A's
+    # questionnaire tests. The merged create route now requires the gate.
     history=client.post('/api/profile/history/choice',json={'choice':'none'})
     assert history.status_code==200,history.text
     return user
