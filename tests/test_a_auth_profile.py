@@ -87,6 +87,8 @@ def test_history_validation_and_profile_gate(client):
     with get_connection() as conn:
         conn.execute("""INSERT INTO traveller_profiles(user_id,interests,pace,crowd_tolerance,structure,companions,has_children,budget_tier,preferred_climate,planning_experience,raw_answers_json)
           VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (user["user_id"], "[]", .5, .5, .5, "solo", 0, "balanced", "mild", "intermediate", '{"age_group":"18_24","travel_experience":"occasional","companions":"solo","planning_approach":"plan_essentials","travel_goals":["nature","culture"],"place_interests":["mountains","history"],"experience_preference":"balanced_mix","dietary":["none"],"preferred_climate":"mild","budget_tier":"balanced","assistance_autonomy":"shortlist_explain"}'))
+    with get_connection() as conn:
+        conn.execute("UPDATE user_profile SET residence_country='IN',residence_state='Tamil Nadu',residence_city='Tirunelveli',preferred_currency='INR' WHERE user_id=?",(user['user_id'],))
     client.post("/api/profile/history/choice", headers=headers, json={"choice": "provided"})
     assert client.get("/api/profile/status", headers=headers).json() == {"profile_complete": True}
     try:

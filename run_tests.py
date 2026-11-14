@@ -85,6 +85,7 @@ def run_tests():
 
     # 4. Profile API test
     prof_payload = {
+        "residence_country":"IN","residence_state":"Tamil Nadu","residence_city":"Tirunelveli",
         **sample_profile,
         "planning_experience": "intermediate"
     }

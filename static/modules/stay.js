@@ -209,7 +209,7 @@
           if (!res.ok) throw new Error("Failed to load hotel options");
           const data = await res.json();
 
-          container.querySelector("#stayBudgetBandText").textContent = `(Estimated Budget: ~₹${data.nightly_budget_estimate_inr}/night)`;
+          container.querySelector("#stayBudgetBandText").textContent = `(Estimated Budget: ${formatINR(data.nightly_budget_estimate_inr)}/night)`;
 
           if (data.active_stay) {
             container.querySelector("#stayActiveBadge").classList.remove("hidden");

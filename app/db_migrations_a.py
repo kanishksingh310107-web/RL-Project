@@ -169,5 +169,10 @@ def migrate_a() -> None:
                         ON users(username_normalized) WHERE username_normalized IS NOT NULL""")
 
         conn.execute("INSERT OR IGNORE INTO user_profile(user_id) SELECT id FROM users")
+        for column in ('residence_country','residence_state','residence_city','preferred_currency'):
+            _add_column(conn,'user_profile',column,'TEXT')
+        conn.execute('CREATE TABLE IF NOT EXISTS a_public_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        conn.execute('''CREATE TABLE IF NOT EXISTS a_currency_rates (
+            currency TEXT PRIMARY KEY, rate REAL NOT NULL, as_of TEXT NOT NULL, fetched_at TEXT NOT NULL)''')
         _migrate_legacy_history(conn)
         conn.commit()

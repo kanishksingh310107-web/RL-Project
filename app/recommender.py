@@ -1337,6 +1337,7 @@ def score_destination_for_user(
         "practical_considerations": dest.get("practical_considerations", "Check visa regulations and book seasonal activities ahead."),
         "budget_tier": dest["budget_tier"].title(),
         "estimated_cost": dest["estimated_cost"],
+        "estimated_cost_inr": DESTINATIONS_BY_ID.get(dest['id'],{}).get('estimated_cost_inr'),
         "best_season_and_weather": ", ".join(dest["best_seasons"]),
         "limitations_or_uncertainties": dest["limitations_or_uncertainties"],
         "warnings": warnings,
@@ -1366,8 +1367,9 @@ def get_categorized_recommendations(
     shortlist_set = set(shortlisted_ids or [])
 
     # Serve 100% authentic Indian destinations for user exploration and recommendations
+    from app.residence import is_home_area
     indian_destinations = [d for d in DESTINATIONS if d.get("country") == "India"]
-    candidate_pool = indian_destinations if indian_destinations else DESTINATIONS
+    candidate_pool = [d for d in (indian_destinations if indian_destinations else DESTINATIONS) if not is_home_area(d,profile)]
 
     scored = []
     for d in candidate_pool:
@@ -1423,6 +1425,8 @@ def get_categorized_recommendations(
     else:
         basis = "Selected around your starting profile interests, preferred climate, and travel budget."
 
+    if profile.get('residence_country')=='IN' and profile.get('residence_city'):
+        basis += ' Your home town or city is excluded.'
     return {
         "basis_summary": basis,
         "total_candidates": total_candidates,

@@ -19,6 +19,7 @@ def c_trip(client):
     demo_user=auth.json()['user_id']
     client.headers['Authorization']='Bearer '+auth.json()['token']
     profile=client.post('/api/profile/'+demo_user,json={'travel_goals':['culture'],
+        'residence_country':'IN','residence_state':'Tamil Nadu','residence_city':'Tirunelveli',
         'place_interests':['historic'],'preferred_climate':'cool','budget_tier':'mid_range','companions':'partner'})
     assert profile.status_code==200,profile.text
     tid,iid=uuid.uuid4().hex,uuid.uuid4().hex

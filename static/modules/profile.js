@@ -152,7 +152,7 @@
     if (!res.ok) {
       const detail = typeof data.detail === "object" ? data.detail : {};
       const error = new Error(detail.detail || data.detail || "Could not check your profile. Please try again.");
-      error.code = detail.code;
+      error.code = data.code || detail.code;
       error.status = res.status;
       throw error;
     }
@@ -170,12 +170,16 @@
   let gateCheckInFlight = null;
 
   async function openQuestionnaire() {
+    if (typeof state !== 'undefined' && !state.currentProfile?.residence_country) {
+      if (typeof editProfile === 'function') editProfile();
+      return;
+    }
     ensurePanel(); await loadHistory(); byId("aHistoryPanel").classList.remove("hidden");
     const choice = byId("aHistoryChoice");
     choice.querySelectorAll("button").forEach(b => b.classList.remove("hidden"));
-    const state = await fetch("/api/profile/history").then(r => r.ok ? r.json() : null).catch(() => null);
-    if (state?.history_choice === "provided") choice.querySelector("button:last-child").textContent = "Add another past trip";
-    if (state?.history_choice === "none") choice.querySelector("button:last-child").textContent = "Add past trips instead";
+    const historyState = await fetch("/api/profile/history").then(r => r.ok ? r.json() : null).catch(() => null);
+    if (historyState?.history_choice === "provided") choice.querySelector("button:last-child").textContent = "Add another past trip";
+    if (historyState?.history_choice === "none") choice.querySelector("button:last-child").textContent = "Add past trips instead";
   }
 
   function setGateState(incomplete) {

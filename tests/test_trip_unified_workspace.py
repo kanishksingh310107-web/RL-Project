@@ -16,6 +16,7 @@ def test_unified_trip_creation_and_persistence(client):
 
     # 2. Create basic profile
     profile_payload = {
+        "residence_country":"IN","residence_state":"Tamil Nadu","residence_city":"Tirunelveli",
         "age_group": "25_34",
         "travel_experience": "occasional",
         "companions": "family",

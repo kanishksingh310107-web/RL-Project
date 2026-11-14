@@ -2,6 +2,8 @@
 import uuid
 import secrets
 import hashlib
+import re
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
 from google.oauth2 import id_token
@@ -22,25 +24,42 @@ PBKDF2_ITERATIONS = 100_000
 
 def set_google_client_id(client_id: str):
     global GOOGLE_CLIENT_ID
-    GOOGLE_CLIENT_ID = client_id.strip()
+    cleaned = client_id.strip()
+    if not re.fullmatch(r'[A-Za-z0-9_-]+\.apps\.googleusercontent\.com',cleaned):
+        raise ValueError('Enter a valid Google OAuth Web client ID.')
+    with get_connection() as conn:
+        conn.execute('INSERT INTO a_public_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+                     ('google_client_id',cleaned))
+    GOOGLE_CLIENT_ID = cleaned
 
 def get_google_client_id() -> str:
-    return GOOGLE_CLIENT_ID
+    configured = get_setting('GOOGLE_CLIENT_ID','').strip()
+    if configured:
+        return configured
+    try:
+        with get_connection() as conn:
+            row = conn.execute('SELECT value FROM a_public_settings WHERE key=?',('google_client_id',)).fetchone()
+        return row[0] if row else GOOGLE_CLIENT_ID
+    except sqlite3.OperationalError:
+        return GOOGLE_CLIENT_ID
 
 def verify_google_credential(credential: str) -> Dict[str, Any]:
     """Verifies a Google ID token and returns authentication data.
     Uses the stable ``sub`` claim as the internal identifier.
     """
     try:
-        if not GOOGLE_CLIENT_ID:
+        client_id = get_google_client_id()
+        if not client_id:
             raise ValueError('Google sign-in is not configured on this site. Use email sign-in instead.')
-        id_info = id_token.verify_oauth2_token(credential, google_requests.Request(), GOOGLE_CLIENT_ID)
+        id_info = id_token.verify_oauth2_token(credential, google_requests.Request(), client_id)
         sub = id_info.get('sub')
         email = id_info.get('email')
         if not sub:
             raise ValueError('Google token missing sub claim.')
         if not email:
             raise ValueError('Google token missing email claim.')
+        if id_info.get('email_verified') is not True:
+            raise ValueError('Use a Google account with a verified email address.')
         name = id_info.get('name') or email.split('@')[0]
         picture = id_info.get('picture')
         # Authenticate or register using ``sub`` as stable identifier
@@ -52,8 +71,8 @@ def verify_google_credential(credential: str) -> Dict[str, Any]:
             avatar_url=picture,
         )
         return result
-    except Exception as e:
-        raise ValueError(f'Google sign in failed: {str(e)}')
+    except (ValueError,TypeError) as exc:
+        raise ValueError('Google could not verify this sign-in. Please select your account again.') from exc
 
 # Password hashing with PBKDF2-HMAC-SHA256 (100,000 rounds) and backward compatibility
 def hash_password(password: str, salt: Optional[str] = None) -> Tuple[str, str]:

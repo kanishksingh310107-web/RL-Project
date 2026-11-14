@@ -136,13 +136,16 @@ def test_missing_profile_works(client):
 def test_profile_interests_change_best_for_you(client):
     """User questionnaire answers in raw_answers_json must match destination tags and affect ranking."""
     # User A: nature lover
-    u_nature = client.post(
+    nature_auth = client.post(
         "/api/auth",
         json={"provider": "email", "identifier": "nature@test.com", "password": "pass1234", "display_name": "Nature"}
-    ).json()["user_id"]
+    ).json()
+    u_nature=nature_auth['user_id']
+    client.headers['Authorization']='Bearer '+nature_auth['token']
     client.post(
         f"/api/profile/{u_nature}",
-        json={"travel_goals": ["nature", "adventure"], "place_interests": ["mountains"]}
+        json={"travel_goals": ["nature", "adventure"], "place_interests": ["mountains"],
+              "residence_country":"IN","residence_state":"Tamil Nadu","residence_city":"Tirunelveli"}
     )
 
     r_nature = client.get(f"/api/ranking/{u_nature}")

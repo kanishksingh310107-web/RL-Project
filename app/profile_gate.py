@@ -276,11 +276,15 @@ def _refresh_complete(conn, user_id: str) -> bool:
     prof = conn.execute("SELECT * FROM traveller_profiles WHERE user_id=?", (user_id,)).fetchone()
     try:
         profile = dict(prof) if prof else {}
+        home = conn.execute('SELECT * FROM user_profile WHERE user_id=?',(user_id,)).fetchone()
+        if home:
+            profile.update({key:home[key] for key in ('residence_country','residence_state','residence_city','preferred_currency')})
         if prof and prof["raw_answers_json"]:
             raw = json.loads(prof["raw_answers_json"])
             profile["raw_answers"] = raw
             profile.update({k: v for k, v in raw.items() if k not in profile})
-        basic_ok = bool(prof) and not check_basic_missing(profile)
+        from app.residence import residence_missing
+        basic_ok = bool(prof) and not check_basic_missing(profile) and not residence_missing(profile)
     except Exception:
         basic_ok = False
     choice = conn.execute("SELECT history_choice FROM user_profile WHERE user_id=?", (user_id,)).fetchone()

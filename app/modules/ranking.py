@@ -482,6 +482,10 @@ def get_rankings(
     for dest in DESTINATIONS:
         dest_id = dest["id"]
         dest_name = dest["name"]
+        from app.residence import is_home_area
+        if is_home_area(dest,profile):
+            excluded_items.append({'id':dest_id,'name':dest_name,'reason':'Excluded because this is your home area'})
+            continue
 
         # Filter A: Closed flag
         if dest_id in closed_ids:

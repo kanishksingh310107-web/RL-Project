@@ -21,13 +21,32 @@ class AuthResponse(BaseModel):
     token: str
 
 class GoogleTokenRequest(BaseModel):
-    credential: str
+    credential: str = Field(min_length=20,max_length=8192)
 
 class GoogleClientConfig(BaseModel):
-    client_id: str
+    client_id: str = Field(pattern=r'^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$', max_length=200)
+
+    @field_validator('client_id',mode='before')
+    @classmethod
+    def trim_client_id(cls,value):
+        return value.strip() if isinstance(value,str) else value
 
 # Basic Starting Profile (Sections 1, 3, 4, 5, 6, 8 - ~30-60s setup)
 class ShortProfileCreate(BaseModel):
+    residence_country: Optional[str] = Field(default=None,max_length=2)
+    residence_state: Optional[str] = Field(default=None,max_length=100)
+    residence_city: Optional[str] = Field(default=None,max_length=100)
+    preferred_currency: Optional[str] = Field(default=None,max_length=3)
+
+    @field_validator('residence_country','residence_state','residence_city','preferred_currency',mode='before')
+    @classmethod
+    def normalise_home_text(cls,value,info):
+        if value is None:
+            return None
+        if not isinstance(value,str):
+            raise ValueError('Enter text for this field.')
+        value = value.strip()
+        return value.upper() if info.field_name in ('residence_country','preferred_currency') else value
     # Core survey fields
     age_group: str = "18_24"
     travel_experience: str = "occasional"
@@ -54,6 +73,10 @@ class ShortProfileCreate(BaseModel):
 
 # Profile response with RL state vector
 class ProfileResponse(BaseModel):
+    residence_country: Optional[str] = None
+    residence_state: Optional[str] = None
+    residence_city: Optional[str] = None
+    preferred_currency: str = 'INR'
     user_id: str
     profile_type: str
     interests: List[str]
@@ -210,6 +233,7 @@ class PrecisionProfileResponse(BaseModel):
 
 # Recommendations models
 class DestinationRecommendation(BaseModel):
+    estimated_cost_inr: Optional[float] = None
     id: str
     name: str
     country: str

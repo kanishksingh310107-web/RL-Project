@@ -43,7 +43,7 @@ from app import precision as prec
 from app.planning.budget import (
     calculate_minimum_trip_budget, validate_trip_budget, adapt_itinerary_to_budget
 )
-from app.profile_gate import require_profile_complete
+from app.profile_gate import require_profile_complete, current_user
 from app.schedule_preferences import (
     LEGACY_SCHEDULE_PREFS, normalize_schedule_preferences,
 )
@@ -190,31 +190,69 @@ def login_or_signup(payload: AuthRequest):
 # Real Google Identity Services (GIS) token login
 @router.post("/auth/google-token", response_model=AuthResponse)
 def google_token_login(payload: GoogleTokenRequest):
+    if not get_google_client_id():
+        raise HTTPException(503,{'detail':'Google sign-in needs a Google OAuth Web client ID. Use email or guest sign-in until setup is complete.','code':'GOOGLE_NOT_CONFIGURED'})
     try:
         return verify_google_credential(payload.credential)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error: {str(e)}")
+        raise HTTPException(401,{'detail':str(e),'code':'GOOGLE_INVALID_CREDENTIAL','field':'credential'})
+    except Exception:
+        raise HTTPException(503,{'detail':'Google sign-in is temporarily unavailable. Please retry.','code':'GOOGLE_UNAVAILABLE'})
 
 # Get/Set Google Client ID
 @router.get("/config/google")
 def get_google_config():
-    return {"client_id": get_google_client_id()}
+    from app.core.config import get_setting
+    return {"client_id": get_google_client_id(), 'can_configure':get_setting('APP_ENV','development').lower()!='production' and not get_setting('GOOGLE_CLIENT_ID','').strip()}
 
 @router.post("/config/google")
 def set_google_config(payload: GoogleClientConfig):
+    from app.core.config import get_setting
+    if get_setting('APP_ENV','development').lower()=='production':
+        raise HTTPException(403,{'detail':'Configure Google sign-in through the server environment.','code':'CONFIGURATION_FORBIDDEN'})
+    if get_setting('GOOGLE_CLIENT_ID','').strip():
+        raise HTTPException(409,{'detail':'Google sign-in is managed through the server environment. Update its configured client ID there.','code':'CONFIGURATION_MANAGED'})
     set_google_client_id(payload.client_id)
     return {"status": "ok", "client_id": payload.client_id}
 
+
+@router.get('/config/residence')
+def residence_options():
+    from app.residence import COUNTRIES,CURRENCIES,INDIAN_STATES,METADATA
+    return dict(countries=sorted(COUNTRIES.values(),key=lambda row:row['name']),currencies=sorted(CURRENCIES),
+                indian_states=list(INDIAN_STATES),source=METADATA['source'],license=METADATA['license'])
+
+
+@router.get('/currency/rate')
+def currency_rate(currency: str = Query('INR',min_length=3,max_length=3)):
+    from app.services.currency import display_rate
+    try:
+        return display_rate(currency)
+    except ValueError as exc:
+        raise HTTPException(422,{'detail':str(exc),'code':'INVALID_CURRENCY','field':'currency'})
+
 # Save traveller profile (Basic Profile)
 @router.post("/profile/{user_id}", response_model=ProfileResponse)
-def save_profile(user_id: str, profile: ShortProfileCreate):
+def save_profile(user_id: str, profile: ShortProfileCreate, actor=Depends(current_user)):
+    if actor['id'] != user_id:
+        raise HTTPException(403,{'detail':'You cannot edit another account\'s profile.','code':'USER_MISMATCH','field':'user_id'})
     user = get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    profile_dict = profile.model_dump()
+    from app.residence import validate_residence
+    with get_connection() as conn:
+        saved_home = conn.execute('SELECT * FROM user_profile WHERE user_id=?',(user_id,)).fetchone()
+    home_input = profile.model_dump()
+    if 'residence_country' not in profile.model_fields_set and saved_home and saved_home['residence_country']:
+        for key in ('residence_country','residence_state','residence_city','preferred_currency'):
+            if key not in profile.model_fields_set:
+                home_input[key] = saved_home[key]
+    try:
+        home = validate_residence(*(home_input[key] for key in ('residence_country','residence_state','residence_city','preferred_currency')))
+    except ValueError as exc:
+        raise HTTPException(422, {'detail':str(exc),'code':'INVALID_RESIDENCE','field':getattr(exc,'field','residence_country')})
+    profile_dict = dict(profile.model_dump(), **home)
 
     import app.database as database
     is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
@@ -233,7 +271,7 @@ def save_profile(user_id: str, profile: ShortProfileCreate):
     summary = PreferenceVectorizer.summarize_profile(profile_dict)
     state_vector_json = json.dumps(state_vector)
 
-    raw_json = json.dumps(profile.raw_answers or profile_dict)
+    raw_json = json.dumps(dict(profile.raw_answers or profile_dict, **home))
 
     # Save in database
     with get_connection() as conn:
@@ -271,9 +309,15 @@ def save_profile(user_id: str, profile: ShortProfileCreate):
             state_vector_json,
             raw_json
         ))
+        conn.execute('''INSERT INTO user_profile(user_id,residence_country,residence_state,residence_city,preferred_currency)
+            VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET residence_country=excluded.residence_country,
+            residence_state=excluded.residence_state,residence_city=excluded.residence_city,
+            preferred_currency=excluded.preferred_currency,profile_complete=0''',
+            (user_id,home['residence_country'],home['residence_state'],home['residence_city'],home['preferred_currency']))
         conn.commit()
 
     return ProfileResponse(
+        **home,
         user_id=user_id,
         profile_type="short",
         interests=profile.interests or profile.place_interests or profile.travel_goals,
@@ -297,12 +341,14 @@ def save_profile(user_id: str, profile: ShortProfileCreate):
         feature_dimension=len(state_vector),
         feature_names=feature_names,
         summary_text=summary,
-        raw_answers=profile.raw_answers
+        raw_answers=json.loads(raw_json)
     )
 
 # Get profile
 @router.get("/profile/{user_id}", response_model=ProfileResponse)
-def get_profile(user_id: str):
+def get_profile(user_id: str, actor=Depends(current_user)):
+    if actor['id'] != user_id:
+        raise HTTPException(403,{'detail':'You cannot view another account\'s profile.','code':'USER_MISMATCH','field':'user_id'})
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM traveller_profiles WHERE user_id = ?", (user_id,))
@@ -310,6 +356,9 @@ def get_profile(user_id: str):
         
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+        saved_home = conn.execute('SELECT * FROM user_profile WHERE user_id=?',(user_id,)).fetchone()
+        home = {key:saved_home[key] if saved_home else None for key in ('residence_country','residence_state','residence_city','preferred_currency')}
+        home['preferred_currency'] = home['preferred_currency'] or 'INR'
         
         interests = json.loads(row["interests"])
         state_vector = json.loads(row["stated_vector_json"])
@@ -344,6 +393,7 @@ def get_profile(user_id: str):
         has_precision = cursor.fetchone() is not None
 
         return ProfileResponse(
+            **home,
             user_id=user_id,
             profile_type=row["profile_type"],
             interests=interests,
@@ -993,8 +1043,10 @@ def get_profile_features(user_id: str, format: str = Query("named", pattern="^(n
 
 
 @router.get("/profile/{user_id}/export")
-def export_profile(user_id: str):
+def export_profile(user_id: str, actor=Depends(current_user)):
     """Returns model-agnostic profile export with standardized answers and LLM prompt context."""
+    if actor['id'] != user_id:
+        raise HTTPException(403,{'detail':'You cannot export another account\'s profile.','code':'USER_MISMATCH','field':'user_id'})
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))

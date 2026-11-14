@@ -1,7 +1,8 @@
 function formatINR(val) {
   if (val == null || isNaN(val)) return "₹0";
   const num = Math.round(Number(val));
-  return "₹" + num.toLocaleString("en-IN");
+  const text = "₹" + num.toLocaleString("en-IN");
+  return window.UserCurrency?.formatAmount(Number(val), text) || text;
 }
 
 // Frontend script for RL Travel Guide
@@ -21,6 +22,7 @@ const state = {
 
   // Basic Profile State (starts with none pre-selected, no assumptions)
   basicAnswers: {
+    residence_country: null, residence_state: null, residence_city: null, preferred_currency: null,
     age_group: null,
     travel_experience: null,
     companions: null,
@@ -188,7 +190,7 @@ const PREC_KIND_STYLE = {
 // On Page Load
 document.addEventListener("DOMContentLoaded", async () => {
   await loadQuestionnaireData();
-  await initGoogleGIS();
+  initGoogleGIS();
   await checkPersistedSession();
 });
 
@@ -386,6 +388,7 @@ async function sendAuthRequest(payload) {
 }
 
 // Google GIS SDK Hook
+// A: basic fallback; google_login.js installs the SDK retry/setup-aware handlers.
 let googleGisInitializedFor = null;
 async function initGoogleGIS() {
   try {
@@ -527,7 +530,9 @@ function logout() {
 }
 
 function resetAnswers() {
+  window.UserCurrency?.clear();
   state.basicAnswers = {
+    residence_country: null, residence_state: null, residence_city: null, preferred_currency: null,
     age_group: null,
     travel_experience: null,
     companions: null,
@@ -582,6 +587,9 @@ window.addEventListener("keydown", (e) => {
 
 function goToStep(step) {
   if (step === 2 && state.currentStep === 1) {
+    const home = window.ResidenceForm?.read();
+    if (!home) return;
+    Object.assign(state.basicAnswers,home);
     if (!state.basicAnswers.age_group && !state.basicAnswers.travel_experience && !state.basicAnswers.companions) {
       alert("Please select at least one background option (age, experience, or companions) before continuing.");
       return;
@@ -599,6 +607,7 @@ function goToStep(step) {
   }
 
   state.currentStep = step;
+  if (step===1) window.ResidenceForm?.render(state.basicAnswers);
   [1, 2, 3].forEach(s => {
     document.getElementById(`step-${s}`).classList.toggle("hidden", s !== step);
   });
@@ -615,6 +624,7 @@ function goToStep(step) {
 }
 
 function renderBasicForm() {
+  window.ResidenceForm?.render(state.basicAnswers);
   if (!state.questionnaire) return;
   const q = state.questionnaire.questions || {};
 
@@ -835,7 +845,14 @@ async function handleProfileSubmit(e) {
     return;
   }
 
+  Object.assign(state.basicAnswers,window.ResidenceForm?.read(false) || {});
+  const home = window.ResidenceForm?.read();
+  if (!home) { goToStep(1); setTimeout(()=>window.ResidenceForm?.read(),0); return; }
+  Object.assign(state.basicAnswers,home);
+  const submit = e.submitter || document.querySelector('#profileForm button[type="submit"]');
+  if (submit) submit.disabled=true;
   const payload = {
+    ...home,
     age_group: state.basicAnswers.age_group,
     travel_experience: state.basicAnswers.travel_experience,
     companions: state.basicAnswers.companions,
@@ -862,7 +879,9 @@ async function handleProfileSubmit(e) {
       body: JSON.stringify(payload)
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(formatApiError(data, "Save failed"));
+    if (!res.ok) {
+      const error=new Error(formatApiError(data,"Save failed"));error.field=data.field;throw error;
+    }
 
     state.currentUser.has_profile = true;
     localStorage.setItem("rl_travel_user", JSON.stringify(state.currentUser));
@@ -872,7 +891,18 @@ async function handleProfileSubmit(e) {
     renderDashboard(data);
     showView("dashboard");
   } catch (err) {
-    alert("Error: " + err.message);
+    const fields={residence_country:'residenceCountry',residence_state:'residenceState',residence_city:'residenceCity',preferred_currency:'preferredCurrency'};
+    const target=fields[err.field];
+    if(target){
+      goToStep(1);
+      setTimeout(()=>{
+        const inline=document.getElementById(target+'Error');
+        if(inline)inline.textContent=err.message;
+        document.getElementById(target)?.focus();
+      },0);
+    } else alert("Error: " + err.message);
+  } finally {
+    if (submit) submit.disabled=false;
   }
 }
 
@@ -881,6 +911,10 @@ function editProfile() {
     const p = state.currentProfile;
     const raw = p.raw_answers || {};
     state.basicAnswers = {
+      residence_country: p.residence_country || raw.residence_country || null,
+      residence_state: p.residence_state || raw.residence_state || null,
+      residence_city: p.residence_city || raw.residence_city || null,
+      preferred_currency: p.preferred_currency || raw.preferred_currency || null,
       age_group: p.age_group || raw.age_group || null,
       travel_experience: p.travel_experience || raw.travel_experience || null,
       companions: p.companions || raw.companions || null,
@@ -909,6 +943,7 @@ async function loadUserProfile(userId) {
     if (res.ok) {
       const data = await res.json();
       state.currentProfile = data;
+      if (!data.residence_country) { editProfile(); return; }
       renderDashboard(data);
       showView("dashboard");
     } else {
@@ -953,6 +988,7 @@ async function renderDashboard(profile) {
   });
 
   // Load the unified personal profile state
+  await window.UserCurrency?.setProfile(profile);
   await syncUnifiedProfileCard(state.currentUser.user_id);
 
   // Load travel recommendations
@@ -1243,6 +1279,7 @@ function renderRecommendationCard(item, category) {
         </div>
 
         <!-- Tagline & Because you said attribution -->
+        ${Number.isFinite(item.estimated_cost_inr) ? `<p class="text-xs font-semibold text-slate-700">Indicative trip estimate: ${escapeHtml(formatINR(item.estimated_cost_inr))}</p>` : ''}
         ${item.because_you_said ? `
           <div class="p-2 rounded-lg bg-indigo-50/90 border border-indigo-100 text-[11px] text-indigo-900 leading-snug">
             <span class="font-bold text-indigo-700 block text-[10px] uppercase tracking-wider mb-0.5"><i class="fa-solid fa-sparkles text-amber-500 mr-1"></i>Because you said:</span>
@@ -2924,6 +2961,7 @@ function onBudgetNumberInputChange(val) {
 }
 
 function updateBudgetAllowanceLabels(numVal) {
+  window.UserCurrency?.updateBudgetPreview(numVal);
   const est = state.activeBudgetEstimate;
   const allowanceLabel = document.getElementById("sliderAllowanceLabel");
   const warningBox = document.getElementById("tripBudgetWarningBox");
@@ -2968,6 +3006,12 @@ function updateBudgetAllowanceLabels(numVal) {
 }
 
 function toggleTripFormModal() {
+  // Match the planner's lock for every entry point, including revisit links.
+  if (!state.profileStatus?.complete) {
+    closeModal("tripFormModal");
+    openPersonalProfileModal();
+    return;
+  }
   editingTripId = null;
   document.getElementById('tripEditOptions').classList.add('hidden');
   document.getElementById('tripDestSelect').disabled = false;

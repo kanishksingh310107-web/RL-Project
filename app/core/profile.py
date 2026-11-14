@@ -149,6 +149,9 @@ def load_profile(user_id: str) -> Dict[str, Any]:
             raw_answers_json = base_row["raw_answers_json"] if "raw_answers_json" in base_row.keys() else None
             raw_answers: Dict[str, Any] = json.loads(raw_answers_json) if raw_answers_json else {}
             profile["raw_answers"] = raw_answers
+            home = conn.execute('SELECT * FROM user_profile WHERE user_id=?',(user_id,)).fetchone()
+            if home:
+                profile.update({key:home[key] for key in ('residence_country','residence_state','residence_city','preferred_currency')})
 
             # Companions
             comp = base_row["companions"] or raw_answers.get("companions", "alone")
