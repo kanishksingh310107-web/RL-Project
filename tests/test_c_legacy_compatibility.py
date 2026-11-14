@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 """Run existing live assertions unchanged using the current signup contract.
 
 The upstream shared fixture omits the now-required auth mode. These local
@@ -31,10 +32,12 @@ def demo_user(client):
 @pytest.fixture
 def demo_trip(client,demo_user):
     response=client.post('/api/trips/'+demo_user,json={'destination_id':'kyoto_japan','destination_name':'Kyoto',
-        'start_date':'2026-11-10','end_date':'2026-11-14','travellers_count':2,'total_budget':1200,
+        'start_date':str(date.today()+timedelta(days=7)),'end_date':str(date.today()+timedelta(days=11)),'travellers_count':2,'total_budget':1200,
         'specific_interests':['culture_history','food_dining']})
     assert response.status_code==200,response.text
     trip=response.json()['id']
+    with get_connection() as conn:
+        conn.execute("UPDATE trips SET start_date='2026-11-10',end_date='2026-11-14' WHERE id=?",(trip,))
     generated=client.post(f'/api/itinerary/generate/{trip}?user_id={demo_user}')
     assert generated.status_code==200,generated.text
     return demo_user,trip

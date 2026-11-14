@@ -84,6 +84,10 @@ def estimate_cost(trip, activities=None, minimum=False):
         from app.database import get_connection
         with get_connection() as conn:
             exists = conn.execute('SELECT id FROM itineraries WHERE trip_id=?',(trip['id'],)).fetchone()
+            if exists and not minimum:
+                from app.itinerary_generator import get_itinerary_details
+                visible = get_itinerary_details(conn,trip['user_id'],trip['id'])
+                if visible and visible.get('cost_estimate'): return visible['cost_estimate']
             if exists:
                 activities = [dict(r) for r in conn.execute("SELECT * FROM itinerary_activities WHERE itinerary_id=? AND status != 'rejected'",(exists[0],))]
     if activities is None:

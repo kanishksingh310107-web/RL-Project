@@ -10,7 +10,10 @@ def party_type(party):
 
 def trip_type(trip, party=None):
     """Canonical relationship type, preserving explicit adult-only family."""
-    explicit = trip.get('trip_type')
+    prefs=trip.get('trip_preferences') or trip.get('trip_preferences_json') or {}
+    if isinstance(prefs,str):
+        prefs=json.loads(prefs)
+    explicit = trip.get('trip_type') or prefs.get('trip_type')
     if explicit in ('solo', 'couple', 'friends', 'family'):
         return explicit
     companion = (trip.get('companions') or '').strip().lower()

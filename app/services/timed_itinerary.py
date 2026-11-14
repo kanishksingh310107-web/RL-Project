@@ -547,7 +547,7 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             is_pinned = bool(activity.get('is_pinned') or activity.get('is_fixed_booking'))
             if scheduled >= daily_limit and not is_pinned:
                 break
-            if activity.get('id') in used and not is_pinned:
+            if activity.get('id') in used and not is_pinned and 'final_day_activities' in prefs:
                 notes.append(f"Repeated place {activity.get('name') or activity.get('title') or activity['id']} was left unscheduled.")
                 continue
             is_shopping = activity.get('category') in ('shopping_local','shopping')
@@ -1082,7 +1082,7 @@ def regenerate_timed_itinerary_for_trip(conn: sqlite3.Connection, trip_id: str, 
                 'final_day_activities','luggage_storage','terminal_arrival_buffer_minutes',
                 'station_arrival_buffer_minutes','terminal_journey_minutes','lunch_start_time',
                 'lunch_end_time','lunch_duration_minutes','dinner_start_time','dinner_end_time',
-                'rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr'):
+                'dinner_duration_minutes','rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr'):
         if key in trip_prefs:
             prefs[key] = trip_prefs[key]
     if trip_prefs.get('hotel_checkin_time'):

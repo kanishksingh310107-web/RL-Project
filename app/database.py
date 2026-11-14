@@ -1,13 +1,18 @@
 # Database connection and tables using sqlite3
 import sqlite3
+from contextvars import ContextVar
 import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 DB_PATH = Path(__file__).resolve().parent.parent / "travel_guide.db"
+CONNECTION_OVERRIDE = ContextVar('trip_preview_connection', default=None)
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    override = CONNECTION_OVERRIDE.get()
+    if override is not None:
+        return override
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.row_factory = sqlite3.Row
     return conn

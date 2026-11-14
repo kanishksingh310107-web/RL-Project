@@ -37,7 +37,7 @@ def test_trip_budget_requires_whole_amount_and_same_day_is_valid():
 def test_unverified_google_mock_identity_is_never_accepted(client):
     response=client.post('/api/auth',json={'provider':'google','identifier':'someone@example.com'})
     assert response.status_code==403
-    assert response.json()['detail']['code']=='GOOGLE_VERIFICATION_REQUIRED'
+    assert response.json()['code']=='GOOGLE_VERIFICATION_REQUIRED'
 
 
 def test_new_trip_date_gate_uses_india_local_day(client,demo_user):

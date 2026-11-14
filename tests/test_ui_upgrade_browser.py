@@ -3,6 +3,7 @@
 Requires Playwright and its Chromium browser in the integration test environment.
 Uses the real static app with mocked APIs; it never calls external travel services.
 """
+import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -72,7 +73,7 @@ def ui(static_url):
         route.fulfill(status=status, json=result)
 
     with playwright.sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(channel=os.environ.get('TRAVEL_TEST_BROWSER_CHANNEL') or None)
         page = browser.new_page()
         page.route("**/api/**", mock)
         page.route("https://**", lambda route: route.abort())

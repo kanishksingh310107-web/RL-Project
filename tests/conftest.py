@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 """Shared pytest fixtures. Every test runs against a fresh temporary SQLite DB (never touches travel_guide.db)."""
 import pytest
 from fastapi.testclient import TestClient
@@ -108,10 +109,15 @@ def demo_trip(client, deep_user):
     demo_user = deep_user
     t = client.post(f"/api/trips/{demo_user}", json={
         "destination_id": "kyoto_japan", "destination_name": "Kyoto",
-        "start_date": "2026-11-10", "end_date": "2026-11-14", "travellers_count": 2,
+        "start_date": str(date.today()+timedelta(days=7)), "end_date": str(date.today()+timedelta(days=11)), "travellers_count": 2,
         "total_budget": 1200, "specific_interests": ["culture_history", "food_dining"]})
     assert t.status_code == 200, t.text
     trip_id = t.json()["id"]
+    # These existing legacy assertions describe a saved November trip. New-trip
+    # validation uses future dates; seed its historical dates after creation.
+    from app.database import get_connection
+    with get_connection() as conn:
+        conn.execute("UPDATE trips SET start_date='2026-11-10',end_date='2026-11-14' WHERE id=?",(trip_id,))
     g = client.post(f"/api/itinerary/generate/{trip_id}?user_id={demo_user}")
     assert g.status_code == 200, g.text
     return demo_user, trip_id

@@ -588,6 +588,7 @@ def c_activity_review(trip_id: str,activity_id: str,request: Request,payload: CR
             (json.dumps(payload.ratings),payload.notes,payload.action,run['id']))
         c_learn_review(conn,trip,slot,run,payload.ratings)
         if payload.action=='keep':
+            conn.execute('UPDATE trip_runtime SET version=version+1 WHERE trip_id=?',(trip_id,))
             c_advance(conn,trip_id)
         else:
             decision = {'action':payload.action,'run_id':run['id']}
@@ -713,6 +714,8 @@ async def c_preview(trip_id: str,request: Request,payload: CPreview):
     with c_transaction(trip_id,actor) as (conn,trip):
         slot = c_slot(conn,trip_id,payload.target_activity_id)
         c_upcoming(conn,trip_id,slot)
+        if payload.operation=='remove' and conn.execute('SELECT 1 FROM activity_runs WHERE trip_id=? AND activity_id=? AND ended_at IS NOT NULL',(trip_id,slot['activity_id'])).fetchone():
+            c_error(409,'A completed visit to this place is protected. Choose a different upcoming activity.','COMPLETED_ACTIVITY')
         if payload.operation=='remove' and json.loads(c_runtime(conn,trip_id)['pending_decision_json'])['action']!='change':
             c_error(422,'Choose change in the activity review to remove upcoming activities.','INVALID_OPERATION','operation')
         fingerprint = c_fingerprint(conn,trip_id)

@@ -165,8 +165,7 @@ class RemoveRequest(BaseModel):
     reason: Optional[str] = "not_interested"
 
 
-@router.get("/{trip_id}/timed-view")
-def get_timed_itinerary_view(trip_id: str,request: Request):
+def _timed_itinerary_data(trip_id: str,request: Request):
     """
     Returns an enriched day-by-day timeline view including:
     - Sightseeing activities
@@ -198,7 +197,7 @@ def get_timed_itinerary_view(trip_id: str,request: Request):
 
         # 3. Fetch all itinerary activities ordered by day and index
         act_rows = cursor.execute(
-            "SELECT * FROM itinerary_activities WHERE itinerary_id = ? ORDER BY day_number, order_index",
+            "SELECT * FROM itinerary_activities WHERE itinerary_id = ? AND status!='rejected' ORDER BY day_number, order_index",
             (itinerary["id"],)
         ).fetchall()
         activities = [_decode(a) for a in act_rows]
@@ -220,8 +219,8 @@ def get_timed_itinerary_view(trip_id: str,request: Request):
                         except (TypeError,ValueError): pass
                     grouped.setdefault(slot['day_number'],[]).append(slot)
                 schedule={'days':[{'day_number':day,'slots':slots,'note':None,
-                    'arrival_marker':trip.get('hotel_arrival_time') if day==1 else None,
-                    'departure_marker':trip.get('hotel_departure_time') if day==trip.get('duration_days') else None,
+                    'arrival_marker':conn.execute('SELECT hotel_arrival_time FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone()[0] if day==1 else None,
+                    'departure_marker':conn.execute('SELECT hotel_departure_time FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone()[0] if day==trip.get('duration_days') else None,
                     'total_cost':sum(float(s.get('estimated_cost') or 0) for s in slots)}
                     for day,slots in sorted(grouped.items())]}
             days_output = []
@@ -229,7 +228,7 @@ def get_timed_itinerary_view(trip_id: str,request: Request):
                 timeline = []
                 for slot in day['slots']:
                     original = next((a for a in activities if a['day_number']==day['day_number'] and a['activity_id']==slot['activity_id']),{})
-                    timeline.append(dict(original, type=slot['slot_type'], id=original.get('id'),
+                    timeline.append(dict(original, type=slot['slot_type'], id=original.get('id'), acceptance_status=original.get('status','proposed'), pinned=bool(original.get('is_pinned')), coordinates=[original.get('latitude'),original.get('longitude')] if original.get('latitude') is not None else None,
                         activity_id=slot['activity_id'], title=slot['title'], description=slot['description'],
                         time_range=slot['start_time']+' – '+slot['end_time'], duration_minutes=slot['duration_mins'],
                         cost_estimate=slot['estimated_cost'], can_edit=slot['slot_type'] in ('activity','shopping'),
@@ -395,8 +394,24 @@ def get_timed_itinerary_view(trip_id: str,request: Request):
                     block['cost_estimate'] = round(cost['cost_breakdown']['local_transit']['per_party']/cost['days'],2)
                 if block['type']=='meal':
                     block['cost_estimate'] = round(cost['cost_breakdown']['food']['per_party']/cost['days'],2)
-        return {"trip": trip, "itinerary": itinerary,"cost_estimate":cost,
+        return {"trip": trip, "itinerary": itinerary,"cost_estimate":shared["cost_estimate"],
             "trip_status": trip_status, "has_itinerary": True,"days": days_output}
+
+
+@router.get("/{trip_id}/timed-view")
+def get_timed_itinerary_view(trip_id: str, request: Request):
+    view=_timed_itinerary_data(trip_id,request)
+    for day in view.get('days',[]):
+        for block in day.get('timeline',[]):
+            if block.get('type')=='activity':
+                block['acceptance_status']=block.get('status','proposed')
+                block['pinned']=bool(block.get('is_pinned') or block.get('is_fixed_booking'))
+                if block.get('latitude') is not None and block.get('longitude') is not None:
+                    block['coordinates']=[block['latitude'],block['longitude']]
+    with get_connection() as conn:
+        history=conn.execute('SELECT id FROM trip_edit_history WHERE trip_id=? AND undone_at IS NULL ORDER BY created_at DESC,rowid DESC LIMIT 1',(trip_id,)).fetchone()
+        view['undo_token']=history['id'] if history else None
+    return view
 
 
 @router.post("/{trip_id}/finalize")

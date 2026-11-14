@@ -36,6 +36,8 @@ app.add_middleware(
 app.include_router(profile_gate_router)
 # end A: account/profile routes
 app.include_router(router)
+from app.trip_preview import router as trip_preview_router
+app.include_router(trip_preview_router)  # Integration: planning preview and confirmation.
 app.include_router(registry_router)
 for _m in discover():
     app.include_router(_m.router)

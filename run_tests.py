@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 # Tests for travel guide backend
 import sys
 from fastapi.testclient import TestClient
@@ -7,6 +8,15 @@ from app.database import init_db, get_connection
 from app import precision as prec
 from app import questionnaire as quest
 from app.questionnaire import QUESTIONS as BASE_QUESTIONS
+
+def verified_google_login(client, subject, display_name):
+    from unittest.mock import patch
+    from app import auth
+    with patch('app.api.get_google_client_id',return_value='test-client.apps.googleusercontent.com'), \
+         patch('app.auth.get_google_client_id',return_value='test-client.apps.googleusercontent.com'), \
+         patch.object(auth.id_token,'verify_oauth2_token',return_value={
+             'sub':subject,'email':subject+'@example.com','email_verified':True,'name':display_name}):
+        return client.post('/api/auth/google-token',json={'credential':'mock-signed-google-credential'})
 
 def run_tests():
     print("Running tests...")
@@ -33,11 +43,13 @@ def run_tests():
 
     # 2. Auth tests (google, email, phone)
     # google
-    g_res = client.post("/api/auth", json={
-        "provider": "google",
-        "identifier": "test@gmail.com",
-        "display_name": "Test User"
-    })
+    from unittest.mock import patch
+    from app import auth
+    with patch('app.api.get_google_client_id',return_value='test-client.apps.googleusercontent.com'), \
+         patch('app.auth.get_google_client_id',return_value='test-client.apps.googleusercontent.com'), \
+         patch.object(auth.id_token,'verify_oauth2_token',return_value={
+             'sub':'test-google-identity','email':'test@gmail.com','email_verified':True,'name':'Test User'}):
+        g_res = client.post('/api/auth/google-token',json={'credential':'mock-signed-google-credential'})
     assert g_res.status_code == 200
     user_id = g_res.json()["user_id"]
     client.headers['Authorization'] = 'Bearer ' + g_res.json()['token']
@@ -337,29 +349,17 @@ def run_precision_tests(client, user_id):
     # New: Google account isolation tests
     # First Google login (sub1)
     sub1 = "google-sub-111"
-    user1 = client.post("/api/auth", json={
-        "provider": "google",
-        "identifier": sub1,
-        "display_name": "User One"
-    })
+    user1 = verified_google_login(client, sub1, "User One")
     assert user1.status_code == 200
     uid1 = user1.json()["user_id"]
     # Re-login same sub should return same user
-    user1b = client.post("/api/auth", json={
-        "provider": "google",
-        "identifier": sub1,
-        "display_name": "User One"
-    })
+    user1b = verified_google_login(client, sub1, "User One")
     assert user1b.status_code == 200
     assert user1b.json()["user_id"] == uid1
 
     # Different Google sub
     sub2 = "google-sub-222"
-    user2 = client.post("/api/auth", json={
-        "provider": "google",
-        "identifier": sub2,
-        "display_name": "User Two"
-    })
+    user2 = verified_google_login(client, sub2, "User Two")
     assert user2.status_code == 200
     uid2 = user2.json()["user_id"]
     assert uid2 != uid1
@@ -384,8 +384,8 @@ def run_itinerary_and_rl_tests(client, user_id):
     trip_payload = {
         "destination_id": "kyoto_japan",
         "destination_name": "Kyoto",
-        "start_date": "2026-11-10",
-        "end_date": "2026-11-14",
+        "start_date": str(date.today()+timedelta(days=7)),
+        "end_date": str(date.today()+timedelta(days=11)),
         "travellers_count": 2,
         "total_budget": 1200.0,
         "currency": "USD",
@@ -435,6 +435,7 @@ def run_itinerary_and_rl_tests(client, user_id):
     accept_res = client.post(f"/api/itinerary/feedback/{user_id}", json={
         "itinerary_id": itin_id,
         "activity_id": act_to_accept,
+        "occurrence_id": sample_act["id"],
         "action_type": "accept"
     })
     assert accept_res.status_code == 200, accept_res.text
@@ -448,6 +449,7 @@ def run_itinerary_and_rl_tests(client, user_id):
     reject_res = client.post(f"/api/itinerary/feedback/{user_id}", json={
         "itinerary_id": itin_id,
         "activity_id": act_to_reject,
+        "occurrence_id": itin_data["days"][1]["activities"][0]["id"],
         "action_type": "reject",
         "rejection_reason": "too_crowded",
         "is_trip_specific": False
@@ -473,6 +475,7 @@ def run_itinerary_and_rl_tests(client, user_id):
     temp_res = client.post(f"/api/itinerary/feedback/{user_id}", json={
         "itinerary_id": itin_id,
         "activity_id": temp_act,
+        "occurrence_id": regen_data["days"][0]["activities"][1]["id"],
         "action_type": "reject",
         "rejection_reason": "schedule_conflict_today",
         "is_trip_specific": True
@@ -494,10 +497,11 @@ def run_itinerary_and_rl_tests(client, user_id):
     modify_res = client.post(f"/api/itinerary/feedback/{user_id}", json={
         "itinerary_id": itin_id,
         "activity_id": alt_act,
+        "occurrence_id": regen_data["days"][2]["activities"][0]["id"],
         "action_type": "modify",
         "replacement_activity_id": replacement_id
     })
-    assert modify_res.status_code == 200
+    assert modify_res.status_code == 200, modify_res.text
     print(f"[OK] MODIFY action verified with alternative replacement '{replacement_id}'")
 
     # 10. Academic Model Inspector LinUCB Policy Endpoint

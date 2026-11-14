@@ -10,12 +10,13 @@
 
   async function api(ctx,path,body,method='POST') {
     let response;
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+    const controller=typeof AbortController!=='undefined'?new AbortController():null;
+    const timer=controller && typeof setTimeout!=='undefined'?setTimeout(()=>controller.abort(),20000):null;
     try {
       response=await fetch(`/api/trips/${encodeURIComponent(ctx.tripId)}${path}${path.includes('?')?'&':'?'}user_id=${encodeURIComponent(ctx.userId)}`,{
-        method,signal:controller.signal,headers:{'Content-Type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify(body || {})})});
+        method,signal:controller?.signal,headers:{'Content-Type':'application/json'},...(method==='GET'?{}:{body:JSON.stringify(body || {})})});
     } catch (_) { throw new Error('Connection failed or timed out. Your entered information has been kept. Please retry.'); }
-    finally { clearTimeout(timer); }
+    finally { if(timer!==null)clearTimeout(timer); }
     let data;
     try { data=await response.json(); } catch (_) { throw new Error('The server response could not be read. Please retry.'); }
     if(!response.ok) {

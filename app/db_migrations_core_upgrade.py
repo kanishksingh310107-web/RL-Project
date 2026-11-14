@@ -39,10 +39,16 @@ def migrate_core_upgrade(conn=None):
             undone_at TEXT
         );
         CREATE INDEX IF NOT EXISTS core_edits_trip_time ON trip_edit_history(trip_id,created_at DESC);
+        CREATE TABLE IF NOT EXISTS trip_edit_previews (
+            token TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+            user_id TEXT NOT NULL, fingerprint TEXT NOT NULL, payload_json TEXT NOT NULL,
+            preview_json TEXT NOT NULL, confirmed_at TEXT
+        );
     """)
     activity_columns = {row[1] for row in conn.execute('PRAGMA table_info(itinerary_activities)')}
     for name, declaration in (
         ('is_pinned', 'INTEGER NOT NULL DEFAULT 0'),
+        ('must_visit', 'INTEGER NOT NULL DEFAULT 0'),
         ('is_fixed_booking', 'INTEGER NOT NULL DEFAULT 0'),
         ('booking_start_time', 'TEXT'),
         ('booking_end_time', 'TEXT'),

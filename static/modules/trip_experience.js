@@ -20,7 +20,7 @@
     else if (!editing && start < today) errors.tripStartDateInput = 'Departure cannot be before today in India.';
     if (!valid(end)) errors.tripEndDateInput = 'Choose a valid return date.';
     else if (valid(start) && end < start) errors.tripEndDateInput = 'Return must be on or after departure.';
-    else if (valid(start) && (Date.parse(end)-Date.parse(start))/86400000 >= 366) errors.tripEndDateInput = 'Keep trips to 366 days or fewer.';
+    else if (valid(start) && (Date.parse(end)-Date.parse(start))/86400000 >= 90) errors.tripEndDateInput = 'Keep trips to 90 days or fewer.';
     return errors;
   }
   function access(snapshot) {
@@ -97,7 +97,7 @@
       <fieldset data-te-capability="schedule_preferences_v2" disabled><legend>Meals, rest and shopping</legend><div class="te-grid">
       ${timeField('teLunchTime','Preferred lunch time','13:00')}${numberField('teLunchDuration','Lunch duration (minutes)',60,15,180)}
       ${timeField('teDinnerTime','Preferred dinner time','19:00')}${numberField('teDinnerDuration','Dinner duration (minutes)',60,15,180)}
-      ${numberField('teRestDuration','Daily rest (minutes)',30,0,180)}
+      <label>Daily rest<select id="teRestDuration"><option value="0">None</option><option value="20">Short · 20 minutes</option><option value="30" selected>Standard · 30 minutes</option><option value="60">Long · 60 minutes</option></select></label>
       <label><input type="checkbox" id="teShopping"> Include shopping</label>
       ${numberField('teShoppingDuration','Shopping time per trip (minutes)',90,15,480)}
       ${numberField('teShoppingBudget','Shopping budget, INR (optional)',0,0,1000000)}</div></fieldset>
@@ -106,6 +106,7 @@
     const discard=document.createElement('button');discard.type='button';discard.className='text-xs underline';discard.textContent='Discard saved form draft';
     discard.onclick=()=>{if(!confirm('Discard these unsaved form changes? This cannot be undone.'))return;try{sessionStorage.removeItem(draftKey());}catch(_){}form.reset();window.SchedulePrefs?.fill({});selectedDynamicLocation=null;el('tripDestSelect').value='';dirty=false;notice('Saved form draft discarded.',el('teFormError'));};
     form.prepend(discard);
+    const oldShopping=el('tripIncludeShoppingCheck')?.closest('label');if(oldShopping)oldShopping.hidden=true;
     el('hotelDepartureTime')?.parentElement.childNodes.forEach(n => {if(n.nodeType===3) n.textContent='Hotel checkout (last day)';});
     document.querySelectorAll('input[name="tripCompanionsRadio"]').forEach(input=>{const label=input.closest('label');if(label)label.hidden=true;});
     function syncType() {
@@ -134,11 +135,13 @@
       if(!['solo','couple','friends','family'].includes(el('teTripType').value))errors.teTripType='Choose solo, couple, friends or family.';
       for(const id of ['tripAdultsInput','tripChildrenInput','tripSeniorsInput']) {
         const value=Number(el(id).value);
-        if(!el(id).value || !Number.isInteger(value)||value<(id==='tripAdultsInput'?1:0)||value>100)errors[id]='Enter a whole number within the allowed party size.';
+        if(!el(id).value || !Number.isInteger(value)||value<(id==='tripAdultsInput'?1:0)||value>30)errors[id]='Enter a whole number within the allowed party size.';
         fieldError(id,errors[id]);
       }
+      if(readTripParty().adults+readTripParty().children+readTripParty().seniors>30)errors.tripAdultsInput='A trip can include at most 30 travellers.';
+      if(el('teTripType').value==='solo' && (readTripParty().adults!==1 || readTripParty().children || readTripParty().seniors))errors.teTripType='Choose a group trip type or select exactly one adult.';
       if(el('teTripType').value==='family' && !can('explicit_trip_type') && !readTripParty().children && !readTripParty().seniors) errors.teTripType='Adult-only family trips await the trip-type update. Your selection has been kept.';
-      for(const id of ['tripStartDateInput','tripEndDateInput','tripBudgetInput','tripCitySearchInput','teTripType']) fieldError(id,errors[id]);
+      for(const id of ['tripStartDateInput','tripEndDateInput','tripBudgetInput','tripCitySearchInput','teTripType','tripAdultsInput']) fieldError(id,errors[id]);
       if(can('schedule_preferences_v2')) {
         extra.querySelectorAll('input:not([type=checkbox])').forEach(input=>{if(!input.checkValidity()) errors[input.id]='Check this value.';fieldError(input.id,errors[input.id]);});
         if(el('teDepartureMode').value==='flight' && Number(el('teCheckinBuffer').value)<120) errors.teCheckinBuffer='Allow at least 120 minutes at the airport.';
@@ -160,7 +163,19 @@
       let body;try{body=JSON.parse(init.body);}catch(_){}
       if(body && form) {
         if(can('explicit_trip_type')) body.trip_type=el('teTripType').value;
-        if(can('schedule_preferences_v2')) {body.trip_preferences={...body.trip_preferences,experience_prefs:readExperience()};}
+        if(can('schedule_preferences_v2')) {
+          const p=readExperience();
+          const later=(time,minutes)=>{const [h,m]=time.split(':').map(Number);const total=h*60+m+minutes;return `${String(Math.floor(total/60)%24).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;};
+          Object.assign(body,{destination_arrival_time:p.destination_arrival_time,hotel_checkin_time:el('hotelArrivalTime').value,hotel_checkout_time:el('hotelDepartureTime').value,
+            transport_departure_time:p.transport_departure_time,departure_transport_mode:p.departure_mode==='road'?'other':p.departure_mode,departure_terminal:p.departure_terminal||null,
+            final_day_activities:p.final_day_activities,terminal_arrival_buffer_minutes:p.departure_mode==='flight'?p.terminal_buffer_minutes:120,
+            station_arrival_buffer_minutes:p.departure_mode==='train'?p.terminal_buffer_minutes:45,terminal_journey_minutes:p.terminal_travel_minutes,
+            lunch_start_time:p.lunch_time,lunch_end_time:later(p.lunch_time,p.lunch_duration_minutes),lunch_duration_minutes:p.lunch_duration_minutes,
+            dinner_start_time:p.dinner_time,dinner_end_time:later(p.dinner_time,p.dinner_duration_minutes),dinner_duration_minutes:p.dinner_duration_minutes,
+            rest_preference:p.rest_duration_minutes===0?'none':p.rest_duration_minutes<=20?'short':p.rest_duration_minutes<=30?'standard':'long',
+            shopping_enabled:p.include_shopping,shopping_duration_minutes:p.include_shopping?p.shopping_duration_minutes:0,shopping_budget_inr:p.shopping_budget});
+          body.trip_preferences={...body.trip_preferences,include_shopping:p.include_shopping};
+        }
         init={...init,body:JSON.stringify(body)};
       }
     }
@@ -238,7 +253,9 @@
   async function listTrips() {
     const box=el('teTripList');box.hidden=false;box.innerHTML='<p role="status">Loading your trips…</p>';
     try{
-      const trips=await api(`/api/trips/${encodeURIComponent(user().user_id)}`);
+      const userPath=`/api/trips/${encodeURIComponent(user().user_id)}`;
+      const groups=await Promise.all([api(userPath),api(userPath+'/feedback-pending'),api(userPath+'/archive')]);
+      const trips=[...new Map(groups.flat().map(trip=>[trip.id,trip])).values()];
       const enriched=await Promise.all(trips.map(async trip=>{try{return {...trip,runtime:await api(`/api/trips/${encodeURIComponent(trip.id)}/runtime?${query()}`)};}catch(_){return {...trip,runtime:null};}}));
       if(location.hash!=='#/trips')return;
       box.innerHTML='<h2>My trips</h2>'+['Active trips','Past trips'].map((heading,index)=>{
@@ -289,7 +306,11 @@
   }
   async function fillExperience(id) {
     const trip=await api(`/api/trips/detail/${encodeURIComponent(id)}?${query()}`);
-    const prefs=trip.trip_preferences?.experience_prefs||{};
+    const prefs={...trip.trip_preferences,...trip};
+    Object.assign(prefs,{departure_mode:trip.departure_transport_mode==='other'?'road':trip.departure_transport_mode,
+      terminal_buffer_minutes:trip.departure_transport_mode==='train'?trip.station_arrival_buffer_minutes:trip.terminal_arrival_buffer_minutes,
+      terminal_travel_minutes:trip.terminal_journey_minutes,lunch_time:trip.lunch_start_time,dinner_time:trip.dinner_start_time,
+      shopping_budget:trip.shopping_budget_inr,include_shopping:trip.shopping_enabled,rest_duration_minutes:({none:0,short:20,standard:30,long:60})[trip.rest_preference]});
     const mapping={destination_arrival_time:'teDestinationArrival',transport_departure_time:'teTransportDeparture',departure_mode:'teDepartureMode',departure_terminal:'teDepartureTerminal',terminal_buffer_minutes:'teCheckinBuffer',terminal_travel_minutes:'teTerminalTravel',lunch_time:'teLunchTime',lunch_duration_minutes:'teLunchDuration',dinner_time:'teDinnerTime',dinner_duration_minutes:'teDinnerDuration',rest_duration_minutes:'teRestDuration',shopping_duration_minutes:'teShoppingDuration',shopping_budget:'teShoppingBudget'};
     Object.entries(mapping).forEach(([key,id])=>{if(prefs[key]!=null)el(id).value=prefs[key];});
     el('teTripType').value=trip.trip_type||({partner:'couple',family_kids:'family',family_seniors:'family'}[trip.companions]||trip.companions)||'solo';

@@ -298,7 +298,7 @@ TRIP_PLANNING_DETAIL_FIELDS = (
     'final_day_activities', 'luggage_storage', 'terminal_arrival_buffer_minutes',
     'station_arrival_buffer_minutes', 'terminal_journey_minutes', 'lunch_start_time',
     'lunch_end_time', 'lunch_duration_minutes', 'dinner_start_time', 'dinner_end_time',
-    'rest_preference', 'shopping_enabled', 'shopping_duration_minutes', 'shopping_budget_inr',
+    'dinner_duration_minutes', 'rest_preference', 'shopping_enabled', 'shopping_duration_minutes', 'shopping_budget_inr',
 )
 
 
@@ -346,7 +346,7 @@ class TripCreate(BaseModel):
         # companions alias derived from counts for clients that still consume it.
         if self.trip_type is None:
             aliases = {'partner': 'couple', 'alone': 'solo'}
-            legacy = aliases.get((self.companions or '').strip().lower(), (self.companions or '').strip().lower())
+            legacy = aliases.get((self.companions or '').strip().lower(), (self.companions or '').strip().lower()) if 'companions' in self.model_fields_set else None
             self.trip_type = legacy if legacy in ('solo','couple','friends','family') else (
                 'family' if composition['children'] or composition['seniors'] else
                 ('solo' if composition['adults'] == 1 else 'couple' if composition['adults'] == 2 else 'friends'))
@@ -354,10 +354,11 @@ class TripCreate(BaseModel):
         self.has_children = composition['children'] > 0
         self.has_elderly = composition['seniors'] > 0
         self.trip_preferences = dict(self.trip_preferences or {}, party=composition, trip_type=self.trip_type)
-        for key in TRIP_PLANNING_DETAIL_FIELDS:
-            value = getattr(self, key, None)
-            if value is not None:
-                self.trip_preferences[key] = value
+        if any(key in self.model_fields_set for key in TRIP_PLANNING_DETAIL_FIELDS):
+            for key in TRIP_PLANNING_DETAIL_FIELDS:
+                value = getattr(self, key, None)
+                if value is not None:
+                    self.trip_preferences[key] = value
         from datetime import date
         try:
             start_date = date.fromisoformat(self.start_date)
@@ -366,6 +367,8 @@ class TripCreate(BaseModel):
             raise ValueError('Use valid YYYY-MM-DD travel dates.') from exc
         if (end_date - start_date).days not in range(0, 90):
             raise ValueError('A trip must last between 1 and 90 days.')
+        if self.departure_transport_mode=='flight' and self.terminal_arrival_buffer_minutes<120:
+            raise ValueError('Allow at least 120 minutes at the airport.')
         if self.dinner_end_time <= self.dinner_start_time:
             raise ValueError('Dinner end time must be after dinner start time.')
         if self.lunch_end_time <= self.lunch_start_time:
@@ -411,6 +414,7 @@ class TripCreate(BaseModel):
     lunch_duration_minutes: int = Field(60, ge=15, le=180, strict=True)
     dinner_start_time: str = '19:00'
     dinner_end_time: str = '21:00'
+    dinner_duration_minutes: int = Field(60,ge=15,le=180,strict=True)
     rest_preference: Literal['none','short','standard','long'] = 'standard'
     shopping_enabled: bool = False
     shopping_duration_minutes: int = Field(0, ge=0, le=480, strict=True)
@@ -483,6 +487,7 @@ class TripResponse(BaseModel):
     lunch_duration_minutes: int = 60
     dinner_start_time: str = '19:00'
     dinner_end_time: str = '21:00'
+    dinner_duration_minutes: int = Field(60,ge=15,le=180,strict=True)
     rest_preference: str = 'standard'
     shopping_enabled: bool = False
     shopping_duration_minutes: int = 0

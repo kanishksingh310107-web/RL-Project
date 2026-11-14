@@ -1467,7 +1467,7 @@ def _hydrate_trip_row(d: Dict[str, Any]) -> Dict[str, Any]:
     from app.core.cost_model import estimate_cost
     d['party'] = normalize_party(d)
     d['trip_type'] = canonical_trip_type(d, d['party'])
-    d['party_type'] = d['trip_type']
+    d['party_type'] = party_type(d['party'])
     d['companions'] = party_type(d['party'])
     d['party_label'] = party_label(d['party'])
     d['travellers_count'] = sum(d['party'].values())
@@ -1477,7 +1477,7 @@ def _hydrate_trip_row(d: Dict[str, Any]) -> Dict[str, Any]:
         'final_day_activities': False, 'luggage_storage': False, 'terminal_arrival_buffer_minutes': 120,
         'station_arrival_buffer_minutes': 45, 'terminal_journey_minutes': 0, 'lunch_start_time': '12:30','lunch_end_time':'14:30',
         'lunch_duration_minutes': 60, 'dinner_start_time': '19:00', 'dinner_end_time': '21:00',
-        'rest_preference': 'standard', 'shopping_enabled': False, 'shopping_duration_minutes': 0,
+        'dinner_duration_minutes':60,'rest_preference': 'standard', 'shopping_enabled': False, 'shopping_duration_minutes': 0,
         'shopping_budget_inr': None,
     }.items():
         d[key] = (d.get('trip_preferences') or {}).get(key, default)
@@ -1667,11 +1667,13 @@ def get_shared_trip(token: str):
 
 @router.patch('/trips/{trip_id}', response_model=TripResponse)
 def edit_trip(trip_id: str, payload: Dict[str, Any], request: Request, user_id: str = Query(...)):
+    if isinstance(request,str):  # Backward-compatible internal Python call; HTTP always supplies Request.
+        user_id,request=request,None
     from pydantic import ValidationError
     from app.core.party import normalize_party, party_type
-    _, actor = _verified_trip_owner(request, trip_id)
+    actor = user_id if request is None else _verified_trip_owner(request, trip_id)[1]
     if actor != user_id:
-        raise HTTPException(403, {'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
+        raise HTTPException(404, {'detail':'Trip not found or unauthorized.','code':'NOT_OWNER'})
     allowed = {'start_date','end_date','party','travellers_count','companions','total_budget',
                'travel_pace','transit_pref','accommodation_tier','departure_location',
                'trip_preferences','trip_type','food_style','notes','regeneration_mode','schedule_prefs',
@@ -1679,7 +1681,7 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], request: Request, user_id: 
                'departure_terminal','departure_transport_mode','final_day_activities','luggage_storage',
                'terminal_arrival_buffer_minutes','station_arrival_buffer_minutes','terminal_journey_minutes',
                'lunch_start_time','lunch_end_time','lunch_duration_minutes','dinner_start_time','dinner_end_time',
-               'rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr'}
+               'dinner_duration_minutes','rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr'}
     unknown = set(payload)-allowed
     if unknown:
         raise HTTPException(422, 'Unsupported edit fields: '+', '.join(sorted(unknown)))
@@ -1707,9 +1709,14 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], request: Request, user_id: 
         for key in ('food_style','notes'):
             if key in payload:
                 prefs[key] = payload[key]
+        from app.models import TRIP_PLANNING_DETAIL_FIELDS
+        for key in TRIP_PLANNING_DETAIL_FIELDS:
+            if key not in payload and key not in prefs: merged.pop(key,None)
         merged['trip_preferences'] = prefs
         if 'party' in payload and 'companions' not in payload:
             merged['companions'] = party_type(payload['party'])
+            if 'trip_type' not in payload:
+                merged['trip_type']={'partner':'couple'}.get(merged['companions'],merged['companions'])
         elif 'travellers_count' in payload and 'party' not in payload:
             merged['party'] = None
             prefs.pop('party', None)
@@ -1781,7 +1788,7 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], request: Request, user_id: 
 def delete_trip(trip_id: str, request: Request, user_id: str = Query(...)):
     _, actor = _verified_trip_owner(request, trip_id)
     if actor != user_id:
-        raise HTTPException(403, {'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
+        raise HTTPException(404, {'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
     with get_connection() as conn:
         if not conn.execute('SELECT id FROM trips WHERE id=? AND user_id=?',(trip_id,user_id)).fetchone():
             raise HTTPException(404, 'Trip not found or unauthorized')

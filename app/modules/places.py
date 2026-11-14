@@ -10,8 +10,8 @@ import json
 import sqlite3
 import datetime
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, Query, status, Depends
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+from fastapi import APIRouter, HTTPException, Query, status, Depends, Request
 from app.profile_gate import require_profile_complete
 
 from app.database import get_connection
@@ -68,13 +68,14 @@ def init_tables(conn: sqlite3.Connection):
 
 
 class PlanDynamicTripRequest(BaseModel):
+    model_config = ConfigDict(extra='allow')  # Canonical TripCreate validates extended planning inputs after geocoding.
     party: Optional[Dict[str, int]] = None
     user_id: str
     city_name: Optional[str] = None
     city: Optional[str] = None
     start_date: str = Field(default="2026-11-20", description="YYYY-MM-DD")
     end_date: Optional[str] = None
-    duration_days: Optional[int] = None
+    duration_days: Optional[int] = Field(None,ge=1,le=90,strict=True)
     pace_preference: str = Field(default="balanced", description="relaxed, balanced, packed")
     travel_pace: Optional[str] = None
     budget_tier: str = Field(default="balanced", description="budget, balanced, luxury")
@@ -99,6 +100,16 @@ class PlanDynamicTripRequest(BaseModel):
     stay_lon: Optional[float] = None
     stay_address: Optional[str] = None
     stay_type: Optional[str] = None
+
+    @field_validator('start_date','end_date')
+    @classmethod
+    def valid_trip_date(cls,value):
+        if value is None:return value
+        try:
+            if datetime.date.fromisoformat(value).isoformat()!=value:raise ValueError
+        except (TypeError,ValueError) as exc:
+            raise ValueError('Use a valid YYYY-MM-DD trip date.') from exc
+        return value
 
 
 # -----------------------------------------------------------------------------
@@ -347,7 +358,7 @@ def get_popular_indian_destinations():
 
 @router.post("/plan-dynamic")
 @router.post("/plan-trip")
-def plan_dynamic_trip(payload: PlanDynamicTripRequest, user=Depends(require_profile_complete)):
+def plan_dynamic_trip(payload: PlanDynamicTripRequest, request: Request, user=Depends(require_profile_complete)):
     """
     Takes ANY Indian location (e.g. Pune, Srinagar, Shillong, Hampi, Madurai):
     1. Geocodes and verifies actual Indian geographical coordinates.
@@ -454,7 +465,10 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest, user=Depends(require_prof
         try:
             created = create_trip(payload.user_id, TripCreate.model_validate(values))
         except ValidationError as exc:
-            raise HTTPException(422,str(exc))
+            issue=exc.errors()[0]
+            raise HTTPException(422,{'detail':issue['msg'].removeprefix('Value error, '),'code':'INVALID_INPUT','field':'.'.join(str(p) for p in issue['loc']) or None})
+        if isinstance(created, __import__('starlette.responses',fromlist=['Response']).Response):
+            return created
         trip_id = created.id
         duration = created.duration_days
         stay_obj = None  # canonical create_trip already persisted any preselected anchor
@@ -466,7 +480,7 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest, user=Depends(require_prof
         save_stay(stay_obj)
 
     # 6. Retrieve Timed Itinerary View (Sightseeing + Transit + Meals + Rest breaks)
-    timed_view = get_timed_itinerary_view(trip_id)
+    timed_view = get_timed_itinerary_view(trip_id, request)
 
     # 7. Also attempt Plan generation in Plan engine (Person A) if profile is complete
     try:

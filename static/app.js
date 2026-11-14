@@ -260,16 +260,16 @@ function updateNavUser() {
   const navBadge = document.getElementById("navUserBadge");
   const navAvatar = document.getElementById("navAvatar");
   const navName = document.getElementById("navUserName");
-  const inspector = document.getElementById("modelInspectorNavBtn");
+
 
   if (state.currentUser) {
     navBadge.classList.remove("hidden");
-    if (inspector) inspector.classList.remove("hidden");
+
     navName.textContent = state.currentUser.display_name;
     navAvatar.textContent = state.currentUser.display_name.charAt(0).toUpperCase();
   } else {
     navBadge.classList.add("hidden");
-    if (inspector) inspector.classList.add("hidden");
+
   }
 }
 
@@ -391,92 +391,9 @@ async function sendAuthRequest(payload) {
 // A: basic fallback; google_login.js installs the SDK retry/setup-aware handlers.
 let googleGisInitializedFor = null;
 async function initGoogleGIS() {
-  try {
-    const res = await fetch("/api/config/google");
-    const data = await res.json();
-    const clientId = data.client_id;
-
-    const chooser = document.getElementById("googleChooserBtn");
-    const setupLink = document.getElementById("googleSetupLink");
-    const status = document.getElementById("googleAuthStatus");
-    const btnContainer = document.getElementById("googleOfficialBtn");
-    if (clientId && window.google && window.google.accounts) {
-      if (googleGisInitializedFor === clientId && btnContainerHasGoogleButton()) return;
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (resp) => {
-          try {
-            const r = await fetch("/api/auth/google-token", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ credential: resp.credential })
-            });
-            const u = await r.json();
-            if (!r.ok) throw new Error(formatApiError(u, "Google sign-in failed."));
-            state.currentUser = u;
-            localStorage.setItem("rl_travel_user", JSON.stringify(u));
-            updateNavUser();
-            if (u.has_profile) loadUserProfile(u.user_id);
-            else showView("onboarding");
-          } catch (err) {
-            if (status) {
-              status.textContent = err.message;
-              status.classList.remove("hidden");
-            }
-          }
-        },
-        auto_select: false
-      });
-
-      if (btnContainer) {
-        google.accounts.id.renderButton(btnContainer, { theme: "outline", size: "large", width: Math.min(320, btnContainer.clientWidth || 320) });
-        if (chooser) chooser.classList.add("hidden");
-        if (setupLink) setupLink.classList.add("hidden");
-        if (status) status.classList.add("hidden");
-        googleGisInitializedFor = clientId;
-      }
-    } else if (!clientId) {
-      if (setupLink) setupLink.classList.add("hidden");
-      if (status) {
-        status.textContent = "Google sign-in hasn’t been configured on this site. Email sign-in is ready to use.";
-        status.classList.remove("hidden");
-      }
-    } else if (status) {
-      status.textContent = "Google sign-in couldn’t be loaded. Try email sign-in instead.";
-      status.classList.remove("hidden");
-    }
-  } catch (e) {
-    const status = document.getElementById("googleAuthStatus");
-    if (status) {
-      status.textContent = "Google sign-in couldn’t be loaded. Try email sign-in instead.";
-      status.classList.remove("hidden");
-    }
-  }
+  if(document.readyState==='loading')window.addEventListener('DOMContentLoaded',()=>window.initGoogleGIS(),{once:true});
 }
-
-function btnContainerHasGoogleButton() {
-  const container = document.getElementById("googleOfficialBtn");
-  return !!(container && container.querySelector("iframe"));
-}
-
-function startGoogleSignIn() {
-  const clientId = document.getElementById("googleOfficialBtn");
-  if (clientId && clientId.querySelector("iframe")) {
-    const status = document.getElementById("googleAuthStatus");
-    if (status) {
-      status.textContent = "Use the Google button above to choose your account.";
-      status.classList.remove("hidden");
-    }
-    return;
-  }
-  const status = document.getElementById("googleAuthStatus");
-  if (status) {
-    status.textContent = "Google sign-in isn’t configured. Choose Email to sign in or create an account.";
-    status.classList.remove("hidden");
-  }
-}
-
-
+function startGoogleSignIn() { window.initGoogleGIS(); }
 
 function handleManualAuth(e) {
   e.preventDefault();
@@ -1793,10 +1710,10 @@ function renderPersonalSection() {
 
   // Show past trips section when in last section (Assistant & Decision Support)
   const isLast = sec.id === bank.sections[bank.sections.length - 1].id;
-  const pastTripsSec = document.getElementById("personalPastTripsSection");
+
   const additionalInfo = document.getElementById("personalAdditionalInfoSection");
   if (additionalInfo) additionalInfo.classList.toggle("hidden", !isLast);
-  if (pastTripsSec) pastTripsSec.classList.toggle("hidden", true);
+
 
   const secs = bank.sections;
   const idx = secs.findIndex(s => s.id === sec.id);
@@ -1949,51 +1866,6 @@ function precText(q, cur) {
 }
 
 // Past Trips in modal
-function addPastTripEntry() {
-  const dest = document.getElementById("pastTripDest").value.trim();
-  const rating = parseFloat(document.getElementById("pastTripRating").value);
-  const fav = document.getElementById("pastTripFav").value.trim();
-  const dislike = document.getElementById("pastTripDislike").value.trim();
-
-  if (!dest) {
-    alert("Please enter a destination name.");
-    return;
-  }
-
-  state.precision.past_trips.push({
-    destination: dest,
-    rating: rating,
-    favorite_activity: fav,
-    skipped_or_disliked: dislike
-  });
-
-  document.getElementById("pastTripDest").value = "";
-  document.getElementById("pastTripFav").value = "";
-  document.getElementById("pastTripDislike").value = "";
-  renderPastTripsInModal();
-}
-
-function renderPastTripsInModal() {
-  const list = document.getElementById("pastTripsList");
-  if (!list) return;
-  list.innerHTML = "";
-  state.precision.past_trips.forEach((t, i) => {
-    const item = document.createElement("div");
-    item.className = "p-2 rounded-lg bg-white border border-slate-200 text-xs flex justify-between items-center";
-    item.innerHTML = `
-      <div>
-        <span class="font-bold text-slate-800">${t.destination}</span>
-        <span class="text-amber-500 font-bold ml-1">${"★".repeat(Math.round(t.rating))}</span>
-        <div class="text-[10px] text-slate-500">${t.favorite_activity || "No highlight"}</div>
-      </div>
-      <button type="button" onclick="state.precision.past_trips.splice(${i}, 1); renderPastTripsInModal();" class="text-slate-400 hover:text-rose-600 text-xs px-2">
-        <i class="fa-solid fa-trash-can"></i>
-      </button>
-    `;
-    list.appendChild(item);
-  });
-}
-
 // Submit Unified Profile
 async function submitPersonalProfile() {
   if (!state.currentUser) return;
@@ -2071,129 +1943,6 @@ function renderPersonalResult(data) {
 
 // ==========================================
 // ACADEMIC MODEL INSPECTOR (VIVA & EVALUATION)
-// ==========================================
-
-async function loadAcademicInspector() {
-  if (!state.currentUser) return;
-  try {
-    const res = await fetch(`/api/rl/state/${state.currentUser.user_id}`);
-    if (res.ok) {
-      const data = await res.json();
-      document.getElementById("acadVectorDimBadge").textContent = `d = ${data.dimension_count}`;
-      document.getElementById("acadVectorLevel").textContent = `${data.level.title()} state representation`;
-      document.getElementById("acadRawVectorDisplay").textContent = JSON.stringify(data.state_vector, null, 2);
-
-      const tbody = document.getElementById("acadVectorTableBody");
-      tbody.innerHTML = "";
-      (data.feature_breakdown || []).forEach((f, idx) => {
-        const tr = document.createElement("tr");
-        tr.className = f.is_constraint_mask ? "bg-rose-50/50" : "";
-        tr.innerHTML = `
-          <td class="p-2 text-slate-400">${idx + 1}</td>
-          <td class="p-2 font-semibold text-slate-800">${f.feature_name}</td>
-          <td class="p-2 text-indigo-600 font-bold">${typeof f.value === 'number' ? f.value.toFixed(2) : f.value}</td>
-          <td class="p-2 text-slate-500">${f.role_in_agent || (f.is_constraint_mask ? 'Hard Negative Constraint Mask' : 'Continuous Preference Feature')}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Load LinUCB Policy inspection
-    const polRes = await fetch(`/api/rl/policy/${state.currentUser.user_id}`);
-    if (polRes.ok) {
-      const polData = await polRes.json();
-      const pullBadge = document.getElementById("acadLinucbPullBadge");
-      if (pullBadge) pullBadge.textContent = `Interactions: ${polData.total_interactions}`;
-
-      const armsTable = document.getElementById("acadLinucbArmsTable");
-      if (armsTable) {
-        armsTable.innerHTML = "";
-        (polData.arms || []).forEach(a => {
-          const tr = document.createElement("tr");
-          const topWeights = Object.entries(a.top_feature_weights || {})
-            .map(([k, v]) => `<span class="inline-block px-1.5 py-0.5 rounded ${v >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'} text-[10px] mr-1 mb-1 font-mono">${k.replace('user_interest_', '').replace('activity_', '')}: ${v > 0 ? '+' : ''}${v}</span>`)
-            .join("");
-          tr.innerHTML = `
-            <td class="p-2 font-bold text-slate-800">${a.arm_id.replace('_', ' ').title()}</td>
-            <td class="p-2 text-slate-600">${a.pull_count}</td>
-            <td class="p-2 font-bold ${a.average_reward >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${a.average_reward > 0 ? '+' : ''}${a.average_reward.toFixed(2)}</td>
-            <td class="p-2">${topWeights || '<span class="text-slate-400">Priors neutral</span>'}</td>
-          `;
-          armsTable.appendChild(tr);
-        });
-      }
-
-      const logList = document.getElementById("acadFeedbackLogList");
-      if (logList) {
-        logList.innerHTML = "";
-        if (!polData.recent_feedback || polData.recent_feedback.length === 0) {
-          logList.innerHTML = `<p class="text-slate-400 italic">No interaction feedback recorded yet.</p>`;
-        } else {
-          polData.recent_feedback.forEach(fb => {
-            const row = document.createElement("div");
-            row.className = "flex items-center justify-between p-1.5 rounded bg-white border border-slate-200";
-            const badgeColor = fb.action_type === 'accept' ? 'bg-emerald-100 text-emerald-800' : (fb.action_type === 'reject' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800');
-            row.innerHTML = `
-              <div class="flex items-center gap-1.5">
-                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${badgeColor}">${fb.action_type}</span>
-                <span class="font-semibold text-slate-700">${fb.activity_id}</span>
-                ${fb.rejection_reason ? `<span class="text-slate-400 text-[10px]">(${fb.rejection_reason})</span>` : ''}
-              </div>
-              <div class="flex items-center gap-2">
-                ${fb.is_trip_specific ? '<span class="text-[9px] bg-slate-100 text-slate-600 px-1 rounded">trip-only</span>' : ''}
-                <span class="font-mono font-bold ${fb.reward >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${fb.reward > 0 ? '+' : ''}${fb.reward.toFixed(1)}</span>
-              </div>
-            `;
-            logList.appendChild(row);
-          });
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Error loading academic model inspection:", err);
-  }
-}
-
-function switchAcademicTab(tab) {
-  ["vector", "mdp", "weights", "linucb"].forEach(t => {
-    const btn = document.getElementById(`acadTab-${t}`);
-    const pane = document.getElementById(`acadPane-${t}`);
-    if (btn && pane) {
-      if (t === tab) {
-        btn.className = "px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 font-bold";
-        pane.classList.remove("hidden");
-      } else {
-        btn.className = "px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-50";
-        pane.classList.add("hidden");
-      }
-    }
-  });
-}
-
-async function runLiveAcademicBenchmark() {
-  const btn = document.getElementById("runBenchmarkBtn");
-  const area = document.getElementById("benchmarkResultsArea");
-  if (btn) btn.disabled = true;
-  if (btn) btn.textContent = "Running (20-round demo, not evidence)...";
-
-  try {
-    const res = await fetch("/api/evaluation/benchmark?persona=nature_enthusiast&rounds=20");
-    if (res.ok) {
-      const data = await res.json();
-      if (area) area.classList.remove("hidden");
-      document.getElementById("benchLinucbAcc").textContent = `${(data.adaptive_linucb.acceptance_rate * 100).toFixed(1)}% (Cumulative: ${data.adaptive_linucb.cumulative_reward > 0 ? '+' : ''}${data.adaptive_linucb.cumulative_reward})`;
-      document.getElementById("benchBaselineAcc").textContent = `${(data.baseline.acceptance_rate * 100).toFixed(1)}% (Cumulative: ${data.baseline.cumulative_reward > 0 ? '+' : ''}${data.baseline.cumulative_reward})`;
-      document.getElementById("benchRewardDiff").textContent = `${data.relative_improvement_pct > 0 ? '+' : ''}${data.relative_improvement_pct}% relative acceptance gain`;
-    }
-  } catch (err) {
-    console.error("Benchmark error:", err);
-  } finally {
-    if (btn) btn.disabled = false;
-    if (btn) btn.textContent = "Run 20-round demo, not evidence";
-  }
-}
-
-// ==========================================
 // UNIFIED TRIP LOCATION SEARCH, GPS & NEARBY PLACE DISCOVERY
 // ==========================================
 let selectedDynamicLocation = null;
