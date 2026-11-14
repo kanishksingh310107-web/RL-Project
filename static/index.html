@@ -11,6 +11,8 @@
   <script id="googleIdentitySdk" src="https://accounts.google.com/gsi/client" async defer onload="window.dispatchEvent(new Event('google-identity-ready'))" onerror="this.dataset.failed='true';window.dispatchEvent(new Event('google-identity-error'))"></script>
   <!-- UI: dedicated trip experience -->
   <link rel="stylesheet" href="/static/trip_experience.css">
+  <!-- E: recommendation-led discovery, budgets and assistance -->
+  <link rel="stylesheet" href="/static/recommendation_experience.css">
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
 
@@ -1472,5 +1474,12 @@
   <script src="/static/modules/post_trip.js"></script>
   <!-- UI: routes, preferences and server-backed phase access -->
   <script src="/static/modules/trip_experience.js"></script>
+  <!-- E: shared adapters precede their recommendation/budget/assistant views -->
+  <script src="/static/modules/experience_api.js"></script>
+  <script src="/static/modules/experience_ui.js"></script>
+  <script src="/static/modules/budget_experience.js"></script>
+  <script src="/static/modules/recommendation_discovery.js"></script>
+  <script src="/static/modules/itinerary_insights.js"></script>
+  <script src="/static/modules/recommendation_assistant.js"></script>
 </body>
 </html>

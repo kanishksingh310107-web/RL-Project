@@ -1,0 +1,42 @@
+/* E: recommendation discovery, financial summaries and contextual assistance. */
+.ex-discovery,.ex-budget,.ex-itinerary-insights{background:#fff;border:1px solid #cbd5e1;border-radius:1rem;padding:1.4rem;margin:1rem 0;color:#172033}
+.ex-discovery h2,.ex-budget h2,.ex-dialog h2{font-size:1.3rem;font-weight:750;line-height:1.35;margin:0 0 .6rem}
+.ex-discovery h3,.ex-budget h3,.ex-dialog h3,.ex-itinerary-insights h3{font-size:1.05rem;font-weight:700;margin:1rem 0 .55rem}
+.ex-dialog h4,.ex-itinerary-insights h4,.ex-card-explanation h4{font-size:.88rem;font-weight:700;margin:.65rem 0 .25rem}
+.ex-discovery p,.ex-dialog p,.ex-budget p,.ex-itinerary-insights p{font-size:.875rem;line-height:1.6;margin:.5rem 0}
+.ex-muted,.ex-field small{color:#475569;font-size:.8rem;line-height:1.5}
+.ex-actions,.ex-entry-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin:.85rem 0}
+.ex-button,.ex-primary,.ex-danger,.ex-entry-actions button{min-height:40px;border:1px solid #94a3b8;border-radius:.65rem;padding:.55rem .85rem;background:#fff;color:#1e293b;font-size:.82rem;font-weight:650;cursor:pointer}
+.ex-primary,.ex-entry-actions .ex-primary{background:#4338ca;border-color:#4338ca;color:#fff}
+.ex-danger{background:#fff1f2;border-color:#e11d48;color:#9f1239}
+.ex-button:hover:not(:disabled){background:#eef2ff;border-color:#6366f1}.ex-primary:hover:not(:disabled){background:#3730a3}
+.ex-button[aria-pressed=true]{border:2px solid #047857;background:#ecfdf5;color:#065f46}
+.ex-button:disabled,.ex-primary:disabled,.ex-danger:disabled{cursor:not-allowed;opacity:.6}
+.ex-status{min-height:1.3em;font-size:.82rem;line-height:1.5}.ex-error{color:#b91c1c;font-size:.8rem;line-height:1.5}
+.ex-note,.ex-unavailable,.ex-warning{border-radius:.65rem;padding:.75rem 1rem;background:#eff6ff;border-left:3px solid #6366f1;margin:.8rem 0}
+.ex-warning{background:#fffbeb;border-color:#d97706;color:#92400e}.ex-unavailable{background:#f8fafc;border-color:#64748b}
+.ex-dialog{width:min(94vw,64rem);max-height:90dvh;overflow:auto;background:#fff;color:#172033;border:1px solid #94a3b8;border-radius:1rem;padding:1.5rem;box-shadow:0 24px 80px rgb(15 23 42 / .25)}
+.ex-dialog::backdrop{background:rgb(15 23 42 / .55)}
+.ex-dialog>h2{position:relative}.ex-dialog a{color:#4338ca;text-decoration:underline;margin:.25rem .75rem .25rem 0;overflow-wrap:anywhere}
+.ex-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;margin:1rem 0}
+.ex-form fieldset{border:1px solid #cbd5e1;border-radius:.75rem;padding:1rem;min-width:0}.ex-form legend{padding:0 .35rem;font-weight:700;font-size:.85rem}
+.ex-field{display:flex;flex-direction:column;gap:.35rem;font-size:.85rem;font-weight:600;min-width:0}
+.ex-field input,.ex-field select,.ex-field textarea{font:inherit;font-weight:400;display:block;width:100%;min-width:0;border:1px solid #94a3b8;border-radius:.55rem;padding:.65rem;background:#fff;color:#172033;box-sizing:border-box}
+.ex-field [aria-invalid=true]{border:2px solid #b91c1c}.ex-field input:disabled,.ex-field select:disabled,.ex-field textarea:disabled{background:#f1f5f9;color:#475569}
+.ex-form>button,.ex-form>.ex-status{grid-column:1/-1;justify-self:start}
+.ex-result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:1rem;margin:1rem 0}
+.ex-destination-card,.ex-option,.ex-finding,.ex-proposal{border:1px solid #cbd5e1;border-radius:.8rem;padding:1rem;background:#fff;min-width:0}
+.ex-destination-card ul,.ex-option ul,.ex-dialog ul,.ex-dialog ol{padding-left:1.3rem;list-style:revert;font-size:.85rem;line-height:1.6}
+.ex-card-explanation{border-top:1px solid #e2e8f0;padding-top:.5rem}.ex-card-explanation ul{list-style:disc;padding-left:1.2rem;font-size:.8rem;color:#475569}
+.ex-comparison-bar{position:sticky;bottom:.75rem;z-index:10;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.8rem;border-radius:.8rem;background:#eef2ff;border:1px solid #818cf8;box-shadow:0 6px 24px rgb(15 23 42 / .12)}
+.ex-table-scroll{width:100%;overflow-x:auto;margin:1rem 0}.ex-table{width:100%;border-collapse:collapse;font-size:.85rem;min-width:580px}.ex-table caption{text-align:left;color:#475569;font-size:.8rem;padding:.5rem 0}.ex-table th,.ex-table td{text-align:left;vertical-align:top;border-bottom:1px solid #cbd5e1;padding:.8rem}.ex-table th{font-weight:700;background:#f8fafc}
+.ex-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin:1rem 0}.ex-metrics>div{background:#f8fafc;padding:1rem;border:1px solid #e2e8f0;border-radius:.75rem}.ex-metrics dt{font-size:.8rem;color:#475569}.ex-metrics dd{font-size:1.1rem;font-weight:750;margin-top:.3rem;overflow-wrap:anywhere}
+.ex-budget-compact{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;padding:.85rem 1rem;background:#f8fafc;border:1px solid #cbd5e1;border-radius:.8rem}.ex-budget-compact span{display:flex;flex-direction:column;gap:.2rem}.ex-budget-compact small{font-size:.72rem;color:#475569}.ex-budget-compact b{font-size:.85rem}
+.ex-expenses{list-style:none;padding:0;margin:1rem 0}.ex-expenses>li{padding:1rem 0;border-bottom:1px solid #e2e8f0}.ex-expenses>li>button{margin-right:.5rem}
+.ex-stop-details{padding-top:.65rem;border-top:1px solid #e2e8f0;margin-top:.65rem;font-size:.8rem}.ex-stop-details a{color:#4338ca;text-decoration:underline}
+.ex-assistant-launcher{position:fixed;right:1rem;bottom:1rem;z-index:45;max-width:calc(100vw - 2rem);padding:.85rem 1.15rem;border:1px solid #4338ca;border-radius:2rem;background:#4338ca;color:#fff;font-weight:700;box-shadow:0 6px 20px rgb(67 56 202 / .25)}
+.ex-chat{width:min(94vw,30rem);margin-right:1rem;margin-left:auto;max-height:92dvh}.ex-chat .ex-form{grid-template-columns:1fr}.ex-chat-messages{max-height:45dvh;overflow:auto;overscroll-behavior:contain;padding:.4rem .2rem}
+.ex-chat-message{border:1px solid #cbd5e1;border-radius:.85rem;padding:.8rem;margin:.7rem 0;background:#f8fafc}.ex-chat-user{background:#eef2ff;margin-left:1.5rem}.ex-chat-assistant{margin-right:.5rem}.ex-chat-text{white-space:pre-wrap;overflow-wrap:anywhere}.ex-chat .ex-proposal{margin-top:.8rem}
+.ex-dialog :focus-visible,.ex-discovery :focus-visible,.ex-budget :focus-visible,.ex-assistant-launcher:focus-visible{outline:3px solid #4f46e5;outline-offset:3px}
+@media(max-width:640px){.ex-form,.ex-metrics{grid-template-columns:1fr}.ex-dialog{padding:1rem;width:96vw;max-height:94dvh}.ex-chat{margin-right:auto}.ex-entry-actions{align-items:stretch;flex-direction:column}.ex-budget-compact{gap:.8rem}.ex-comparison-bar{position:static}.ex-assistant-launcher{bottom:.75rem;right:.75rem;font-size:.82rem}.ex-actions{gap:.4rem}.ex-itinerary-insights{padding:1rem}}
+@media print{.ex-assistant-launcher,.ex-dialog,.ex-comparison-bar{display:none!important}}

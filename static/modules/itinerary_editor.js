@@ -9,7 +9,7 @@ TravelModules.register('itinerary_editor', {
     const current=()=>container.isConnected&&getWorkspaceContext().tripId===tripId;
     const activity=b=>b.type==='activity'||b.slot_type==='activity';
     const money=n=>n!=null&&Number.isFinite(Number(n))?formatINR(Number(n)):'Cost unavailable';
-    let data,runtime,selectedDay=1,busy=false,dragId=null;
+    let data,runtime,selectedDay=window.ItineraryInsights?.selectedDay(tripId)||1,busy=false,dragId=null;
     function message(text){const node=container.querySelector('[data-status]');if(node)node.textContent=text;}
     async function action(control,work){if(busy||control.disabled)return;busy=true;control.disabled=true;message('');try{await work();}catch(error){if(current())message(error.message);}finally{busy=false;if(control.isConnected)control.disabled=false;}}
     async function load(){
@@ -59,6 +59,7 @@ TravelModules.register('itinerary_editor', {
       container.querySelector('[data-undo]')?.addEventListener('click',e=>action(e.currentTarget,async()=>{await api(endpoint('/undo'),{method:'POST',body:{token:data.undo_token}});await load();}));
       container.querySelector('[data-custom]')?.addEventListener('click',customActivity);
       container.querySelector('[data-expenses]').onclick=expenses;container.querySelector('[data-share]').onclick=share;
+      window.dispatchEvent(new CustomEvent('trip:timeline-rendered',{detail:{tripId,dayNumber:selectedDay,data,runtime,container}})); // E: explanation/check extensions.
     }
     function dialog(title,html){const box=document.createElement('dialog');box.className='te-dialog';box.innerHTML=`<h3 class="font-bold mb-3">${esc(title)}</h3>${html}<p data-error role="alert" class="te-error"></p><button data-close class="mt-3 border rounded p-2">Cancel / close</button>`;document.body.append(box);box.querySelector('[data-close]').onclick=()=>box.close();box.addEventListener('close',()=>box.remove());box.showModal();return box;}
     async function dialogAction(box,button,work){if(button.disabled)return;button.disabled=true;try{await work();}catch(error){if(box.isConnected)box.querySelector('[data-error]').textContent=error.message;}finally{if(button.isConnected)button.disabled=false;}}

@@ -283,6 +283,7 @@
         if(saved)restoreDraft();else{el('tripDestSelect').value='';selectedDynamicLocation=null;el('tripNearbyPlacesArea')?.classList.add('hidden');}
         el('tripStartDateInput').min=indiaToday();el('tripEndDateInput').min=el('tripStartDateInput').value||indiaToday();
         modal.classList.remove('hidden');
+        window.dispatchEvent(new CustomEvent('trip:creation-ready')); // E: explicit recommendation handoff.
       }
       else if(path==='/trips') {planner.hidden=true;await listTrips();}
       else {
@@ -330,7 +331,16 @@
   window.addEventListener('hashchange',route);
   window.addEventListener('load',route);
   // Keep direct links private when the existing session controller signs out.
-  new MutationObserver(()=>{if(!el('authView').classList.contains('hidden'))view.hidden=true;}).observe(el('authView'),{attributes:true,attributeFilter:['class']});
+  new MutationObserver(()=>{
+    if(!el('authView').classList.contains('hidden')){
+      view.hidden=true;
+      // E: remove account-specific workspace state before a different sign-in.
+      snapshot=null;snapshotTrip=null;currentPlannedTripId=null;currentItinerary=null;dirty=false;
+      el('itineraryDisplayContainer').classList.add('hidden');
+      form?.reset();window.SchedulePrefs?.fill({});selectedDynamicLocation=null;
+      window.dispatchEvent(new CustomEvent('trip:context-cleared'));
+    }
+  }).observe(el('authView'),{attributes:true,attributeFilter:['class']});
   // Recommendations are real server results, never the old mandatory catalogue dropdown.
   const choices=document.createElement('div');choices.id='teDestinationRecommendations';choices.className='te-destination-grid';el('tripDestSelect').after(choices);
   async function destinations() {
