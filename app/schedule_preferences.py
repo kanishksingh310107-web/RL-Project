@@ -18,7 +18,7 @@ def _minute(value: str) -> int:
 
 
 class FreeBlock(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, strict=True)
     day: Optional[int] = Field(default=None, ge=1)
     start: str
     end: str
@@ -50,7 +50,7 @@ class FreeBlock(BaseModel):
 
 
 class SchedulePreferences(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
     hotel_arrival_time: str = "14:00"
     hotel_departure_time: str = "11:00"
     wake_time: str = "07:00"
@@ -67,6 +67,8 @@ class SchedulePreferences(BaseModel):
     @model_validator(mode="after")
     def valid_window_and_blocks(self):
         start = _minute(self.activity_start_time)
+        if _minute(self.wake_time) > start:
+            raise ValueError('Activity start time must be at or after wake time.')
         bed = _minute(self.bed_time)
         if bed <= start:
             bed += 1440
@@ -110,6 +112,7 @@ LEGACY_SCHEDULE_PREFS = {
 def normalize_schedule_preferences(value: Optional[Dict[str, Any]], duration_days: int,
                                     start_date: Optional[str] = None, end_date: Optional[str] = None,
                                     same_day: bool = False) -> Dict[str, Any]:
+    custom = value is not None and not value.get('legacy_defaults', False)
     raw = dict(value or DEFAULT_SCHEDULE_PREFS)
     raw.pop("legacy_defaults", None)
     prefs = SchedulePreferences.model_validate(raw).model_dump()
@@ -126,6 +129,7 @@ def normalize_schedule_preferences(value: Optional[Dict[str, Any]], duration_day
     if bed - start > 18 * 60:
         raise ValueError("The daily activity window cannot exceed 18 hours.")
     for day_num in range(1, duration_days + 1):
+        window_start, window_end = schedule_window(prefs, day_num, duration_days, custom)
         occupied = []
         for block in prefs["free_blocks"]:
             if block.get("day") not in (None, day_num):
@@ -136,16 +140,17 @@ def normalize_schedule_preferences(value: Optional[Dict[str, Any]], duration_day
             while bs < start:
                 bs += 1440
                 be += 1440
-            occupied.append((max(start, bs), min(bed, be)))
+            if bs < window_end and be > window_start:
+                occupied.append((max(window_start, bs), min(window_end, be)))
         occupied.sort()
-        cursor = start
+        cursor = window_start
         largest_gap = 0
         for bs, be in occupied:
             largest_gap = max(largest_gap, bs - cursor)
             cursor = max(cursor, be)
-        largest_gap = max(largest_gap, bed - cursor)
+        largest_gap = max(largest_gap, window_end - cursor)
         if largest_gap < 60:
-            raise ValueError(f"Free blocks on day {day_num} leave no 60-minute activity window.")
+            raise ValueError(f"Hotel buffers and free blocks on day {day_num} leave no 60-minute activity window.")
     if same_day and _minute(prefs["hotel_arrival_time"]) >= _minute(prefs["hotel_departure_time"]):
         raise ValueError("Hotel arrival must be before hotel departure on a same-day trip.")
     if same_day:
@@ -160,3 +165,19 @@ def normalize_schedule_preferences(value: Optional[Dict[str, Any]], duration_day
 
 def minute_of_day(value: str) -> int:
     return _minute(value)
+
+
+def schedule_window(prefs, day, total_days, custom=True):
+    start = _minute(prefs['activity_start_time'])
+    end = _minute(prefs['bed_time'])
+    overnight = end <= start
+    if overnight:
+        end += 1440
+    if custom and day == 1:
+        start = max(start, _minute(prefs['hotel_arrival_time']) + 60)
+    if custom and day == total_days:
+        departure = _minute(prefs['hotel_departure_time'])
+        if overnight and departure <= _minute(prefs['bed_time']):
+            departure += 1440
+        end = min(end, departure - 60)
+    return start, end

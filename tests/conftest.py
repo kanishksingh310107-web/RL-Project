@@ -31,7 +31,8 @@ def isolate_test_db(tmp_path, monkeypatch):
     import app.database as database
     test_db = tmp_path / "test.db"
     monkeypatch.setattr(database, "DB_PATH", test_db)
-    database.init_db()
+    from main import startup
+    startup()
 
 @pytest.fixture()
 def client():
@@ -43,14 +44,34 @@ def client():
 @pytest.fixture()
 def demo_user(client):
     r = client.post("/api/auth", json={"provider": "email", "identifier": "demo@test.com",
-                                       "password": "pass1234", "display_name": "Demo"})
+                                       "password": "SafePass123", "display_name": "Demo", "mode": "signup"})
     assert r.status_code == 200, r.text
     uid = r.json()["user_id"]
+    client.headers['Authorization'] = 'Bearer ' + r.json()['token']
     p = client.post(f"/api/profile/{uid}", json={
         "travel_goals": ["nature", "culture"], "place_interests": ["mountains", "historic"],
         "preferred_climate": "cool", "budget_tier": "mid_range", "companions": "partner"})
     assert p.status_code == 200, p.text
+    history = client.post('/api/profile/history/choice', json={'choice': 'none'})
+    assert history.status_code == 200, history.text
+    assert client.get('/api/profile/status').json()['profile_complete'] is True
     return uid
+
+
+@pytest.fixture
+def onboard_user(client):
+    """Complete the real account/profile flow for tests creating their own user."""
+    def onboard(auth):
+        user_id = auth['user_id']
+        client.headers['Authorization'] = 'Bearer ' + auth['token']
+        profile = client.post('/api/profile/' + user_id, json={
+            'travel_goals': ['nature', 'culture'], 'place_interests': ['mountains', 'historic']})
+        assert profile.status_code == 200, profile.text
+        history = client.post('/api/profile/history/choice', json={'choice': 'none'})
+        assert history.status_code == 200, history.text
+        assert client.get('/api/profile/status').json()['profile_complete'] is True
+        return user_id
+    return onboard
 
 @pytest.fixture()
 def demo_trip(client, demo_user):

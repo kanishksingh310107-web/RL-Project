@@ -112,7 +112,7 @@ def get_itinerary(trip_id: str) -> Optional[Dict[str, Any]]:
         return d
 
 def has_completed_deep_profile(conn, user_id: str) -> bool:
-    """Require a completed precision profile to unlock trip tools."""
+    """Recognize the saved Level 2 questionnaire or completed Level 3 profile."""
     if not user_id:
         return False
     cursor = conn.cursor()
@@ -127,5 +127,12 @@ def has_completed_deep_profile(conn, user_id: str) -> bool:
         except Exception:
             pass
 
-    # Detailed-profile data alone must not unlock features reserved for deep personalization.
+    row = conn.execute('SELECT raw_answers_json FROM detailed_profiles WHERE user_id=?', (user_id,)).fetchone()
+    if row and row[0]:
+        try:
+            answers = json.loads(row[0]) if isinstance(row[0], str) else row[0]
+            if isinstance(answers, dict) and answers:
+                return True
+        except (TypeError, ValueError):
+            pass
     return False

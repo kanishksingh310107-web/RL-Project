@@ -1110,15 +1110,8 @@ def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # Check mandatory profile completeness
-    import app.database as database
-    is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
-    status_info = prec.profile_status(user_id)
-    if not status_info["complete"] and not is_test_env:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Trip planning is locked until your travel profile is complete. Please complete the remaining {len(status_info['missing'])} questions."
-        )
+    # The dependency above enforces Level 1 plus history. Progressive Levels 2
+    # and 3 enrich recommendations and remain optional for trip creation.
 
     # Enforce Indian destination only for trip creation
     from app.data.india_destinations import DESTINATIONS_BY_ID
@@ -1555,8 +1548,10 @@ def validate_budget_endpoint(payload: BudgetValidationRequest):
     return BudgetValidationResponse(**result)
 
 @router.post("/itinerary/generate/{trip_id}", response_model=ItineraryResponse)
-def generate_trip_itinerary(trip_id: str, user_id: str):
+def generate_trip_itinerary(trip_id: str, user_id: str, user=Depends(require_profile_complete)):
     """Generate or regenerate a structured day-by-day itinerary via Contextual LinUCB."""
+    if user_id != user['id']:
+        raise HTTPException(403, {'detail': 'You cannot plan trips for another account', 'code': 'USER_MISMATCH', 'field': 'user_id'})
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT destination_id FROM trips WHERE id = ?", (trip_id,))
@@ -1567,12 +1562,6 @@ def generate_trip_itinerary(trip_id: str, user_id: str):
         import app.database as database
         is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
         dest_id = trip_row["destination_id"]
-        status_info = prec.profile_status(user_id)
-        if not status_info["complete"] and not is_test_env:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Itinerary generation is locked until your travel profile is complete. Please answer the remaining {len(status_info['missing'])} questions."
-            )
         from app.data.india_destinations import DESTINATIONS_BY_ID
         is_indian = (
             dest_id in DESTINATIONS_BY_ID or
@@ -1587,6 +1576,7 @@ def generate_trip_itinerary(trip_id: str, user_id: str):
 
         try:
             itinerary = generate_itinerary(conn, user_id=user_id, trip_id=trip_id)
+            itinerary = get_itinerary_details(conn, user_id=user_id, trip_id=trip_id)
             return ItineraryResponse(**itinerary)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

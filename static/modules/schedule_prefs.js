@@ -107,6 +107,7 @@
     const p = readPrefs();
     for (const id of ids) if (!Number.isFinite(minutes(document.getElementById(id).value))) { show(id, "Enter a valid time in 24-hour format."); valid = false; }
     const start = minutes(p.activity_start_time), bedRaw = minutes(p.bed_time);
+    if (minutes(p.wake_time) > start) { show("activityStartTime", "Activity start time must be at or after wake time."); valid = false; }
     const bed = bedRaw <= start ? bedRaw + 1440 : bedRaw;
     if (Number.isFinite(start) && Number.isFinite(bed) && bed - start < 60) { show("bedTime", "Bed time must leave at least 60 minutes for one activity."); valid = false; }
     if (Number.isFinite(start) && Number.isFinite(bed) && bed - start > 18 * 60) { show("bedTime", "The daily activity window cannot exceed 18 hours."); valid = false; }
@@ -142,13 +143,20 @@
     }
     const dateDays = Math.max(1, Math.min(366, Math.round((new Date(endDate || "") - new Date(startDate || "")) / 86400000) + 1 || 1));
     for (let day=1; day<=dateDays; day++) {
+      let windowStart = day === 1 ? Math.max(start, arrival + 60) : start;
+      let leave = departure;
+      if (bedRaw <= start && leave <= bedRaw) leave += 1440;
+      const windowEnd = day === dateDays ? Math.min(bed, leave - 60) : bed;
       const relevant = sorted.filter(item => !item[3] || Number(item[3]) === day).map(item => [item[0],item[1]]).sort((a,b)=>a[0]-b[0]);
-      let cursor = start, maxGap = 0;
-      for (const [s,e] of relevant) { maxGap = Math.max(maxGap,s-cursor); cursor = Math.max(cursor,e); }
-      maxGap = Math.max(maxGap,bed-cursor);
-      if (maxGap < 60 && relevant.length) {
+      let cursor = windowStart, maxGap = 0;
+      for (const [s,e] of relevant) {
+        if (s < windowEnd && e > windowStart) { maxGap = Math.max(maxGap,Math.min(s,windowEnd)-cursor); cursor = Math.max(cursor,e); }
+      }
+      maxGap = Math.max(maxGap,windowEnd-cursor);
+      if (maxGap < 60) {
         const row = sorted.find(item => !item[3] || Number(item[3]) === day)?.[2];
         if (row) row.querySelector(".freeError").textContent = `Free blocks leave no activity window on day ${day}.`;
+        else show(day === 1 ? "hotelArrivalTime" : "hotelDepartureTime", `Hotel buffers leave no activity window on day ${day}.`);
         valid = false;
       }
     }
@@ -167,7 +175,8 @@
     if (method === "POST" || method === "PATCH") {
       try {
         const body = JSON.parse(init.body || "{}");
-        if (url.includes("/api/trips/") || url.includes("/api/places/plan-dynamic")) {
+        const pathname = new URL(url, location.href).pathname;
+        if (/^\/api\/trips\/[^/]+$/.test(pathname) || pathname === "/api/places/plan-dynamic") {
           if (url.includes("/api/places/plan-dynamic")) {
             body.trip_preferences = body.trip_preferences || {};
             body.trip_preferences.schedule_prefs = readPrefs();
@@ -180,9 +189,8 @@
     if (!response.ok && (url.includes("/api/trips/") || url.includes("/api/places/plan-dynamic"))) {
       try {
         const body = await response.clone().json();
-        const detail = body.detail;
-        if (detail && typeof detail === "object" && detail.field === "schedule_prefs") {
-          show("activityStartTime", detail.detail || "Check your schedule preferences.");
+        if (body.field === "schedule_prefs" || body.field?.startsWith("schedule_prefs.")) {
+          show("activityStartTime", body.detail || "Check your schedule preferences.");
         }
       } catch (_) { /* The calling flow presents its regular request error. */ }
     }

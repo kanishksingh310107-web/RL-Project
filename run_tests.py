@@ -16,7 +16,8 @@ def run_tests():
     global _TEMP_DIR
     _TEMP_DIR = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
     database.DB_PATH = Path(_TEMP_DIR.name) / "test.db"
-    init_db()  # TestClient(app) does not fire the startup hook, so create tables explicitly
+    from main import startup
+    startup()  # TestClient(app) without a context manager does not run startup.
     client = TestClient(app)
 
     # 1. Options & Master Questionnaire Bank
@@ -39,6 +40,7 @@ def run_tests():
     })
     assert g_res.status_code == 200
     user_id = g_res.json()["user_id"]
+    client.headers['Authorization'] = 'Bearer ' + g_res.json()['token']
 
     # start clean so the suite can be re-run against an existing database
     # (a saved Level 3 profile would otherwise take priority in /api/rl/state)
@@ -62,6 +64,8 @@ def run_tests():
         "identifier": "9876543210"
     })
     assert p_res.status_code == 200
+    history = client.post('/api/profile/history/choice', json={'choice': 'none'})
+    assert history.status_code == 200, history.text
     print("[OK] Auth working (google, email, phone)")
 
     # 3. Vectorizer test

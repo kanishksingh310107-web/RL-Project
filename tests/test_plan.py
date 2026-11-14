@@ -259,6 +259,15 @@ def test_plan_api_routes():
         )
         conn.commit()
 
+    basic = client.post(f'/api/profile/{user_id}', json={
+        'travel_goals': ['nature', 'culture'], 'place_interests': ['mountains', 'historic']})
+    assert basic.status_code == 200, basic.text
+    # Plan tools require the saved Level 2 or completed Level 3 questionnaire.
+    profile = client.post(f'/api/profile/detailed/{user_id}', json={
+        'avoidances': ['crowded_places'], 'walking_tolerance': 'medium',
+        'dietary': ['none'], 'schedule_density': 'balanced_2_3'})
+    assert profile.status_code == 200, profile.text
+
     # 1. GET prefs (default assumptions)
     res_prefs = client.get(f"/api/plan/prefs/{trip_id}")
     assert res_prefs.status_code == 200

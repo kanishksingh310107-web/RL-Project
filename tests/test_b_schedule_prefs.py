@@ -146,3 +146,40 @@ def test_legacy_trip_without_preferences_keeps_0900_to_2100_window():
     activities = [slot for day in schedule["days"] for slot in day["slots"] if slot["slot_type"] == "activity"]
     assert activities[0]["start_time"] == "09:00"
     assert max(int(a["end_time"][:2]) * 60 + int(a["end_time"][3:]) for a in activities) <= 21 * 60
+
+
+def test_overnight_schedule_respects_opening_hours_real_duration_and_free_time():
+    from app.services.timed_itinerary import generate_timed_schedule
+    conn=_memory_trip()
+    conn.execute('DELETE FROM destination_activities')
+    conn.execute('ALTER TABLE destination_activities ADD COLUMN duration_minutes INTEGER')
+    conn.execute('ALTER TABLE destination_activities ADD COLUMN opening_time TEXT')
+    conn.execute('ALTER TABLE destination_activities ADD COLUMN closing_time TEXT')
+    conn.execute("INSERT INTO destination_activities VALUES('night','test_destination','Night walk','scenic','Center',10,10,'Walk',60,'22:00','01:30')")
+    conn.execute("INSERT INTO destination_activities VALUES('closed','test_destination','Closed museum','culture','Center',10,10,'Museum',90,'09:00','18:00')")
+    prefs=normalize_schedule_preferences({'wake_time':'18:00','activity_start_time':'20:00','bed_time':'02:00',
+        'hotel_arrival_time':'18:00','hotel_departure_time':'02:00',
+        'free_blocks':[{'start':'22:30','end':'23:30','label':'Reserved'}]},2)
+    schedule=generate_timed_schedule(conn,'test_destination',2,schedule_prefs=prefs)
+    for day in schedule:
+        activity=[s for s in day['slots'] if s['slot_type']=='activity']
+        assert len(activity)==1
+        assert activity[0]['activity_id']=='night'
+        assert activity[0]['duration_mins']==60
+        assert activity[0]['start_time']=='23:30' and activity[0]['end_time']=='00:30'
+        spans=[]
+        for slot in day['slots']:
+            start=int(slot['start_time'][:2])*60+int(slot['start_time'][3:])
+            if start<20*60:
+                start+=1440
+            spans.append((start,start+slot['duration_mins']))
+        assert all(first[1]<=second[0] for first,second in zip(spans,spans[1:]))
+
+
+@pytest.mark.parametrize('prefs',[
+    {'wake_time':'10:00','activity_start_time':'09:00'},
+    {'free_blocks':[{'day':True,'start':'12:00','end':'13:00','label':'Break'}]},
+])
+def test_schedule_rejects_wake_conflict_and_boolean_day(prefs):
+    with pytest.raises(ValidationError):
+        normalize_schedule_preferences(prefs,3)

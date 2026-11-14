@@ -11,7 +11,8 @@ import sqlite3
 import datetime
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
+from app.profile_gate import require_profile_complete
 
 from app.database import get_connection
 from app.modules.common import get_user_context
@@ -346,7 +347,7 @@ def get_popular_indian_destinations():
 
 @router.post("/plan-dynamic")
 @router.post("/plan-trip")
-def plan_dynamic_trip(payload: PlanDynamicTripRequest):
+def plan_dynamic_trip(payload: PlanDynamicTripRequest, user=Depends(require_profile_complete)):
     """
     Takes ANY Indian location (e.g. Pune, Srinagar, Shillong, Hampi, Madurai):
     1. Geocodes and verifies actual Indian geographical coordinates.
@@ -357,6 +358,8 @@ def plan_dynamic_trip(payload: PlanDynamicTripRequest):
     6. Runs Contextual LinUCB itinerary generator.
     7. Returns complete timed schedule and trip details.
     """
+    if payload.user_id != user['id']:
+        raise HTTPException(403, {'detail': 'You cannot plan trips for another account', 'code': 'USER_MISMATCH', 'field': 'user_id'})
     city_raw = payload.city_name or payload.city or ""
     clean_city = city_raw.strip()
     if not clean_city:

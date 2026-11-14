@@ -57,7 +57,7 @@ def test_get_popular_destinations(client):
     assert "South Goa" in cities or "Goa" in cities
 
 
-def test_plan_dynamic_trip_end_to_end(client):
+def test_plan_dynamic_trip_end_to_end(client, onboard_user):
     """
     End-to-end dynamic workflow:
     1. User picks any Indian city (e.g., Pondicherry).
@@ -72,6 +72,7 @@ def test_plan_dynamic_trip_end_to_end(client):
         json={"provider": "email", "identifier": "dyn_plan@test.com", "password": "pass123456", "display_name": "Karan"}
     ).json()
     uid = auth["user_id"]
+    onboard_user(auth)
 
     # Plan dynamic trip for Pondicherry
     r = client.post("/api/places/plan-trip", json={
@@ -109,13 +110,14 @@ def test_places_service_fallback_offline():
     assert all(r["country"] == "India" for r in res)
 
 
-def test_plan_trip_unknown_city_returns_404(client):
+def test_plan_trip_unknown_city_returns_404(client, onboard_user):
     """Unknown or unlocatable city should return HTTP 404 rather than silent India centroid fallback."""
     auth = client.post(
         "/api/auth",
         json={"provider": "email", "identifier": "unknown_city_test@test.com", "password": "pass123456", "display_name": "Karan"}
     ).json()
     uid = auth["user_id"]
+    onboard_user(auth)
 
     r = client.post("/api/places/plan-trip", json={
         "user_id": uid,

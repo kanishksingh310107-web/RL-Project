@@ -18,6 +18,9 @@ from app.api import router
 from app.modules import discover, init_module_tables, registry_router
 
 app = FastAPI(title="RL Travel Guide")
+# Shared integration: every router uses the same readable API error shape.
+from app.errors import install_error_handlers
+install_error_handlers(app)
 
 app.add_middleware(
     CORSMiddleware,

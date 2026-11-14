@@ -23,6 +23,12 @@ MODULE = {
 router = APIRouter(prefix="/api/trip-actions", tags=["trip-actions"])
 
 
+def _refresh_custom_schedule(conn, trip_id):
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone() and conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone():
+        from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
+        regenerate_timed_itinerary_for_trip(conn,trip_id)
+
+
 def init_tables(conn):
     """Ensure trips table has status and lifecycle timestamp columns."""
     cursor = conn.cursor()
@@ -85,6 +91,26 @@ def get_timed_itinerary_view(trip_id: str):
             (itinerary["id"],)
         ).fetchall()
         activities = [_decode(a) for a in act_rows]
+
+        if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone() and conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone():
+            from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
+            from app.itinerary_generator import get_itinerary_details
+            shared = get_itinerary_details(conn,trip['user_id'],trip_id)
+            schedule = regenerate_timed_itinerary_for_trip(conn,trip_id,trip['user_id'])
+            days_output = []
+            for day in schedule['days']:
+                timeline = []
+                for slot in day['slots']:
+                    original = next((a for a in activities if a['day_number']==day['day_number'] and a['activity_id']==slot['activity_id']),{})
+                    timeline.append(dict(original, type=slot['slot_type'], id=original.get('id'),
+                        activity_id=slot['activity_id'], title=slot['title'], description=slot['description'],
+                        time_range=slot['start_time']+' – '+slot['end_time'], duration_minutes=slot['duration_mins'],
+                        cost_estimate=slot['estimated_cost'], can_edit=slot['slot_type']=='activity',
+                        slot_type_label=slot['slot_type'].replace('_',' ').title(), badge_color='blue'))
+                days_output.append(dict(day_number=day['day_number'], timeline=timeline, note=day['note'],
+                    arrival_marker=day['arrival_marker'],departure_marker=day['departure_marker'],
+                    total_cost=shared['days'][day['day_number']-1]['total_cost'],formatted_date=f"Day {day['day_number']}"))
+            return dict(trip=trip,itinerary=itinerary,trip_status=trip_status,has_itinerary=True,days=days_output,cost_estimate=shared['cost_estimate'])
 
         # Group activities by day
         days_map: Dict[int, List[Dict[str, Any]]] = {}
@@ -351,6 +377,7 @@ def swap_itinerary_activity(
         except Exception:
             pass
 
+        _refresh_custom_schedule(conn,trip_id)
         return {
             "status": "swapped",
             "message": f"Successfully replaced with '{rep_data['name']}'.",
@@ -396,6 +423,7 @@ def remove_itinerary_activity(
         except Exception:
             pass
 
+        _refresh_custom_schedule(conn,trip_id)
         return {
             "status": "removed",
             "message": "Activity removed from your itinerary."
@@ -459,6 +487,7 @@ def reschedule_itinerary_activity(
                 WHERE id = ?
             """, (payload.target_day, new_order, t_id))
             conn.commit()
+            _refresh_custom_schedule(conn,trip_id)
             return {
                 "status": "rescheduled",
                 "message": f"Moved '{t_title}' to Day {payload.target_day}.",
@@ -505,6 +534,7 @@ def reschedule_itinerary_activity(
         """, (t_slot, t_order, adj_id))
 
         conn.commit()
+        _refresh_custom_schedule(conn,trip_id)
         return {
             "status": "rescheduled",
             "message": f"Rescheduled '{t_title}' with '{adj_title}' on Day {t_day}.",
@@ -562,6 +592,7 @@ def switch_activities_between_days(
         """, (day_a, slot_a, order_a, id_b))
 
         conn.commit()
+        _refresh_custom_schedule(conn,trip_id)
 
         return {
             "status": "switched",
