@@ -379,7 +379,7 @@
       const modal = document.getElementById("liveReplanModal");
       const list = document.getElementById("replanAlternativesList");
       modal.classList.remove("hidden");
-      list.innerHTML = `<div class="py-6 text-center text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Finding suitable alternatives via LinUCB…</div>`;
+      list.innerHTML = `<div class="py-6 text-center text-xs text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Finding suitable alternatives…</div>`;
 
       try {
         const condParam = conditionLabel.includes("Rain") ? "heavy_rain" : (conditionLabel.includes("Fatigue") ? "fatigue" : "");
@@ -524,7 +524,7 @@
           <i class="fa-solid fa-circle-check text-emerald-600 text-xl"></i>
           <div>
             <h4 class="font-bold text-sm text-emerald-900">Post-Trip Feedback Submitted</h4>
-            <p class="text-xs text-emerald-700">Thank you! Your ratings have permanently updated your personal LinUCB recommendation policy.</p>
+            <p class="text-xs text-emerald-700">Thank you! Your ratings will help personalise future trips.</p>
           </div>
         </div>
         <div class="text-right">
@@ -638,7 +638,7 @@
               Reward Key: 5★ = +1.0 | 4★ = +0.5 | 3★ = 0 | 2★ = -0.5 | 1★ = -1.0
             </div>
           </div>
-          <p class="text-xs text-slate-500 mb-3">Each rating updates the category arm in your LinUCB preference model using the activity's original 24-dimensional context vector.</p>
+          <p class="text-xs text-slate-500 mb-3">Your ratings help us suggest places you may enjoy.</p>
 
           <div class="space-y-3" id="actEvaluationList">
             ${activities.map(act => `
@@ -728,7 +728,7 @@
       e.preventDefault();
       const submitBtn = box.querySelector("#btnSubmitFeedback");
       submitBtn.disabled = true;
-      submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>Updating LinUCB…`;
+      submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>Saving feedback…`;
 
       const payload = {
         user_id: ctx.userId,
@@ -757,73 +757,7 @@
 
   // Helper to render the LinUCB Learning Summary Table
   function renderLearningSummarySection(summary) {
-    if (!summary || !summary.arms_summary) {
-      return `
-        <div class="bg-white border border-slate-200 rounded-xl p-4 text-xs text-slate-500 shadow-2xs">
-          <h4 class="font-bold text-sm text-slate-800 mb-1 flex items-center gap-2">
-            <i class="fa-solid fa-brain text-indigo-600"></i> Learned LinUCB Preferences
-          </h4>
-          <p>No post-trip feedback recorded yet for this profile.</p>
-        </div>
-      `;
-    }
-
-    const arms = summary.arms_summary || [];
-
-    return `
-      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-        <div class="flex items-center justify-between mb-2">
-          <h4 class="font-bold text-sm text-slate-900 flex items-center gap-2">
-            <i class="fa-solid fa-brain text-indigo-600"></i> Learned LinUCB Recommendation Weights
-          </h4>
-          <span class="text-[11px] font-semibold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
-            ${summary.total_evaluations_processed} Evaluations Processed
-          </span>
-        </div>
-        <p class="text-xs text-slate-500 mb-3">Live parameter inspection of category arms in the user's disjoint LinUCB policy ($A_a, b_a, \\hat{\\theta}_a$).</p>
-
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-xs border border-slate-100 rounded-lg overflow-hidden">
-            <thead class="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-              <tr>
-                <th class="p-2">Category Arm</th>
-                <th class="p-2 text-center">Interactions</th>
-                <th class="p-2 text-center">Cumulative Reward</th>
-                <th class="p-2 text-center">Weight Norm ||θ||</th>
-                <th class="p-2 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-              ${arms.map(a => `
-                <tr class="hover:bg-slate-50/50">
-                  <td class="p-2 font-medium text-slate-800 flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full ${a.pull_count > 0 ? (a.total_reward >= 0 ? 'bg-emerald-500' : 'bg-rose-500') : 'bg-slate-300'}"></span>
-                    ${formatCategory(a.arm_id)}
-                  </td>
-                  <td class="p-2 text-center font-semibold text-slate-700">${a.pull_count}</td>
-                  <td class="p-2 text-center font-bold ${a.total_reward > 0 ? 'text-emerald-600' : (a.total_reward < 0 ? 'text-rose-600' : 'text-slate-500')}">
-                    ${a.total_reward > 0 ? '+' : ''}${a.total_reward}
-                  </td>
-                  <td class="p-2 text-center font-mono text-[11px] text-slate-600">${a.weight_norm.toFixed(4)}</td>
-                  <td class="p-2 text-center">
-                    ${a.pull_count > 0 ? (
-                      a.total_reward > 0
-                        ? '<span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Reinforced ↑</span>'
-                        : '<span class="text-[10px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded">Penalized ↓</span>'
-                    ) : '<span class="text-[10px] text-slate-400">Baseline</span>'}
-                  </td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="mt-3 p-2.5 bg-slate-50 rounded-lg border border-slate-100 text-[11px] text-slate-600 leading-relaxed">
-          <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i>
-          <span class="font-semibold">Academic Transparency:</span> ${summary.explanation}
-        </div>
-      </div>
-    `;
+    return '<p class="text-xs text-slate-600">Your feedback helps personalise future trip recommendations.</p>';
   }
 
   // Register in planner

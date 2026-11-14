@@ -238,7 +238,7 @@
 
   const originalToggle = window.toggleTripFormModal;
   if (typeof originalToggle === "function") window.toggleTripFormModal = function (...args) {
-    window.ProfileGate.require(() => originalToggle.apply(this, args));
+    return window.ProfileGate.require(() => originalToggle.apply(this, args));
   };
 
   window.addEventListener("trip:prefill-destination", event => {

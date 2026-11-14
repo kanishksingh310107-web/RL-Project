@@ -71,23 +71,10 @@
     panel.className = "mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-900";
     const heading = document.createElement("strong"); heading.textContent = "Your schedule preferences"; panel.appendChild(heading);
     const details = document.createElement("p");
-    details.textContent = `Day 1 hotel arrival ${prefs.hotel_arrival_time} · Last day hotel departure ${prefs.hotel_departure_time} · Activities ${prefs.activity_start_time}–${prefs.bed_time}`;
+    details.textContent = `Day 1 hotel arrival ${prefs.hotel_arrival_time} · Last day hotel checkout ${prefs.hotel_departure_time} · Activities ${prefs.activity_start_time}–${prefs.bed_time}`;
     panel.appendChild(details);
     (prefs.free_blocks || []).forEach(block => {
       const line = document.createElement("p"); line.textContent = `${block.day ? `Day ${block.day}` : "Every day"}: ${block.start}–${block.end} · ${block.label}`; panel.appendChild(line);
-    });
-    const schedule = timedSchedules.get(trip.id);
-    if (schedule) (schedule.days || []).forEach(day => {
-      const dayHeader = document.createElement("strong");
-      dayHeader.className = "block mt-2";
-      dayHeader.textContent = `Day ${day.day_number}${day.arrival_marker ? ` · Hotel arrival ${day.arrival_marker}` : ""}${day.departure_marker ? ` · Hotel departure ${day.departure_marker}` : ""}`;
-      panel.appendChild(dayHeader);
-      (day.slots || []).forEach(slot => {
-        const line = document.createElement("p");
-        line.textContent = `${slot.start_time}–${slot.end_time} · ${slot.title}`;
-        panel.appendChild(line);
-      });
-      if (day.note) { const note = document.createElement("p"); note.className = "text-amber-800"; note.textContent = day.note; panel.appendChild(note); }
     });
     markers.appendChild(panel);
   }
@@ -111,12 +98,15 @@
     const bed = bedRaw <= start ? bedRaw + 1440 : bedRaw;
     if (Number.isFinite(start) && Number.isFinite(bed) && bed - start < 60) { show("bedTime", "Bed time must leave at least 60 minutes for one activity."); valid = false; }
     if (Number.isFinite(start) && Number.isFinite(bed) && bed - start > 18 * 60) { show("bedTime", "The daily activity window cannot exceed 18 hours."); valid = false; }
-    const arrival = minutes(p.hotel_arrival_time), departure = minutes(p.hotel_departure_time);
+    const arrival = minutes(p.hotel_arrival_time);
+    const experience = window.TripExperience?.can('schedule_preferences_v2') ? window.TripExperience.readExperience() : null;
+    const departure = experience ? minutes(experience.transport_departure_time)-experience.terminal_buffer_minutes-experience.terminal_travel_minutes : minutes(p.hotel_departure_time);
+    const lastDayActivities = experience?.final_day_activities !== false;
     const startDate = document.getElementById("tripStartDateInput")?.value, endDate = document.getElementById("tripEndDateInput")?.value;
-    if (startDate && endDate && startDate === endDate && Number.isFinite(arrival) && arrival >= departure) { show("hotelArrivalTime", "Hotel arrival must be before departure on a same-day trip."); valid = false; }
-    if (startDate && endDate && startDate === endDate && Number.isFinite(start) && Number.isFinite(arrival) && Number.isFinite(departure)) {
+    if (startDate && endDate && startDate === endDate && lastDayActivities && Number.isFinite(arrival) && arrival >= departure) { show("hotelArrivalTime", "Hotel arrival must be before departure on a same-day trip."); valid = false; }
+    if (startDate && endDate && startDate === endDate && lastDayActivities && Number.isFinite(start) && Number.isFinite(arrival) && Number.isFinite(departure)) {
       const firstActivity = Math.max(start, arrival + 60);
-      if (departure - 60 - firstActivity < 60) { show("hotelDepartureTime", "Hotel departure must leave at least one activity after transfer buffers."); valid = false; }
+      if (departure - (experience ? 0 : 60) - firstActivity < 60) { show("hotelDepartureTime", "Transport departure must leave room for an activity after travel and check-in buffers."); valid = false; }
     }
     const sorted = [];
     [...document.querySelectorAll("#freeBlocksList > div")].forEach(row => {
@@ -143,10 +133,11 @@
     }
     const dateDays = Math.max(1, Math.min(366, Math.round((new Date(endDate || "") - new Date(startDate || "")) / 86400000) + 1 || 1));
     for (let day=1; day<=dateDays; day++) {
+      if(day === dateDays && !lastDayActivities) continue;
       let windowStart = day === 1 ? Math.max(start, arrival + 60) : start;
       let leave = departure;
       if (bedRaw <= start && leave <= bedRaw) leave += 1440;
-      const windowEnd = day === dateDays ? Math.min(bed, leave - 60) : bed;
+      const windowEnd = day === dateDays ? Math.min(bed, leave - (experience ? 0 : 60)) : bed;
       const relevant = sorted.filter(item => !item[3] || Number(item[3]) === day).map(item => [item[0],item[1]]).sort((a,b)=>a[0]-b[0]);
       let cursor = windowStart, maxGap = 0;
       for (const [s,e] of relevant) {
@@ -206,7 +197,7 @@
         } else if (method === "PATCH" && url.match(/\/api\/trips\/[^/?]+/)) {
           const result = await response.clone().json();
           if (result.id) await generateTimedSchedule(result.id, result.user_id);
-        } else if (method === "POST" && (url.includes("/api/trip-actions/") || url.includes("/api/itinerary/feedback/")) && typeof currentPlannedTripId !== "undefined") {
+        } else if (method === "POST" && ((url.includes("/api/trip-actions/") && /\/(confirm|undo|reschedule|swap|switch-days)(?:[?#]|$)/.test(url)) || url.includes("/api/itinerary/feedback/")) && typeof currentPlannedTripId !== "undefined") {
           const trip = typeof activeUserTrips !== "undefined" && activeUserTrips.find(item => item.id === currentPlannedTripId);
           if (trip) await generateTimedSchedule(trip.id, trip.user_id);
         }
@@ -237,6 +228,7 @@
       return result;
     };
   }
+  window.SchedulePrefs = {readPrefs,fill,addBlock};
   const markers = document.getElementById("scheduleMarkersMount");
   const days = document.getElementById("itineraryDaysContainer");
   if (markers && days) new MutationObserver(() => {

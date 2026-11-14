@@ -206,7 +206,7 @@
                   <i class="fa-solid fa-bell text-indigo-600"></i> Timed Reminders
                 </h3>
                 <p class="text-xs text-slate-500">
-                  Prioritized by Thompson Sampling bandit • Alert budget: active max ${remindersData.alert_budget}/day
+                  Personalised reminders • Maximum alerts ${remindersData.alert_budget}/day
                 </p>
               </div>
               <div class="flex items-center gap-1 text-xs">
@@ -234,15 +234,15 @@
                       </div>
                       <div class="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
                         <span>Status: <b class="${isDone ? 'text-emerald-600' : isDismissed ? 'text-slate-400' : 'text-indigo-600'}">${escapeHtml(rem.status)}</b></span>
-                        <span>Bandit Score (θ): <b class="font-mono text-slate-600">${escapeHtml(rem.bandit_score)}</b></span>
+                        
                         <span>Shown: ${escapeHtml(rem.shown_count)}x</span>
                       </div>
                     </div>
                     <div class="flex items-center gap-1 shrink-0">
-                      <button data-id="${escapeHtml(rem.id)}" data-action="useful" title="Mark useful (+1 reward)" class="prep-rem-action text-xs px-2 py-1 rounded bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 text-slate-700 transition">
+                      <button data-id="${escapeHtml(rem.id)}" data-action="useful" title="Mark useful" class="prep-rem-action text-xs px-2 py-1 rounded bg-slate-100 hover:bg-emerald-100 hover:text-emerald-800 text-slate-700 transition">
                         👍 Useful
                       </button>
-                      <button data-id="${escapeHtml(rem.id)}" data-action="not_useful" title="Not useful (-1 reward)" class="prep-rem-action text-xs px-2 py-1 rounded bg-slate-100 hover:bg-rose-100 hover:text-rose-800 text-slate-700 transition">
+                      <button data-id="${escapeHtml(rem.id)}" data-action="not_useful" title="Not useful" class="prep-rem-action text-xs px-2 py-1 rounded bg-slate-100 hover:bg-rose-100 hover:text-rose-800 text-slate-700 transition">
                         👎 Not useful
                       </button>
                       <button data-id="${escapeHtml(rem.id)}" data-action="done" title="Mark completed" class="prep-rem-action text-xs px-2 py-1 rounded bg-slate-100 hover:bg-indigo-100 hover:text-indigo-800 text-slate-700 transition">
@@ -253,24 +253,6 @@
               }).join("")}
             </div>
 
-            <!-- Bandit Learned State Strip -->
-            <div class="mt-4 pt-3 border-t border-slate-100">
-              <div class="flex items-center justify-between text-xs mb-2">
-                <span class="font-bold text-slate-700">
-                  <i class="fa-solid fa-brain text-indigo-500 mr-1"></i> What the Bandit Learned (Beta Posterior)
-                </span>
-                <span class="text-[10px] text-slate-400 italic">${escapeHtml(remindersData.disclaimer)}</span>
-              </div>
-              <div class="grid grid-cols-2 sm:grid-cols-6 gap-2">
-                ${(remindersData.bandit_state || []).map(b => `
-                  <div class="bg-slate-50 p-1.5 rounded border border-slate-200 text-center">
-                    <span class="block text-[10px] font-semibold text-slate-600 truncate">${escapeHtml(b.category)}</span>
-                    <span class="block text-xs font-mono font-bold text-indigo-600">μ=${escapeHtml(b.mean)}</span>
-                    <span class="block text-[9px] text-slate-400">α=${escapeHtml(b.alpha)} β=${escapeHtml(b.beta)}</span>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
           </div>
 
           <!-- 4. SAFETY ESSENTIALS & EMERGENCY SUPPORT (Task B8) -->

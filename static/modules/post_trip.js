@@ -12,23 +12,32 @@
       if(request!==epoch || !C.isCurrent(ctx)) return;
       C.lifecycle(ctx,snapshot);
       if(snapshot.status!=='completed') { container.innerHTML='<p class="text-xs">End the trip in LIVE TRIP before submitting post-trip feedback.</p>'; return; }
+      const runs=snapshot.runs||[];
+      const planned=(snapshot.schedule||[]).length;
+      const actual=runs.filter(run=>run.outcome==='completed').length;
+      const early=runs.filter(run=>run.outcome==='early_ended').length;
+      const tripSummary=`<div class="te-card"><h3>Trip summary</h3><p>${snapshot.total_days} of ${snapshot.total_days} days finished · ${planned} activities planned · ${actual} completed · ${early} ended early · ${runs.filter(run=>['skipped','not_done'].includes(run.outcome)).length} skipped / not done.</p></div>`;
       if(snapshot.closed_out) {
-        container.innerHTML=`<h3 class="text-sm font-bold text-emerald-800">Trip closed out — feedback saved</h3><p class="text-xs mt-2">${C.esc(snapshot.post_feedback.notes)}</p><div data-c-learning></div>`;
+        container.innerHTML=`${tripSummary}<h3 class="text-sm font-bold text-emerald-800">Trip closed out — feedback saved</h3><p class="text-xs mt-2">${C.esc(snapshot.post_feedback.notes)}</p><div data-c-learning></div>`;
         try {
           const summary=await TravelModules.api(`/api/live/${encodeURIComponent(ctx.userId)}/learning-summary?caller_user_id=${encodeURIComponent(ctx.userId)}`);
           const box=container.querySelector('[data-c-learning]');
-          if(request===epoch && C.isCurrent(ctx) && box) box.innerHTML=`<p class="text-xs mt-3">${C.esc(summary.explanation)}</p>`;
+          if(request===epoch && C.isCurrent(ctx) && box) box.innerHTML=`<p class="text-xs mt-3">${C.esc(window.TripExperience?.publicText(summary.explanation)||'Your feedback will help personalise future recommendations.')}</p>`;
         } catch (_) {
           const box=container.querySelector('[data-c-learning]');
-          if(request===epoch && C.isCurrent(ctx) && box) box.textContent='Feedback is saved. Learning summary is temporarily unavailable.';
+          if(request===epoch && C.isCurrent(ctx) && box) box.textContent='Feedback is saved. Your recommendation summary is temporarily unavailable.';
         }
         return;
       }
       const draft=snapshot.post_feedback || {};
+      const trip=await window.TripExperience.api(`/api/trips/detail/${encodeURIComponent(ctx.tripId)}?user_id=${encodeURIComponent(ctx.userId)}`);
+      if(request!==epoch || !C.isCurrent(ctx)) return;
+      const savedType=draft.trip_type||trip.trip_type||({partner:'couple',family_kids:'family',family_seniors:'family'}[trip.companions]||trip.companions);
+      const tripType=['solo','couple','friends','family'].includes(savedType)?savedType:'';
       const placeDraft=Object.fromEntries((draft.per_place_ratings||[]).map(p=>[p.activity_id,p.ratings?.overall||'']));
-      container.innerHTML=`<form class="space-y-4" novalidate><h3 class="font-bold text-sm">Post-trip feedback</h3><p class="text-xs">Submission is required to close out this trip. Save a draft at any time to resume later.</p>
+      container.innerHTML=`${tripSummary}<form class="space-y-4" novalidate><h3 class="font-bold text-sm">Post-trip feedback</h3><p class="text-xs">Submission is required to close out this trip. Save a draft at any time to resume later.</p>
         <div class="grid grid-cols-2 gap-3">${C.ratingFields(snapshot.rating_keys,draft.ratings)}</div>
-        <label class="block text-xs">Trip type<select name="trip_type" class="block border rounded-lg p-2 w-full" required><option value="">Choose a type</option>${['solo','couple','friends','family'].map(v=>`<option value="${v}" ${draft.trip_type===v?'selected':''}>${C.label(v)}</option>`).join('')}</select><span data-field-error="trip_type" class="text-rose-700"></span></label>
+        <details><summary class="text-xs">Trip type: ${C.esc(tripType?C.label(tripType):'Not available — please confirm')} · correct if needed</summary><label class="block text-xs">Correct trip type (optional when already saved)<select name="trip_type" class="block border rounded-lg p-2 w-full"><option value="">Choose a type</option>${['solo','couple','friends','family'].map(v=>`<option value="${v}" ${tripType===v?'selected':''}>${C.label(v)}</option>`).join('')}</select><span data-field-error="trip_type" class="text-rose-700"></span></label></details>
         <label class="block text-xs">Would you revisit?<select name="would_revisit" class="block border rounded-lg p-2 w-full" required><option value="">Choose an answer</option>${['yes','no','maybe'].map(v=>`<option value="${v}" ${draft.would_revisit===v?'selected':''}>${C.label(v)}</option>`).join('')}</select><span data-field-error="would_revisit" class="text-rose-700"></span></label>
         ${['liked','disliked','notes'].map(key=>`<label class="block text-xs">${C.label(key)}${key==='notes'?' (optional)':''}<textarea name="${key}" maxlength="2000" class="block border rounded-lg p-2 w-full">${C.esc(draft[key]||'')}</textarea><span data-field-error="${key}" class="text-rose-700"></span></label>`).join('')}
         <details class="border rounded-lg p-3"><summary class="text-xs font-semibold">Optional per-place overall ratings</summary>${snapshot.schedule.map(slot=>`<label class="block text-xs mt-2">Day ${slot.day_number}: ${C.esc(slot.title)}<select class="border rounded p-1 ml-2" data-c-place="${C.esc(slot.id)}"><option value="">Not rated</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${Number(placeDraft[slot.id])===n?'selected':''}>${n}</option>`).join('')}</select></label>`).join('')}</details>
@@ -67,7 +76,7 @@
             if(!C.isCurrent(ctx)) return;
             C.lifecycle(ctx,next);
             if(isDraft) form.querySelector('[data-c-saved]').textContent='Draft saved. You can leave and resume this form.';
-            else await render(container,ctx);
+            else { window.dispatchEvent(new CustomEvent('trip:feedback-saved',{detail:{tripId:ctx.tripId}})); await render(container,ctx); }
           } finally { form.querySelectorAll('button').forEach(b=>{if(b!==control) b.disabled=false;}); }
         });
         form.dataset.inFlight='false';
