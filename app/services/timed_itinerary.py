@@ -489,6 +489,7 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
     base_start = minute_of_day(prefs['activity_start_time'])
     for day in range(1, total_days + 1):
         start, end = schedule_window(prefs, day, total_days)
+        notes = []
         free = []
         for block in prefs['free_blocks']:
             if block.get('day') not in (None, day):
@@ -502,6 +503,10 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             if bs < end and be > start:
                 free.append((max(start, bs), min(end, be), block['label']))
         candidates = list(selected_by_day.get(day, [])) if selected_by_day is not None else sorted(activities, key=lambda a: a['id'] in used)
+        avoided = [a for a in candidates if a.get('planning_priority') == 'avoid']
+        if avoided:
+            notes.extend(f"{a.get('title') or a.get('name') or a['id']} was left out because you marked it avoid." for a in avoided)
+        candidates = [a for a in candidates if a.get('planning_priority') != 'avoid']
         for booking in candidates:
             if not booking.get('is_fixed_booking') or not booking.get('booking_start_time') or not booking.get('booking_end_time'):
                 continue
@@ -510,7 +515,6 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 free.append((bs,be,'fixed booking'))
         free.sort()
         slots, cursor = [], start
-        notes = []
 
         def fit(duration, earliest=None, latest=None):
             candidate = max(cursor, earliest if earliest is not None else start)
@@ -544,7 +548,8 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         stay = prefs.get('stay_anchor') or {}
         previous = {'latitude':stay.get('lat'),'longitude':stay.get('lon'),'id':stay.get('stay_id')}
         for activity in candidates:
-            is_pinned = bool(activity.get('is_pinned') or activity.get('is_fixed_booking'))
+            is_pinned = bool(activity.get('is_pinned') or activity.get('is_fixed_booking') or
+                              activity.get('must_visit') or activity.get('planning_priority') == 'must_do')
             if scheduled >= daily_limit and not is_pinned:
                 break
             if activity.get('id') in used and not is_pinned and 'final_day_activities' in prefs:

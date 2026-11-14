@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import init_db
+from app.database import init_db, get_connection
 # A: profile/history integration
 from app.db_migrations_a import migrate_a
 from app.profile_gate import router as profile_gate_router
@@ -15,6 +15,7 @@ from app.profile_gate import router as profile_gate_router
 from app.db_migrations_b import run_b_migration
 # Core upgrade: idempotent expense and read-only sharing schema.
 from app.db_migrations_core_upgrade import migrate_core_upgrade
+from app.db_migrations_d import migrate_d
 # end B: schedule preferences integration
 from app.api import router
 from app.modules import discover, init_module_tables, registry_router
@@ -38,6 +39,10 @@ app.include_router(profile_gate_router)
 app.include_router(router)
 from app.trip_preview import router as trip_preview_router
 app.include_router(trip_preview_router)  # Integration: planning preview and confirmation.
+# D: recommendation-led discovery, trip budgeting and assistant APIs.
+from app.recommendation_budget import router as recommendation_budget_router
+app.include_router(recommendation_budget_router)
+# end D: recommendation-led discovery, trip budgeting and assistant APIs.
 app.include_router(registry_router)
 for _m in discover():
     app.include_router(_m.router)
@@ -61,6 +66,10 @@ def startup():
     init_module_tables()
     __import__('app.db_migrations_c', fromlist=['migrate_c']).migrate_c()  # C: runtime schema
     migrate_core_upgrade()
+    # D: recommendation/discovery and financial ledger schema.
+    with get_connection() as conn:
+        migrate_d(conn)
+    # end D: recommendation/discovery and financial ledger schema.
 
 @app.get("/")
 def home():
