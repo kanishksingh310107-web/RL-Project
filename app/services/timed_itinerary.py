@@ -507,6 +507,12 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         if avoided:
             notes.extend(f"{a.get('title') or a.get('name') or a['id']} was left out because you marked it avoid." for a in avoided)
         candidates = [a for a in candidates if a.get('planning_priority') != 'avoid']
+        if selected_by_day is None:
+            days_left=sum(schedule_window(prefs,d,total_days)[1]-schedule_window(prefs,d,total_days)[0]>=30 for d in range(day,total_days+1))
+            remaining=sum(a['id'] not in used for a in candidates)
+            day_limit=min(daily_limit,(remaining+days_left-1)//days_left) if days_left else 0
+        else:
+            day_limit=daily_limit
         for booking in candidates:
             if not booking.get('is_fixed_booking') or not booking.get('booking_start_time') or not booking.get('booking_end_time'):
                 continue
@@ -547,10 +553,13 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         rest_duration = {'none':0,'short':20,'standard':30,'long':60}.get(prefs.get('rest_preference','standard'),30)
         stay = prefs.get('stay_anchor') or {}
         previous = {'latitude':stay.get('lat'),'longitude':stay.get('lon'),'id':stay.get('stay_id')}
+        walking_km=0.0
+        walking_limit=prefs.get('walking_limit_km')
+        requested_modes=prefs.get('transport_preferences') or []
         for activity in candidates:
             is_pinned = bool(activity.get('is_pinned') or activity.get('is_fixed_booking') or
                               activity.get('must_visit') or activity.get('planning_priority') == 'must_do')
-            if scheduled >= daily_limit and not is_pinned:
+            if scheduled >= day_limit and not is_pinned:
                 break
             if activity.get('id') in used and not is_pinned and 'final_day_activities' in prefs:
                 notes.append(f"Repeated place {activity.get('name') or activity.get('title') or activity['id']} was left unscheduled.")
@@ -583,10 +592,14 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 if previous.get('latitude') is not None and activity.get('latitude') is not None:
                     from app.planning.transport import estimate_travel_leg
                     leg=estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
-                        float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'))
+                        float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'),mode=requested_modes[0] if requested_modes else None)
+                    if leg.mode=='walk' and walking_limit is not None and walking_km+leg.distance_km*1.35>walking_limit:
+                        leg=estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'),mode='cab')
                     travel=leg.duration_minutes
                     if at-travel>=cursor:
                         append('transit',at-travel,travel,'Estimated travel to fixed booking')
+                        slots[-1]['provenance'].update(mode=leg.mode,distance_km=leg.distance_km)
+                        if leg.mode=='walk':walking_km+=leg.distance_km*1.35
                     else:
                         notes.append(f"There is not enough travel time to the fixed booking for {activity.get('title') or activity.get('name')}.")
                 append('activity',at,fixed_duration,activity.get('title') or activity.get('name') or 'Fixed booking',activity)
@@ -600,7 +613,12 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             if previous.get('latitude') is not None and previous.get('longitude') is not None and activity.get('latitude') is not None and activity.get('longitude') is not None:
                 from app.planning.transport import estimate_travel_leg
                 travel_leg = estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
-                    float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'))
+                    float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'),
+                    mode=requested_modes[0] if requested_modes else None)
+                if travel_leg.mode=='walk' and walking_limit is not None and walking_km+travel_leg.distance_km*1.35>walking_limit:
+                    travel_leg=estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
+                        float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'),mode='cab')
+                    notes.append('A short vehicle transfer replaces walking to respect your transfer-walking limit. On-site walking distances still need checking.')
                 travel = travel_leg.duration_minutes
             elif scheduled:
                 travel = 20
@@ -611,6 +629,9 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 continue
             if travel:
                 append('transit', at, travel, 'Estimated travel to next stop')
+                if all(v is not None for v in (previous.get('latitude'),previous.get('longitude'),activity.get('latitude'),activity.get('longitude'))):
+                    slots[-1]['provenance'].update(mode=travel_leg.mode,distance_km=travel_leg.distance_km)
+                    if travel_leg.mode=='walk':walking_km+=travel_leg.distance_km*1.35
             kind = 'shopping' if is_shopping else 'activity'
             title = ('Shopping at ' if is_shopping else '') + (activity.get('name') or activity.get('title') or 'Activity')
             append(kind, at + travel, duration, title, activity)
@@ -653,10 +674,14 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         if not (day == total_days and prefs.get('transport_departure_time')) and stay.get('lat') is not None and stay.get('lon') is not None and previous.get('latitude') is not None and previous.get('longitude') is not None:
             from app.planning.transport import estimate_travel_leg
             return_leg = estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
-                float(stay['lat']),float(stay['lon']),previous.get('id'),stay.get('stay_id'))
+                float(stay['lat']),float(stay['lon']),previous.get('id'),stay.get('stay_id'),mode=requested_modes[0] if requested_modes else None)
+            if return_leg.mode=='walk' and walking_limit is not None and walking_km+return_leg.distance_km*1.35>walking_limit:
+                return_leg=estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),float(stay['lat']),float(stay['lon']),previous.get('id'),stay.get('stay_id'),mode='cab')
             at = fit(return_leg.duration_minutes)
             if at is not None:
                 append('transit',at,return_leg.duration_minutes,'Estimated travel back to lodging')
+                slots[-1]['provenance'].update(mode=return_leg.mode,distance_km=return_leg.distance_km)
+                if return_leg.mode=='walk':walking_km+=return_leg.distance_km*1.35
             else:
                 notes.append('Return travel to lodging does not fit in the remaining day window.')
         for bs, be, label in free:
@@ -671,11 +696,25 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         if dropped:
             notes.append(f'{dropped} lower-ranked activities were dropped because of hotel buffers, free time, opening hours or activity duration.')
         if not scheduled:
-            notes.append('No activity fits the available window and opening hours; activities were dropped.')
+            if end<=start:
+                notes.append('Departure day: activities are disabled or no time remains before your terminal transfer.')
+            elif not candidates:
+                notes.append('No unused places are available for this day. Refresh recommendations or add a custom activity; attractions have not been repeated.')
+            else:
+                notes.append('No activity fits the available window, opening hours and travel time. Try moving an activity from another day or changing your schedule.')
+            # A sparse catalogue should produce an explained, useful day rather
+            # than an empty panel or invented venue. Preserve meal/free blocks.
+            occupied=sorted((relative(s),relative(s)+s['duration_mins']) for s in slots)
+            cursor_gap=start
+            for bs,be in occupied+[(end,end)]:
+                if min(bs,end)-cursor_gap>=30:
+                    append('unplanned',cursor_gap,min(bs,end)-cursor_gap,'Unplanned time — add an activity or explore near your stay')
+                cursor_gap=max(cursor_gap,be)
         result.append(dict(day_number=day, slots=slots, note=' '.join(dict.fromkeys(notes)) or None,
             arrival_marker=prefs['hotel_arrival_time'] if day == 1 else None,
             departure_marker=prefs['hotel_departure_time'] if day == total_days else None,
-            total_cost=round(sum(s['estimated_cost'] for s in slots), 2), activities_count=scheduled))
+            total_cost=round(sum(s['estimated_cost'] for s in slots), 2), activities_count=scheduled,
+            transfer_walking_km=round(walking_km,2)))
     return result
 
 
@@ -1087,7 +1126,8 @@ def regenerate_timed_itinerary_for_trip(conn: sqlite3.Connection, trip_id: str, 
                 'final_day_activities','luggage_storage','terminal_arrival_buffer_minutes',
                 'station_arrival_buffer_minutes','terminal_journey_minutes','lunch_start_time',
                 'lunch_end_time','lunch_duration_minutes','dinner_start_time','dinner_end_time',
-                'dinner_duration_minutes','rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr'):
+                'dinner_duration_minutes','rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr',
+                'walking_limit_km','accessibility_notes','transport_preferences'):
         if key in trip_prefs:
             prefs[key] = trip_prefs[key]
     if trip_prefs.get('hotel_checkin_time'):

@@ -216,6 +216,13 @@ def require_profile_complete(user: dict = Depends(current_user), request: Reques
     return user
 
 
+def require_planning_profile(user: dict = Depends(require_profile_complete)) -> dict:
+    from app.precision import profile_status
+    if not profile_status(user['id'])['complete']:
+        _error(403,'Complete Deep Personalisation before planning a trip.','DEEP_PROFILE_INCOMPLETE')
+    return user
+
+
 @router.post("/api/account/login")
 @router.post("/api/account/register", status_code=201)
 def account_auth(payload: AccountInput, request: Request):

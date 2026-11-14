@@ -41,6 +41,8 @@ def test_unverified_google_mock_identity_is_never_accepted(client):
 
 
 def test_new_trip_date_gate_uses_india_local_day(client,demo_user):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     today=date.today()
     future=(today+timedelta(days=3)).isoformat()
     result=client.post(f'/api/trips/{demo_user}',json={'destination_id':'manali_spiti_india',
@@ -55,6 +57,8 @@ def test_new_trip_date_gate_uses_india_local_day(client,demo_user):
 
 
 def test_expenses_and_share_links_are_owner_only_and_revocable(client,demo_user):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     start,end=_trip_dates()
     trip=client.post(f'/api/trips/{demo_user}',json={'destination_id':'manali_spiti_india',
         'start_date':start,'end_date':end,'travellers_count':1,'total_budget':18000})
@@ -77,6 +81,8 @@ def test_expenses_and_share_links_are_owner_only_and_revocable(client,demo_user)
 
 
 def test_expense_amount_rejects_fractional_or_unknown_category(client,demo_user):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     start,end=_trip_dates()
     trip=client.post(f'/api/trips/{demo_user}',json={'destination_id':'manali_spiti_india',
         'start_date':start,'end_date':end,'travellers_count':1,'total_budget':18000}).json()

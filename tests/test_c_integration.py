@@ -18,6 +18,8 @@ def test_profile_gate_rechecks_edits_and_returns_flat_error(client,demo_user):
 
 
 def test_shared_invalid_input_is_readable(client,demo_user):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     response=client.post('/api/trips/'+demo_user,json={'destination_id':'jaipur_india','start_date':'2027-03-01','end_date':'2027-03-03','travellers_count':0})
     assert response.status_code==422
     assert isinstance(response.json()['detail'],str)
@@ -79,6 +81,8 @@ def test_custom_timeline_and_runtime_use_the_same_places(client,c_trip):
     ('accommodation_tier','unknown'),('travel_pace','unknown'),('transit_pref','unknown'),('travellers_count',True),
 ])
 def test_tampered_trip_options_are_rejected(client,demo_user,field,value):
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     response=client.post('/api/trips/'+demo_user,json={'destination_id':'jaipur_india','start_date':'2027-03-01','end_date':'2027-03-03',field:value})
     assert response.status_code==422,response.text
     assert response.json()['field']==field

@@ -109,6 +109,8 @@ def test_gps_reverse_geocode_and_nearby_discovery_linucb(client, demo_user, monk
 
 def test_gps_discovered_location_feeds_itinerary_and_stay_anchor(client, demo_user, monkeypatch):
     """Trip creation from searched/GPS location passes radius & stay anchor into LinUCB itinerary planner."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     monkeypatch.setattr("app.providers.geo.is_geoapify_configured", lambda: False)
 
     payload = {

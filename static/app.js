@@ -3424,7 +3424,8 @@ function renderItinerary(itin) {
   // Integration: a late itinerary refresh preserves the selected trip stage and budget view.
   const renderedTripId = itin.trip_id || currentPlannedTripId;
   const tripRuntime = window.TripExperience?.getSnapshot(renderedTripId);
-  if (window.BudgetExperience?.isOpen(renderedTripId)) window.BudgetExperience.restore(renderedTripId);
+  if (window.ShoppingExperience?.isOpen(renderedTripId)) window.ShoppingExperience.restore(renderedTripId);
+  else if (window.BudgetExperience?.isOpen(renderedTripId)) window.BudgetExperience.restore(renderedTripId);
   else switchWorkspaceMode(tripRuntime?.status === 'completed' ? 'post' : tripRuntime?.status === 'live' ? 'live' : 'pre');
   if (!tripRuntime || ['draft', 'finalized'].includes(tripRuntime.status)) switchPreSubtab("itin");
   // end Integration: preserve workspace selection.

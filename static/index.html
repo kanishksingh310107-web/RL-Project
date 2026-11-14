@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RL Travel Guide</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Travel Guide</title>
+  <link rel="stylesheet" href="/static/vendor/tailwind.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="/static/style.css">
   <!-- Official Google Identity Services SDK -->
@@ -24,7 +24,7 @@
           <i class="fa-solid fa-compass text-lg"></i>
         </div>
         <div>
-          <span class="font-bold text-base text-slate-900 tracking-tight">RL Travel Guide</span>
+          <span class="font-bold text-base text-slate-900 tracking-tight">Travel Guide</span>
           <span class="block text-[11px] text-indigo-600 font-medium">Personalised Travel Intelligence</span>
         </div>
       </div>
@@ -1392,7 +1392,7 @@
 
       <div class="mt-3 space-y-3">
         <p class="text-slate-500">
-          This helps the Reinforcement Learning agent adapt subsequent suggestions.
+          Your feedback helps us suggest activities that suit you better.
         </p>
         <div class="space-y-1.5" id="rejectReasonsList">
           <label class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer border border-transparent hover:border-slate-200">
@@ -1480,6 +1480,7 @@
   <script src="/static/modules/experience_api.js"></script>
   <script src="/static/modules/experience_ui.js"></script>
   <script src="/static/modules/budget_experience.js"></script>
+  <script src="/static/modules/shopping_experience.js"></script>
   <script src="/static/modules/recommendation_discovery.js"></script>
   <script src="/static/modules/itinerary_insights.js"></script>
   <script src="/static/modules/recommendation_assistant.js"></script>

@@ -68,6 +68,7 @@ def test_day_preferences_atomic_validation_and_finalized_lock(client, deep_user)
 
 
 def provider(monkeypatch,output):
+    monkeypatch.setenv('ASSISTANT_MODE','api')
     monkeypatch.setenv('OPENAI_API_KEY','mock-provider-key')
     response=Mock();response.json.return_value={'choices':[{'message':{'content':json.dumps(output)}}]}
     call=Mock(return_value=response)

@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 
 def test_indian_trip_creation_success(client, demo_user):
     """Test creating a trip for an Indian destination succeeds."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     r = client.post(f"/api/trips/{demo_user}", json={
         "destination_id": "manali_spiti_india",
         "destination_name": "Manali & Spiti Valley",
@@ -24,6 +26,8 @@ def test_indian_trip_creation_success(client, demo_user):
 
 def test_trip_creation_invalid_dates(client, demo_user):
     """Test creating a trip where return date is before departure date."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     r = client.post(f"/api/trips/{demo_user}", json={
         "destination_id": "manali_spiti_india",
         "start_date": "2026-11-25",
@@ -35,6 +39,8 @@ def test_trip_creation_invalid_dates(client, demo_user):
 
 def test_trip_creation_invalid_travellers_or_budget(client, demo_user):
     """Test validation of travellers count and budget."""
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,demo_user)
     r1 = client.post(f"/api/trips/{demo_user}", json={
         "destination_id": "manali_spiti_india",
         "start_date": "2026-11-20",

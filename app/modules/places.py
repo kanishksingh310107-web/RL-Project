@@ -12,7 +12,7 @@ import datetime
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from fastapi import APIRouter, HTTPException, Query, status, Depends, Request
-from app.profile_gate import require_profile_complete
+from app.profile_gate import require_planning_profile
 
 from app.database import get_connection
 from app.modules.common import get_user_context
@@ -358,7 +358,7 @@ def get_popular_indian_destinations():
 
 @router.post("/plan-dynamic")
 @router.post("/plan-trip")
-def plan_dynamic_trip(payload: PlanDynamicTripRequest, request: Request, user=Depends(require_profile_complete)):
+def plan_dynamic_trip(payload: PlanDynamicTripRequest, request: Request, user=Depends(require_planning_profile)):
     """
     Takes ANY Indian location (e.g. Pune, Srinagar, Shillong, Hampi, Madurai):
     1. Geocodes and verifies actual Indian geographical coordinates.

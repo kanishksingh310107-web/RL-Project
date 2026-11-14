@@ -34,6 +34,8 @@ def test_unified_trip_creation_and_persistence(client):
     assert p_resp.status_code == 200
     history = client.post('/api/profile/history/choice', json={'choice': 'none'})
     assert history.status_code == 200, history.text
+    from conftest import complete_deep_profile
+    complete_deep_profile(client,user_id)
 
     # 3. Create a trip with companion specs, children, elderly, departure, and trip-specific preferences
     trip_payload = {

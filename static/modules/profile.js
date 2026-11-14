@@ -238,6 +238,9 @@
     }
   };
 
+  window.addEventListener('trip:feedback-saved',()=>{refreshRevisits().catch(()=>showMessage('Your feedback is saved. Refresh history to update the revisit list.',false));});
+  window.addEventListener('hashchange',()=>{if(location.hash==='#/'&&user())refreshRevisits().catch(()=>{});});
+
   const originalToggle = window.toggleTripFormModal;
   if (typeof originalToggle === "function") window.toggleTripFormModal = function (...args) {
     return window.ProfileGate.require(() => originalToggle.apply(this, args));

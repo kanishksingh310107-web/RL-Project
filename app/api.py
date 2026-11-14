@@ -49,7 +49,7 @@ from app import precision as prec
 from app.planning.budget import (
     calculate_minimum_trip_budget, validate_trip_budget, adapt_itinerary_to_budget
 )
-from app.profile_gate import require_profile_complete, current_user
+from app.profile_gate import require_profile_complete, require_planning_profile, current_user
 from app.schedule_preferences import (
     LEGACY_SCHEDULE_PREFS, normalize_schedule_preferences,
 )
@@ -1206,7 +1206,7 @@ def get_profile_summary_endpoint(user_id: str):
 from datetime import datetime
 
 @router.post("/trips/{user_id}", response_model=TripResponse)
-def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require_profile_complete)):
+def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require_planning_profile)):
     """Create a new trip configuration pre-filling from profile if needed."""
     import app.database as database
     # 1. Validate destination (India-only unless running in test environment)
@@ -1258,8 +1258,7 @@ def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    # The dependency above enforces Level 1 plus history. Progressive Levels 2
-    # and 3 enrich recommendations and remain optional for trip creation.
+    # Planning requires basic profile/history and all applicable Deep Personalisation answers.
 
     # Enforce Indian destination only for trip creation
     from app.data.india_destinations import DESTINATIONS_BY_ID
@@ -1889,7 +1888,7 @@ def validate_budget_endpoint(payload: BudgetValidationRequest):
     return BudgetValidationResponse(**result)
 
 @router.post("/itinerary/generate/{trip_id}", response_model=ItineraryResponse)
-def generate_trip_itinerary(trip_id: str, user_id: str, user=Depends(require_profile_complete)):
+def generate_trip_itinerary(trip_id: str, user_id: str, user=Depends(require_planning_profile)):
     """Generate or regenerate a structured day-by-day itinerary via Contextual LinUCB."""
     if user_id != user['id']:
         raise HTTPException(403, {'detail': 'You cannot plan trips for another account', 'code': 'USER_MISMATCH', 'field': 'user_id'})

@@ -10,12 +10,13 @@
   const actions=U.el('div',null,'ex-entry-actions');
   actions.append(U.button('I know my destination',()=>window.toggleTripFormModal(),'ex-primary'),U.button('Help me choose',()=>openDiscovery()),U.button('Explore my budget',()=>window.BudgetExperience?.openOptions()));entry.append(actions);
   const shelves=U.el('div');shelves.id='exRecommendationShelves';const selection=U.el('aside',null,'ex-comparison-bar');selection.id='exComparisonBar';selection.hidden=true;entry.append(shelves,selection);root.before(entry);
+  const moreDestinations=U.el('details',null,'ex-more-destinations');moreDestinations.append(U.el('summary','More destinations & seasonal ideas'));root.before(moreDestinations);moreDestinations.append(root);
   const notice=U.status(entry);
   const isHome=item=>window.TripExperience?.isHomeDestination(item);
   const canonicalId=item=>item.destination_id||item.id;
   const name=item=>item.name||item.destination_name||'Destination';
   const texts=value=>Array.isArray(value)?value.map(v=>typeof v==='string'?v:v.message||v.text||'').filter(Boolean):typeof value==='string'?[value]:[];
-  const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation);
+  const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation||item.because_you_said||item.why_it_suits);
   function checkOwner(){if(owner!==A.uid()){owner=A.uid();compared.clear();items.clear();selection.hidden=true;discoveryContext={};shelves.replaceChildren();handoff=null;}}
   function register(item){checkOwner();const id=canonicalId(item);if(typeof id!=='string'||isHome(item))return null;items.set(id,item);return id;}
   function addComparison(item,feedback=notice){
@@ -43,14 +44,14 @@
       control.setAttribute('aria-pressed','true');
       window.dispatchEvent(new CustomEvent('experience:recommendation-feedback',{detail:{destinationId:id,action}}));
     });
-    for(const [value,title] of [['interested','Interested'],['already_visited','Already visited']]){const b=U.button(title,()=>send(value,null,b));bar.append(b);}
+    for(const [value,title] of [['interested','Interested']]){const b=U.button(title,()=>send(value,null,b));bar.append(b);}
     const reject=U.button('Not for me',()=>{
       const d=U.dialog('What would make this a better suggestion?','Your answer helps refine future recommendations.');
       for(const [reason,title] of [['too_expensive','Too expensive'],['too_far','Too far'],['too_crowded','Too crowded'],['wrong_activity_type','Wrong activity type'],['not_interested','Not interested']]){
         const b=U.button(title,()=>U.busy(b,d.notice,async()=>{await A.capabilities();const result=await A.feedback({destination_id:id,action:'not_for_me',reason,context});message.textContent=result.message||'Preference saved.';d.box.close();}));d.content.append(b);
       }
     });bar.append(reject);
-    for(const [value,title] of [['more_like_this','More like this'],['closer_to_home','Closer to home'],['too_expensive','Too expensive']]){const b=U.button(title,()=>send(value,null,b));bar.append(b);}
+    const extra=U.el('details',null,'ex-feedback-more');extra.append(U.el('summary','More feedback options'));const extraActions=U.el('div',null,'ex-actions');for(const [value,title] of [['already_visited','Already visited'],['more_like_this','More like this'],['closer_to_home','Closer to home'],['too_expensive','Too expensive']]){const b=U.button(title,()=>send(value,null,b));extraActions.append(b);}extra.append(extraActions);bar.append(extra);
     parent.append(bar);
     A.capabilities().then(()=>{if(!parent.isConnected)return;bar.querySelectorAll('button').forEach(b=>{if(b!==compare){b.disabled=!A.can('discovery');if(b.disabled)b.title='Preference refinement is temporarily unavailable. Existing Save and Explore controls still work.';}});});
   }
@@ -160,15 +161,15 @@
     const note=U.el('p',choice.replace?'Suggested dates, party and budget were transferred. Review every field before creating your trip.':'Destination selected. Existing dates, party and budget were kept.','ex-note');document.getElementById('teFormError')?.before(note);select.dispatchEvent(new Event('change',{bubbles:true}));
   });
   async function loadShelves() {
-    checkOwner();if(!A.uid())return;const account=A.uid();await A.capabilities();if(account!==A.uid()||!A.can('discovery'))return;
+    checkOwner();if(!A.uid())return;const account=A.uid();await A.capabilities();if(account!==A.uid())return;if(!A.can('discovery')){moreDestinations.open=true;return;}
     try{const [response,saved]=await Promise.all([A.shelves(),A.savedPlaces()]);if(account!==A.uid())return;shelves.replaceChildren();if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
       const savedSection=U.el('section');savedSection.append(U.el('h3','Your saved places'));const savedGrid=U.el('div',null,'ex-result-grid');
       for(const item of saved.destinations||[])savedGrid.append(card(item,{}));
       if(!savedGrid.childElementCount)savedGrid.append(U.el('p','Places you save will appear here.','ex-muted'));
       savedSection.append(savedGrid);shelves.append(savedSection);
       const groups=Array.isArray(response.groups)?response.groups:[];
-      for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>!isHome(item));if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',A.text(group.title)));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
-    }catch(error){if(account===A.uid())U.unavailable(shelves,error.message,loadShelves);}
+      const shown=new Set();for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>{const id=canonicalId(item);if(isHome(item)||shown.has(id))return false;shown.add(id);return true;});if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',A.text(group.title)));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
+    }catch(error){if(account===A.uid()){moreDestinations.open=true;U.unavailable(shelves,error.message,loadShelves);}}
   }
   new MutationObserver(()=>{const visible=!document.getElementById('dashboardView').classList.contains('hidden');if(visible&&owner!==A.uid()){checkOwner();loadShelves();}}).observe(document.getElementById('dashboardView'),{attributes:true,attributeFilter:['class']});
   window.addEventListener('experience:recommendation-feedback',()=>{loadShelves();window.loadRecommendations?.(true);});

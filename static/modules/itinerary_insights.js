@@ -15,6 +15,7 @@
     const measures=[];
     if(A.amount(day.active_hours)!==null)measures.push(day.active_hours+' active hours');
     if(A.amount(day.walking_km)!==null)measures.push('approximately '+day.walking_km+' km walking');
+    if(A.amount(day.transfer_walking_km)!==null)measures.push('approximately '+day.transfer_walking_km+' km walking between stops; on-site distances unavailable');
     if(A.amount(day.travel_minutes)!==null)measures.push('approximately '+day.travel_minutes+' minutes travelling');
     if(A.amount(day.total_cost)!==null)measures.push('day estimate '+A.money(day.total_cost));
     if(measures.length)box.append(U.el('p',measures.join(' · '),'ex-note'));
@@ -92,13 +93,14 @@
     if(runtime(trip)?.status!=='draft')return;
     const key=A.contextKey(trip),d=U.dialog('Day priorities & comfort','Choose priorities independently of activity acceptance. Fixed bookings stay protected.');const f=U.form('day-preferences');d.content.append(f);
     const tripData=data.trip||{};U.field(f,'intensity','Daily intensity',{options:[['relaxed','Relaxed'],['balanced','Balanced'],['active','Active']],value:tripData.travel_pace||'balanced'});
-    U.field(f,'walking_limit_km','Maximum comfortable walking per day (km, optional)',{type:'number',min:0,max:100,value:tripData.walking_limit_km??''});
+    U.field(f,'walking_limit_km','Maximum walking between stops per day (km, optional)',{type:'number',min:0,max:100,value:tripData.walking_limit_km??''});
+    U.field(f,'transport_mode','Local transfer preference',{options:[['auto','Recommend a mode'],['walk','Walk where feasible'],['cab','Vehicle transfers'],['bus_metro','Public transport']],value:'auto'});
     U.field(f,'accessibility_notes','Accessibility or fatigue needs (optional)',{type:'textarea',value:tripData.accessibility_notes||'',maxlength:500});
     const blocks=(data.days||[]).flatMap(day=>(day.timeline||[]).filter(b=>b.type==='activity').map(b=>({...b,day_number:day.day_number})));
     for(const block of blocks){const field=U.field(f,'priority_'+window.TripExperience.occurrenceId(block),`Day ${block.day_number}: ${block.title}`,{options:[['nice_to_do','Nice to do'],['must_do','Must do'],['avoid','Avoid']],value:block.priority||(block.must_visit?'must_do':'nice_to_do')});field.disabled=!!block.is_fixed_booking||!!block.is_pinned;if(field.disabled)field.closest('label').append(U.el('small','Fixed booking — protected.'));}
     const save=U.el('button','Save preferences','ex-primary');save.type='submit';f.append(save);
     f.onsubmit=event=>{event.preventDefault();const v=U.values(f),e={};if(v.walking_limit_km!==''&&(!Number.isFinite(Number(v.walking_limit_km))||Number(v.walking_limit_km)<0||Number(v.walking_limit_km)>100))e.walking_limit_km='Use 0–100 km, or leave blank.';if(v.accessibility_notes.trim().length>500)e.accessibility_notes='Use 500 characters or fewer.';if(!U.errors(f,e))return;
-      U.busy(save,d.notice,async()=>{if(key!==A.contextKey()||runtime(trip)?.status!=='draft')throw new Error('The trip is no longer editable.');await A.itineraryPreferences(trip,{intensity:v.intensity,walking_limit_km:v.walking_limit_km===''?null:Number(v.walking_limit_km),accessibility_notes:v.accessibility_notes.trim(),priorities:blocks.filter(b=>!b.is_fixed_booking&&!b.is_pinned).map(b=>({occurrence_id:window.TripExperience.occurrenceId(b),priority:v['priority_'+window.TripExperience.occurrenceId(b)]}))});d.box.close();await window.BudgetExperience?.refreshTrip(trip);});};
+      U.busy(save,d.notice,async()=>{if(key!==A.contextKey()||runtime(trip)?.status!=='draft')throw new Error('The trip is no longer editable.');await A.itineraryPreferences(trip,{intensity:v.intensity,transport_mode:v.transport_mode,walking_limit_km:v.walking_limit_km===''?null:Number(v.walking_limit_km),accessibility_notes:v.accessibility_notes.trim(),priorities:blocks.filter(b=>!b.is_fixed_booking&&!b.is_pinned).map(b=>({occurrence_id:window.TripExperience.occurrenceId(b),priority:v['priority_'+window.TripExperience.occurrenceId(b)]}))});d.box.close();await window.BudgetExperience?.refreshTrip(trip);});};
   }
   window.ItineraryInsights={check:checkItinerary,dayOptions,selectedDay:trip=>selected.get(trip)||1};
 })();
