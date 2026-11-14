@@ -4,9 +4,13 @@
 # trip finalization, and the 'Start Trip' activation lifecycle.
 
 import datetime
+import uuid
+import re
+import hashlib
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Literal
+from pydantic import BaseModel, Field, field_validator, model_validator
+from fastapi import APIRouter, HTTPException, Query, status, Request
 
 from app.database import get_connection
 from app.modules.common import _decode
@@ -23,10 +27,115 @@ MODULE = {
 router = APIRouter(prefix="/api/trip-actions", tags=["trip-actions"])
 
 
+class CustomActivityCreate(BaseModel):
+    user_id: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=160)
+    category: Literal['culture_history','nature_outdoors','food_dining','adventure','relaxation','shopping_local','scenic','appointment'] = 'appointment'
+    day_number: int = Field(ge=1, le=90, strict=True)
+    duration_minutes: int = Field(ge=15, le=720, strict=True)
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    location_name: Optional[str] = Field(None, max_length=200)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    cost_estimate_inr: int = Field(0, ge=0, le=1_000_000_000, strict=True)
+    is_pinned: bool = False
+    is_fixed_booking: bool = False
+    booking_label: Optional[str] = Field(None, max_length=120)
+
+    @field_validator('title','location_name','booking_label',mode='before')
+    @classmethod
+    def clean_custom_text(cls,value,info):
+        if value is None and info.field_name!='title': return value
+        if not isinstance(value,str): raise ValueError('Enter text for '+info.field_name.replace('_',' ')+'.')
+        cleaned=re.sub(r'<[^>]*>','',value).strip()
+        if not cleaned: raise ValueError(info.field_name.replace('_',' ').title()+' cannot be empty.')
+        return cleaned
+
+    @field_validator('start_time','end_time')
+    @classmethod
+    def valid_booking_time(cls,value):
+        if value is None: return value
+        try:
+            if len(value)!=5 or datetime.datetime.strptime(value,'%H:%M').strftime('%H:%M')!=value: raise ValueError
+        except (TypeError,ValueError) as exc:
+            raise ValueError('Use 24-hour HH:MM booking times.') from exc
+        return value
+
+    @model_validator(mode='after')
+    def valid_booking(self):
+        if self.is_fixed_booking:
+            if not self.start_time or not self.end_time:
+                raise ValueError('Fixed bookings need start and end times.')
+            start=datetime.datetime.strptime(self.start_time,'%H:%M')
+            end=datetime.datetime.strptime(self.end_time,'%H:%M')
+            if end<=start: raise ValueError('Booking end must be after its start on the same day.')
+            self.duration_minutes=int((end-start).total_seconds()//60)
+        elif bool(self.start_time)!=bool(self.end_time):
+            raise ValueError('Provide both booking times or neither.')
+        return self
+
+
 def _refresh_custom_schedule(conn, trip_id):
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone() and conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone():
         from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
         regenerate_timed_itinerary_for_trip(conn,trip_id)
+
+
+def _require_trip_owner(request,trip_id,user_id=None):
+    authorization=request.headers.get('authorization','')
+    token_hash=hashlib.sha256(authorization[7:].strip().encode()).hexdigest() if authorization.startswith('Bearer ') else ''
+    with get_connection() as conn:
+        session=conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (token_hash,datetime.datetime.now(datetime.timezone.utc).isoformat())).fetchone()
+        trip=conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone()
+        if not trip: raise HTTPException(404,detail={'detail':'Trip not found.','code':'TRIP_NOT_FOUND'})
+        if not session or session['user_id']!=trip['user_id'] or (user_id and user_id!=session['user_id']):
+            raise HTTPException(403,detail={'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
+        return dict(trip),session['user_id']
+
+
+@router.post('/{trip_id}/activities')
+def add_custom_activity(trip_id: str,payload: CustomActivityCreate,request: Request):
+    authorization=request.headers.get('authorization','')
+    if not authorization.startswith('Bearer '):
+        raise HTTPException(403,detail={'detail':'Sign in to edit this trip.','code':'AUTH_REQUIRED'})
+    token_hash=hashlib.sha256(authorization[7:].strip().encode()).hexdigest()
+    with get_connection() as conn:
+        session=conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (token_hash,datetime.datetime.now(datetime.timezone.utc).isoformat())).fetchone()
+        trip=conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone()
+        if not trip: raise HTTPException(404,detail={'detail':'Trip not found.','code':'TRIP_NOT_FOUND'})
+        if not session or session['user_id']!=payload.user_id or trip['user_id']!=payload.user_id:
+            raise HTTPException(403,detail={'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
+        runtime=conn.execute('SELECT status FROM trip_runtime WHERE trip_id=?',(trip_id,)).fetchone()
+        if runtime and runtime['status']!='draft':
+            raise HTTPException(409,detail={'detail':'Only draft itineraries can be edited.','code':'ITINERARY_LOCKED'})
+        if payload.day_number>trip['duration_days']:
+            raise HTTPException(422,detail={'detail':'Activity day must fall within the trip dates.','code':'INVALID_DAY','field':'day_number'})
+        itinerary=conn.execute('SELECT * FROM itineraries WHERE trip_id=? AND user_id=?',(trip_id,payload.user_id)).fetchone()
+        if not itinerary: raise HTTPException(404,detail={'detail':'Generate the itinerary before adding activities.','code':'ITINERARY_NOT_FOUND'})
+        occurrence_id=str(uuid.uuid4())
+        custom_id='custom_'+occurrence_id
+        order=conn.execute('SELECT COALESCE(MAX(order_index),-1)+1 FROM itinerary_activities WHERE itinerary_id=? AND day_number=?',
+                           (itinerary['id'],payload.day_number)).fetchone()[0]
+        start_hour=int(payload.start_time[:2]) if payload.start_time else 9
+        slot='morning' if start_hour<12 else 'afternoon' if start_hour<18 else 'evening'
+        conn.execute('''INSERT INTO itinerary_activities(id,itinerary_id,day_number,time_slot,activity_id,title,category,
+            description,location_name,neighborhood,latitude,longitude,duration_minutes,cost_estimate,status,order_index,
+            is_pinned,is_fixed_booking,booking_start_time,booking_end_time,booking_label)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+            (occurrence_id,itinerary['id'],payload.day_number,slot,custom_id,payload.title,payload.category,
+             payload.booking_label or ('Custom appointment' if payload.category=='appointment' else 'Traveler-added activity'),
+             payload.location_name,payload.location_name,payload.latitude,payload.longitude,payload.duration_minutes,
+             payload.cost_estimate_inr,'proposed',order,int(payload.is_pinned or payload.is_fixed_booking),int(payload.is_fixed_booking),
+             payload.start_time if payload.is_fixed_booking else None,payload.end_time if payload.is_fixed_booking else None,
+             payload.booking_label))
+        conn.commit()
+        _refresh_custom_schedule(conn,trip_id)
+        return {'status':'created','occurrence_id':occurrence_id,'activity_id':custom_id,
+                'day_number':payload.day_number,'is_pinned':bool(payload.is_pinned or payload.is_fixed_booking),
+                'is_fixed_booking':payload.is_fixed_booking}
 
 
 def init_tables(conn):
@@ -48,6 +157,7 @@ class SwapRequest(BaseModel):
     user_id: str
     replacement_activity_id: str
     is_trip_specific: bool = True
+    occurrence_id: Optional[str] = None
 
 
 class RemoveRequest(BaseModel):
@@ -56,7 +166,7 @@ class RemoveRequest(BaseModel):
 
 
 @router.get("/{trip_id}/timed-view")
-def get_timed_itinerary_view(trip_id: str):
+def get_timed_itinerary_view(trip_id: str,request: Request):
     """
     Returns an enriched day-by-day timeline view including:
     - Sightseeing activities
@@ -64,6 +174,7 @@ def get_timed_itinerary_view(trip_id: str):
     - Structured meal times (Lunch / Dinner)
     - Rest and relaxation breaks
     """
+    _require_trip_owner(request,trip_id)
     with get_connection() as conn:
         cursor = conn.cursor()
 
@@ -93,10 +204,26 @@ def get_timed_itinerary_view(trip_id: str):
         activities = [_decode(a) for a in act_rows]
 
         if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone() and conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone():
-            from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
+            from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip, init_timed_tables
             from app.itinerary_generator import get_itinerary_details
             shared = get_itinerary_details(conn,trip['user_id'],trip_id)
-            schedule = regenerate_timed_itinerary_for_trip(conn,trip_id,trip['user_id'])
+            init_timed_tables(conn)
+            stored=conn.execute('SELECT id FROM timed_itineraries WHERE trip_id=?',(trip_id,)).fetchone()
+            if not stored:
+                schedule=regenerate_timed_itinerary_for_trip(conn,trip_id,trip['user_id'])
+            else:
+                rows=[dict(r) for r in conn.execute('SELECT * FROM timed_itinerary_slots WHERE trip_id=? ORDER BY day_number,order_index,id',(trip_id,))]
+                grouped={day:[] for day in range(1,trip.get('duration_days',1)+1)}
+                for slot in rows:
+                    if slot.get('provenance_json'):
+                        try: slot['provenance']=__import__('json').loads(slot.pop('provenance_json'))
+                        except (TypeError,ValueError): pass
+                    grouped.setdefault(slot['day_number'],[]).append(slot)
+                schedule={'days':[{'day_number':day,'slots':slots,'note':None,
+                    'arrival_marker':trip.get('hotel_arrival_time') if day==1 else None,
+                    'departure_marker':trip.get('hotel_departure_time') if day==trip.get('duration_days') else None,
+                    'total_cost':sum(float(s.get('estimated_cost') or 0) for s in slots)}
+                    for day,slots in sorted(grouped.items())]}
             days_output = []
             for day in schedule['days']:
                 timeline = []
@@ -105,7 +232,7 @@ def get_timed_itinerary_view(trip_id: str):
                     timeline.append(dict(original, type=slot['slot_type'], id=original.get('id'),
                         activity_id=slot['activity_id'], title=slot['title'], description=slot['description'],
                         time_range=slot['start_time']+' – '+slot['end_time'], duration_minutes=slot['duration_mins'],
-                        cost_estimate=slot['estimated_cost'], can_edit=slot['slot_type']=='activity',
+                        cost_estimate=slot['estimated_cost'], can_edit=slot['slot_type'] in ('activity','shopping'),
                         slot_type_label=slot['slot_type'].replace('_',' ').title(), badge_color='blue'))
                 days_output.append(dict(day_number=day['day_number'], timeline=timeline, note=day['note'],
                     arrival_marker=day['arrival_marker'],departure_marker=day['departure_marker'],
@@ -273,10 +400,11 @@ def get_timed_itinerary_view(trip_id: str):
 
 
 @router.post("/{trip_id}/finalize")
-def finalize_trip_itinerary(trip_id: str, user_id: str = Query(...)):
+def finalize_trip_itinerary(trip_id: str, request: Request, user_id: str = Query(...)):
     """
     Finalizes the itinerary, locking edits and transitioning trip status to 'finalized'.
     """
+    _require_trip_owner(request,trip_id,user_id)
     with get_connection() as conn:
         cursor = conn.cursor()
         trip_row = cursor.execute("SELECT * FROM trips WHERE id = ? AND user_id = ?", (trip_id, user_id)).fetchone()
@@ -297,11 +425,12 @@ def finalize_trip_itinerary(trip_id: str, user_id: str = Query(...)):
 
 
 @router.post("/{trip_id}/start")
-def start_trip(trip_id: str, user_id: str = Query(...)):
+def start_trip(trip_id: str, request: Request, user_id: str = Query(...)):
     """
     Activates the trip! Transitions trip status to 'active_trip'.
     Prepares the system for future live-trip features (today's schedule, real-time alerts).
     """
+    _require_trip_owner(request,trip_id,user_id)
     with get_connection() as conn:
         cursor = conn.cursor()
         trip_row = cursor.execute("SELECT * FROM trips WHERE id = ? AND user_id = ?", (trip_id, user_id)).fetchone()
@@ -325,12 +454,14 @@ def start_trip(trip_id: str, user_id: str = Query(...)):
 def swap_itinerary_activity(
     trip_id: str,
     activity_id: str,
-    payload: SwapRequest
+    payload: SwapRequest,
+    request: Request
 ):
     """
     Swaps an existing itinerary activity with an alternative suggested activity.
     Updates the LinUCB bandit (-0.4 for old activity, +1.0 for new replacement).
     """
+    _require_trip_owner(request,trip_id,payload.user_id)
     with get_connection() as conn:
         cursor = conn.cursor()
 
@@ -348,17 +479,26 @@ def swap_itinerary_activity(
         rep_data = dict(rep_row)
 
         # Update the slot in itinerary_activities
+        occurrence_id=payload.occurrence_id or activity_id
+        target=cursor.execute("SELECT id,activity_id FROM itinerary_activities WHERE itinerary_id=? AND (id=? OR activity_id=?) ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END",
+                              (itinerary_id,occurrence_id,activity_id,occurrence_id)).fetchall()
+        if not target:
+            raise HTTPException(status_code=404,detail='Activity occurrence not found')
+        if len(target)>1 and target[0]['id']!=occurrence_id:
+            raise HTTPException(status_code=409,detail={'detail':'This place occurs more than once. Use an itinerary occurrence ID.','code':'AMBIGUOUS_OCCURRENCE','field':'occurrence_id'})
+        occurrence_id=target[0]['id']
+        old_activity_id=target[0]['activity_id']
         cursor.execute("""
             UPDATE itinerary_activities
             SET activity_id = ?, title = ?, category = ?, description = ?,
                 location_name = ?, neighborhood = ?, latitude = ?, longitude = ?,
                 duration_minutes = ?, cost_estimate = ?, status = 'accepted'
-            WHERE itinerary_id = ? AND activity_id = ?
+            WHERE itinerary_id = ? AND id = ?
         """, (
             rep_data["id"], rep_data["name"], rep_data["category"], rep_data["description"],
             rep_data["name"], rep_data["neighborhood"], rep_data["latitude"], rep_data["longitude"],
             rep_data["duration_minutes"], __import__("app.core.cost_model",fromlist=["activity_fee_inr"]).activity_fee_inr(rep_data),
-            itinerary_id, activity_id
+            itinerary_id, occurrence_id
         ))
         conn.commit()
 
@@ -372,7 +512,8 @@ def swap_itinerary_activity(
                 activity_id=rep_data["id"],
                 action_type="modify",
                 is_trip_specific=payload.is_trip_specific,
-                is_implicit=False
+                is_implicit=False,
+                occurrence_id=occurrence_id
             )
         except Exception:
             pass
@@ -389,11 +530,13 @@ def swap_itinerary_activity(
 def remove_itinerary_activity(
     trip_id: str,
     activity_id: str,
+    request: Request,
     user_id: str = Query(...)
 ):
     """
     Removes an activity from the itinerary and informs the bandit policy.
     """
+    _require_trip_owner(request,trip_id,user_id)
     with get_connection() as conn:
         cursor = conn.cursor()
         itin = cursor.execute("SELECT id FROM itineraries WHERE trip_id = ?", (trip_id,)).fetchone()
@@ -401,11 +544,14 @@ def remove_itinerary_activity(
             raise HTTPException(status_code=404, detail="Itinerary not found")
         itinerary_id = itin[0]
 
-        cursor.execute(
-            "DELETE FROM itinerary_activities WHERE itinerary_id = ? AND activity_id = ?",
-            (itinerary_id, activity_id)
-        )
-        conn.commit()
+        matches=cursor.execute('SELECT id,activity_id FROM itinerary_activities WHERE itinerary_id=? AND (id=? OR activity_id=?) ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END',
+                               (itinerary_id,activity_id,activity_id,activity_id)).fetchall()
+        if not matches:
+            raise HTTPException(status_code=404,detail='Activity occurrence not found')
+        if len(matches)>1 and matches[0]['id']!=activity_id:
+            raise HTTPException(status_code=409,detail={'detail':'This place occurs more than once. Use an itinerary occurrence ID.','code':'AMBIGUOUS_OCCURRENCE','field':'activity_id'})
+        occurrence_id=matches[0]['id']
+        catalogue_id=matches[0]['activity_id']
 
         # Update policy with reject signal
         try:
@@ -414,14 +560,15 @@ def remove_itinerary_activity(
                 user_id=user_id,
                 trip_id=trip_id,
                 itinerary_id=itinerary_id,
-                activity_id=activity_id,
+                activity_id=catalogue_id,
                 action_type="reject",
                 rejection_reason="removed_by_user",
                 is_trip_specific=True,
-                is_implicit=False
+                is_implicit=False,
+                occurrence_id=occurrence_id
             )
-        except Exception:
-            pass
+        except ValueError as exc:
+            raise HTTPException(status_code=409,detail={'detail':str(exc),'code':'OCCURRENCE_CONFLICT'})
 
         _refresh_custom_schedule(conn,trip_id)
         return {
@@ -429,14 +576,33 @@ def remove_itinerary_activity(
             "message": "Activity removed from your itinerary."
         }
 
+
+@router.post("/{trip_id}/activity/{activity_id}/restore")
+def restore_rejected_occurrence(trip_id: str, activity_id: str, request: Request, user_id: str = Query(...)):
+    """Restore one rejected occurrence by its stable itinerary row ID."""
+    _require_trip_owner(request,trip_id,user_id)
+    with get_connection() as conn:
+        itinerary = conn.execute('SELECT id FROM itineraries WHERE trip_id=? AND user_id=?',(trip_id,user_id)).fetchone()
+        if not itinerary:
+            raise HTTPException(404,detail='Itinerary not found or unauthorized')
+        row = conn.execute("SELECT id FROM itinerary_activities WHERE itinerary_id=? AND id=? AND status='rejected'",
+                           (itinerary['id'],activity_id)).fetchone()
+        if not row:
+            raise HTTPException(404,detail='Rejected itinerary occurrence not found')
+        conn.execute("UPDATE itinerary_activities SET status='proposed',rejection_reason=NULL WHERE id=?",(row['id'],))
+        conn.commit()
+        _refresh_custom_schedule(conn,trip_id)
+    return {'status':'restored','occurrence_id':row['id']}
+
 # ---------------------------------------------------------------------------
 # Rescheduling and Day-Switching Models & Endpoints
 # ---------------------------------------------------------------------------
 
 class RescheduleRequest(BaseModel):
     user_id: str
-    direction: Optional[str] = Field("later", description="earlier or later")
-    target_day: Optional[int] = Field(None, description="Move to a specific day number")
+    occurrence_id: Optional[str] = Field(None,min_length=1,max_length=100)
+    direction: Literal['earlier','later'] = 'later'
+    target_day: Optional[int] = Field(None,ge=1,le=90,strict=True)
 
 
 class SwitchDaysRequest(BaseModel):
@@ -445,17 +611,31 @@ class SwitchDaysRequest(BaseModel):
     activity_id_b: str
 
 
+def _resolve_occurrence(conn,itinerary_id,identifier):
+    select='SELECT id,day_number,time_slot,order_index,title FROM itinerary_activities WHERE itinerary_id=?'
+    exact=conn.execute(select+' AND id=?',(itinerary_id,identifier)).fetchone()
+    if exact: return exact
+    matches=conn.execute(select+' AND activity_id=? ORDER BY day_number,order_index,id',
+                         (itinerary_id,identifier)).fetchall()
+    if not matches: raise HTTPException(404,detail='Activity occurrence not found')
+    if len(matches)>1:
+        raise HTTPException(409,detail={'detail':'This place occurs more than once. Use an itinerary occurrence ID.','code':'AMBIGUOUS_OCCURRENCE','field':'occurrence_id'})
+    return matches[0]
+
+
 @router.post("/{trip_id}/activity/{activity_id}/reschedule")
 def reschedule_itinerary_activity(
     trip_id: str,
     activity_id: str,
-    payload: RescheduleRequest
+    payload: RescheduleRequest,
+    request: Request
 ):
     """
     Reschedules an existing activity:
     - Moves it earlier or later within the day by swapping order/time with the adjacent activity.
     - Or moves it to another specified day.
     """
+    _require_trip_owner(request,trip_id,payload.user_id)
     with get_connection() as conn:
         cursor = conn.cursor()
         itin = cursor.execute("SELECT id FROM itineraries WHERE trip_id = ?", (trip_id,)).fetchone()
@@ -463,14 +643,7 @@ def reschedule_itinerary_activity(
             raise HTTPException(status_code=404, detail="Itinerary not found")
         itinerary_id = itin[0]
 
-        cursor.execute("""
-            SELECT id, day_number, time_slot, order_index, title
-            FROM itinerary_activities
-            WHERE itinerary_id = ? AND activity_id = ?
-        """, (itinerary_id, activity_id))
-        target = cursor.fetchone()
-        if not target:
-            raise HTTPException(status_code=404, detail="Activity not found in itinerary")
+        target = _resolve_occurrence(conn,itinerary_id,payload.occurrence_id or activity_id)
 
         t_id, t_day, t_slot, t_order, t_title = target
 
@@ -546,11 +719,13 @@ def reschedule_itinerary_activity(
 @router.post("/{trip_id}/switch-days")
 def switch_activities_between_days(
     trip_id: str,
-    payload: SwitchDaysRequest
+    payload: SwitchDaysRequest,
+    request: Request
 ):
     """
     Swaps two activities between different days without duplicate entries or scheduling conflicts.
     """
+    _require_trip_owner(request,trip_id,payload.user_id)
     with get_connection() as conn:
         cursor = conn.cursor()
         itin = cursor.execute("SELECT id FROM itineraries WHERE trip_id = ?", (trip_id,)).fetchone()
@@ -558,38 +733,30 @@ def switch_activities_between_days(
             raise HTTPException(status_code=404, detail="Itinerary not found")
         itinerary_id = itin[0]
 
-        cursor.execute("""
-            SELECT id, day_number, time_slot, order_index, title
-            FROM itinerary_activities
-            WHERE itinerary_id = ? AND activity_id = ?
-        """, (itinerary_id, payload.activity_id_a))
-        act_a = cursor.fetchone()
-
-        cursor.execute("""
-            SELECT id, day_number, time_slot, order_index, title
-            FROM itinerary_activities
-            WHERE itinerary_id = ? AND activity_id = ?
-        """, (itinerary_id, payload.activity_id_b))
-        act_b = cursor.fetchone()
-
-        if not act_a or not act_b:
-            raise HTTPException(status_code=404, detail="One or both activities not found in itinerary")
+        act_a = _resolve_occurrence(conn,itinerary_id,payload.activity_id_a)
+        act_b = _resolve_occurrence(conn,itinerary_id,payload.activity_id_b)
 
         id_a, day_a, slot_a, order_a, title_a = act_a
         id_b, day_b, slot_b, order_b, title_b = act_b
+        if day_a==day_b:
+            raise HTTPException(status_code=422,detail={'detail':'Choose activities from two different days.','code':'SAME_DAY','field':'activity_id_b'})
+        next_a=conn.execute('SELECT COALESCE(MAX(order_index),-1)+1 FROM itinerary_activities WHERE itinerary_id=? AND day_number=? AND id!=?',
+                             (itinerary_id,day_b,id_b)).fetchone()[0]
+        next_b=conn.execute('SELECT COALESCE(MAX(order_index),-1)+1 FROM itinerary_activities WHERE itinerary_id=? AND day_number=? AND id!=?',
+                             (itinerary_id,day_a,id_a)).fetchone()[0]
 
         # Atomically swap day, slot, and order
         cursor.execute("""
             UPDATE itinerary_activities
             SET day_number = ?, time_slot = ?, order_index = ?
             WHERE id = ?
-        """, (day_b, slot_b, order_b, id_a))
+        """, (day_b, slot_a, next_a, id_a))
 
         cursor.execute("""
             UPDATE itinerary_activities
             SET day_number = ?, time_slot = ?, order_index = ?
             WHERE id = ?
-        """, (day_a, slot_a, order_a, id_b))
+        """, (day_a, slot_b, next_b, id_b))
 
         conn.commit()
         _refresh_custom_schedule(conn,trip_id)

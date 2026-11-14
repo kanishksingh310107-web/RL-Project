@@ -13,6 +13,8 @@ from app.profile_gate import router as profile_gate_router
 # end A: profile/history integration
 # B: schedule preferences integration
 from app.db_migrations_b import run_b_migration
+# Core upgrade: idempotent expense and read-only sharing schema.
+from app.db_migrations_core_upgrade import migrate_core_upgrade
 # end B: schedule preferences integration
 from app.api import router
 from app.modules import discover, init_module_tables, registry_router
@@ -56,6 +58,7 @@ def startup():
     # end B: schedule preferences migration
     init_module_tables()
     __import__('app.db_migrations_c', fromlist=['migrate_c']).migrate_c()  # C: runtime schema
+    migrate_core_upgrade()
 
 @app.get("/")
 def home():

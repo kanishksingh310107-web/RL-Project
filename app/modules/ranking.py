@@ -613,6 +613,10 @@ def get_rankings(
             "is_trending": dest.get("is_trending", False),
             "crowd_level": dest.get("crowd_level", "moderate"),
             "total_score": total_score,
+            "match_label": ('Strong fit' if total_score >= 75 else 'Good fit' if total_score >= 60 else
+                            'Mixed fit' if total_score >= 45 else 'Low fit'),
+            "match_confidence": 'Personalized' if has_profile else 'Early estimate',
+            "match_reason": '; '.join(note for _,note in components.values() if note and not note.startswith('no live feed')),
             "breakdown": breakdown
         }
         if avoidance_notes:

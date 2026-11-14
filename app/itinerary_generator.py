@@ -353,10 +353,11 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             slot_name = "morning" if "morning" in slot else slot
             is_meal = (slot == "meal")
 
-            # Prefer activities not yet scheduled anywhere in the trip; fall back to not used today
+            # One activity occurrence per catalogue place by default. If the
+            # unused pool is exhausted, leave capacity open rather than repeat
+            # attractions across days without an explicit user request.
             unused_in_trip = [c for c in all_candidates if c["id"] not in used_activity_ids and c["id"] not in trip_exclusions]
-            unused_today = [c for c in all_candidates if c["id"] not in used_activity_ids_today and c["id"] not in trip_exclusions]
-            candidates_pool = unused_in_trip if unused_in_trip else unused_today
+            candidates_pool = unused_in_trip
 
             # Filter candidates for this slot
             valid_candidates = []

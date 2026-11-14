@@ -3,8 +3,13 @@ import json
 import uuid
 import numpy as np
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, status, Query, Depends
+from fastapi import APIRouter, HTTPException, status, Query, Depends, Request
 from fastapi.responses import JSONResponse
+from datetime import date, timezone
+from zoneinfo import ZoneInfo
+import secrets
+import hashlib
+from pydantic import BaseModel, Field, field_validator
 
 from app.models import (
     AuthRequest, AuthResponse, ShortProfileCreate, ProfileResponse,
@@ -13,7 +18,7 @@ from app.models import (
     DestinationRecommendation, RecommendationsResponse,
     ShortlistToggleRequest, ShortlistResponse,
     TripCreate, TripResponse, ItineraryResponse,
-    ActivityFeedbackRequest, ActivityFeedbackResponse, ItineraryRegenerateRequest,
+    ActivityFeedbackRequest, ActivityFeedbackResponse, ItineraryAcceptAllRequest, ItineraryRegenerateRequest,
     PolicyArmState, PolicyInspectionResponse,
     MinimumBudgetRequest, MinimumBudgetResponse, BudgetValidationRequest, BudgetValidationResponse
 )
@@ -49,6 +54,66 @@ from app.schedule_preferences import (
 )
 
 router = APIRouter(prefix="/api")
+
+
+class ExpenseCreate(BaseModel):
+    category: str
+    amount_inr: int = Field(ge=0, le=1_000_000_000, strict=True)
+    note: str = Field('', max_length=500)
+    spent_on: str
+
+    @field_validator('category')
+    @classmethod
+    def valid_expense_category(cls, value):
+        value = value.strip().lower()
+        if value not in {'shopping','transport','food','stay','activities','other'}:
+            raise ValueError('Choose shopping, transport, food, stay, activities or other.')
+        return value
+
+    @field_validator('note', mode='before')
+    @classmethod
+    def clean_expense_note(cls, value):
+        if value is None:
+            return ''
+        if not isinstance(value, str):
+            raise ValueError('Enter a text note.')
+        return value.strip()
+
+    @field_validator('spent_on')
+    @classmethod
+    def valid_spent_date(cls, value):
+        try:
+            if date.fromisoformat(value).isoformat() != value:
+                raise ValueError
+        except (TypeError, ValueError) as exc:
+            raise ValueError('Use a valid YYYY-MM-DD expense date.') from exc
+        return value
+
+
+def _verified_trip_owner(request: Request, trip_id: str):
+    authorization = request.headers.get('authorization', '')
+    if not authorization.startswith('Bearer '):
+        raise HTTPException(403, {'detail':'Sign in to continue.','code':'AUTH_REQUIRED'})
+    token_hash = hashlib.sha256(authorization[7:].strip().encode()).hexdigest()
+    with get_connection() as conn:
+        session = conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (token_hash, datetime.now(timezone.utc).isoformat())).fetchone()
+        trip = conn.execute('SELECT * FROM trips WHERE id=?', (trip_id,)).fetchone()
+        if not trip:
+            raise HTTPException(404, {'detail':'Trip not found.','code':'TRIP_NOT_FOUND'})
+        if not session or session['user_id'] != trip['user_id']:
+            raise HTTPException(403, {'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
+        return dict(trip), session['user_id']
+
+
+def _verified_user(request: Request,user_id: str):
+    authorization=request.headers.get('authorization','')
+    token_hash=hashlib.sha256(authorization[7:].strip().encode()).hexdigest() if authorization.startswith('Bearer ') else ''
+    with get_connection() as conn:
+        session=conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (token_hash,datetime.now(timezone.utc).isoformat())).fetchone()
+    if not session or session['user_id']!=user_id:
+        raise HTTPException(403,{'detail':'Sign in as this traveler to view trips.','code':'NOT_OWNER'})
 
 # Master Questionnaire Bank (56 Questions, 10 Sections)
 @router.get("/config/questionnaire-schema")
@@ -144,16 +209,9 @@ def get_detailed_options():
 def login_or_signup(payload: AuthRequest):
     legacy_mode = payload.mode or "signup"
     if payload.provider == "google":
-        from app.core.config import get_setting
-        if get_setting("APP_ENV", "development").lower() == "production":
-            raise HTTPException(status_code=403, detail="Use verified Google sign-in.")
-        if not payload.identifier or len(payload.identifier.strip()) > 254:
-            raise HTTPException(status_code=422, detail={"detail": "Enter a valid Google mock identity", "code": "INVALID_IDENTITY", "field": "identifier"})
-        try:
-            return authenticate_or_register("google", payload.identifier.strip(), email=payload.identifier.strip() if "@" in payload.identifier else None,
-                display_name=payload.display_name, avatar_url=payload.avatar_url)
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail={"detail": str(exc), "code": "ACCOUNT_CONFLICT"})
+        raise HTTPException(status_code=403, detail={
+            "detail": "Google sign-in requires a verified Google Identity Services credential.",
+            "code": "GOOGLE_VERIFICATION_REQUIRED", "field": "credential"})
     if payload.provider != "email":
         if payload.provider == "phone":
             from app.core.config import get_setting
@@ -202,14 +260,19 @@ def google_token_login(payload: GoogleTokenRequest):
 # Get/Set Google Client ID
 @router.get("/config/google")
 def get_google_config():
-    from app.core.config import get_setting
-    return {"client_id": get_google_client_id(), 'can_configure':get_setting('APP_ENV','development').lower()!='production' and not get_setting('GOOGLE_CLIENT_ID','').strip()}
+    client_id=get_google_client_id()
+    return {"client_id":client_id,'available':bool(client_id),'can_configure':False,
+            'message':None if client_id else 'Google sign-in is not configured. Use email or guest sign-in.'}
 
 @router.post("/config/google")
-def set_google_config(payload: GoogleClientConfig):
+def set_google_config(payload: GoogleClientConfig, request: Request):
     from app.core.config import get_setting
-    if get_setting('APP_ENV','development').lower()=='production':
-        raise HTTPException(403,{'detail':'Configure Google sign-in through the server environment.','code':'CONFIGURATION_FORBIDDEN'})
+    # The client ID is public, but its setting is an administrative operation.
+    # Keep the existing database setting and require a server-only admin secret.
+    admin_secret = get_setting('GOOGLE_CONFIG_ADMIN_TOKEN','').strip()
+    supplied_secret = request.headers.get('x-google-config-admin','')
+    if not admin_secret or not secrets.compare_digest(supplied_secret, admin_secret):
+        raise HTTPException(403,{'detail':'Google sign-in is managed by the site administrator.','code':'CONFIGURATION_FORBIDDEN'})
     if get_setting('GOOGLE_CLIENT_ID','').strip():
         raise HTTPException(409,{'detail':'Google sign-in is managed through the server environment. Update its configured client ID there.','code':'CONFIGURATION_MANAGED'})
     set_google_client_id(payload.client_id)
@@ -1141,15 +1204,18 @@ def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require
 
     # 3. Validate dates
     try:
-        start_d = datetime.strptime(payload.start_date, "%Y-%m-%d")
-        end_d = datetime.strptime(payload.end_date, "%Y-%m-%d")
+        start_d = date.fromisoformat(payload.start_date)
+        end_d = date.fromisoformat(payload.end_date)
         duration = (end_d - start_d).days + 1
         if duration < 1:
             raise ValueError("End date must be on or after start date")
-        if duration > 366:
-            raise ValueError('Trip must last at most 366 days')
+        if duration > 90:
+            raise ValueError('Trip must last at most 90 days')
+        if start_d < datetime.now(ZoneInfo('Asia/Kolkata')).date():
+            raise ValueError('New trips must start today or later in Asia/Kolkata.')
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Invalid dates: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={
+            'detail': f"Invalid trip dates: {str(e)}", 'code': 'INVALID_TRIP_DATES', 'field': 'start_date'})
 
     trip_pref_input = dict(payload.trip_preferences or {})
     incoming_schedule_prefs = payload.schedule_prefs or trip_pref_input.pop("schedule_prefs", None)
@@ -1397,21 +1463,45 @@ def _hydrate_trip_row(d: Dict[str, Any]) -> Dict[str, Any]:
             d["destination_lon"] = loc_info.get("lon")
         if not d.get("resolved_location"):
             d["resolved_location"] = loc_info.get("resolved_location") or d.get("destination_name")
-    from app.core.party import normalize_party, party_type, party_label
+    from app.core.party import normalize_party, party_type, party_label, trip_type as canonical_trip_type
     from app.core.cost_model import estimate_cost
     d['party'] = normalize_party(d)
-    d['party_type'] = d['companions'] = party_type(d['party'])
+    d['trip_type'] = canonical_trip_type(d, d['party'])
+    d['party_type'] = d['trip_type']
+    d['companions'] = party_type(d['party'])
     d['party_label'] = party_label(d['party'])
     d['travellers_count'] = sum(d['party'].values())
+    for key, default in {
+        'destination_arrival_time': None, 'hotel_checkin_time': '14:00', 'hotel_checkout_time': '11:00',
+        'transport_departure_time': None, 'departure_terminal': None, 'departure_transport_mode': None,
+        'final_day_activities': False, 'luggage_storage': False, 'terminal_arrival_buffer_minutes': 120,
+        'station_arrival_buffer_minutes': 45, 'terminal_journey_minutes': 0, 'lunch_start_time': '12:30','lunch_end_time':'14:30',
+        'lunch_duration_minutes': 60, 'dinner_start_time': '19:00', 'dinner_end_time': '21:00',
+        'rest_preference': 'standard', 'shopping_enabled': False, 'shopping_duration_minutes': 0,
+        'shopping_budget_inr': None,
+    }.items():
+        d[key] = (d.get('trip_preferences') or {}).get(key, default)
     d['cost_estimate'] = estimate_cost(d)
+    d['cost_estimate']['total_inr'] = int(round(d['cost_estimate']['total']))
+    display_currency = (d.get('currency') or 'INR').upper()
+    d['cost_estimate']['display_currency'] = display_currency
+    if display_currency != 'INR':
+        from app.services.currency import display_rate
+        rate = display_rate(display_currency)
+        d['cost_estimate']['display_estimate'] = {
+            'currency':display_currency,
+            'amount':round(d['cost_estimate']['total_inr'] * rate['rate'],2) if rate.get('available') else None,
+            'rate':rate.get('rate'),'as_of':rate.get('as_of'),'available':rate.get('available',False),
+            'message':rate.get('message')}
     d['cost_breakdown'] = d['cost_estimate']['cost_breakdown']
     d['assumptions'] = d['cost_estimate']['assumptions']
     return d
 
 
 @router.get("/trips/{user_id}", response_model=List[TripResponse])
-def get_user_trips(user_id: str):
+def get_user_trips(user_id: str,request: Request):
     """Retrieve all trips created by the user."""
+    _verified_user(request,user_id)
     user = get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -1424,8 +1514,9 @@ def get_user_trips(user_id: str):
 
 
 @router.get("/trips/detail/{trip_id}", response_model=TripResponse)
-def get_trip_detail(trip_id: str):
+def get_trip_detail(trip_id: str,request: Request):
     """Retrieve details for a single trip."""
+    _verified_trip_owner(request,trip_id)
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM trips WHERE id = ?", (trip_id,))
@@ -1434,17 +1525,161 @@ def get_trip_detail(trip_id: str):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
         return TripResponse(**_hydrate_trip_row(dict(row)))
 
+
+@router.get('/trips/{user_id}/active')
+def list_active_trips(user_id: str, request: Request):
+    authorization = request.headers.get('authorization', '')
+    token_hash = hashlib.sha256(authorization[7:].strip().encode()).hexdigest() if authorization.startswith('Bearer ') else ''
+    with get_connection() as conn:
+        session = conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (token_hash, datetime.now(timezone.utc).isoformat())).fetchone()
+        if not session or session['user_id'] != user_id:
+            raise HTTPException(403, {'detail':'Sign in as this traveler to view trips.','code':'NOT_OWNER'})
+        rows = conn.execute('''SELECT t.* FROM trips t LEFT JOIN trip_runtime r ON r.trip_id=t.id
+            WHERE t.user_id=? AND COALESCE(r.status,'draft')!='completed'
+            ORDER BY t.start_date,t.created_at''', (user_id,)).fetchall()
+        return [TripResponse(**_hydrate_trip_row(dict(row))) for row in rows]
+
+
+@router.get('/trips/{user_id}/feedback-pending')
+def list_feedback_pending_trips(user_id: str, request: Request):
+    authorization = request.headers.get('authorization', '')
+    token_hash = hashlib.sha256(authorization[7:].strip().encode()).hexdigest() if authorization.startswith('Bearer ') else ''
+    with get_connection() as conn:
+        session = conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (token_hash, datetime.now(timezone.utc).isoformat())).fetchone()
+        if not session or session['user_id'] != user_id:
+            raise HTTPException(403, {'detail':'Sign in as this traveler to view trips.','code':'NOT_OWNER'})
+        rows = conn.execute('''SELECT t.* FROM trips t JOIN trip_runtime r ON r.trip_id=t.id
+            LEFT JOIN post_trip_feedback f ON f.trip_id=t.id
+            WHERE t.user_id=? AND r.status='completed' AND (f.trip_id IS NULL OR f.submitted_at IS NULL)
+            ORDER BY t.end_date DESC''', (user_id,)).fetchall()
+        return [TripResponse(**_hydrate_trip_row(dict(row))) for row in rows]
+
+
+@router.get('/trips/{user_id}/archive')
+def list_archived_trips(user_id: str, request: Request):
+    authorization = request.headers.get('authorization', '')
+    token_hash = hashlib.sha256(authorization[7:].strip().encode()).hexdigest() if authorization.startswith('Bearer ') else ''
+    with get_connection() as conn:
+        session = conn.execute('SELECT user_id FROM auth_sessions WHERE token_hash=? AND expires_at>?',
+            (token_hash, datetime.now(timezone.utc).isoformat())).fetchone()
+        if not session or session['user_id'] != user_id:
+            raise HTTPException(403, {'detail':'Sign in as this traveler to view trips.','code':'NOT_OWNER'})
+        rows = conn.execute('''SELECT t.* FROM trips t JOIN trip_runtime r ON r.trip_id=t.id
+            JOIN post_trip_feedback f ON f.trip_id=t.id
+            WHERE t.user_id=? AND r.status='completed' AND f.submitted_at IS NOT NULL
+            ORDER BY t.end_date DESC''', (user_id,)).fetchall()
+        return [TripResponse(**_hydrate_trip_row(dict(row))) for row in rows]
+
+
+@router.post('/trips/{trip_id}/expenses')
+def add_trip_expense(trip_id: str, payload: ExpenseCreate, request: Request):
+    trip, actor = _verified_trip_owner(request, trip_id)
+    from app.db_migrations_core_upgrade import migrate_core_upgrade
+    expense_id = str(uuid.uuid4())
+    with get_connection() as conn:
+        migrate_core_upgrade(conn)
+        conn.execute('''INSERT INTO trip_expenses(id,trip_id,user_id,category,amount_inr,note,spent_on)
+            VALUES(?,?,?,?,?,?,?)''', (expense_id,trip_id,actor,payload.category,payload.amount_inr,payload.note,payload.spent_on))
+        conn.commit()
+        rows = [dict(r) for r in conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=? ORDER BY spent_on,id',(trip_id,actor))]
+        planned = _hydrate_trip_row(trip)['cost_estimate']
+    actual = {key: 0 for key in ('shopping','transport','food','stay','activities','other')}
+    for row in rows:
+        actual[row['category']] += row['amount_inr']
+    return {'expense': rows[-1], 'expenses': rows, 'planned_vs_actual': {
+        'currency':'INR', 'planned_total_inr':int(round(planned['total'])),
+        'actual_total_inr':sum(actual.values()), 'actual_by_category_inr':actual,
+        'planned_categories_inr':{key:int(round(value['per_party'])) for key,value in planned['cost_breakdown'].items()}}}
+
+
+@router.get('/trips/{trip_id}/expenses')
+def get_trip_expenses(trip_id: str, request: Request):
+    trip, actor = _verified_trip_owner(request, trip_id)
+    from app.db_migrations_core_upgrade import migrate_core_upgrade
+    with get_connection() as conn:
+        migrate_core_upgrade(conn)
+        rows = [dict(r) for r in conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=? ORDER BY spent_on,id',(trip_id,actor))]
+    actual = {key: sum(r['amount_inr'] for r in rows if r['category']==key)
+              for key in ('shopping','transport','food','stay','activities','other')}
+    planned = _hydrate_trip_row(trip)['cost_estimate']
+    return {'expenses':rows,'planned_vs_actual':{'currency':'INR','planned_total_inr':int(round(planned['total'])),
+        'actual_total_inr':sum(actual.values()),'actual_by_category_inr':actual,
+        'planned_categories_inr':{key:int(round(value['per_party'])) for key,value in planned['cost_breakdown'].items()}}}
+
+
+@router.post('/trips/{trip_id}/share')
+def create_trip_share(trip_id: str, request: Request):
+    trip, actor = _verified_trip_owner(request, trip_id)
+    from app.db_migrations_core_upgrade import migrate_core_upgrade
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    share_id = str(uuid.uuid4())
+    with get_connection() as conn:
+        migrate_core_upgrade(conn)
+        conn.execute('UPDATE trip_share_links SET revoked_at=? WHERE trip_id=? AND user_id=? AND revoked_at IS NULL',
+                     (datetime.now(timezone.utc).isoformat(),trip_id,actor))
+        conn.execute('INSERT INTO trip_share_links(id,trip_id,user_id,token_hash) VALUES(?,?,?,?)',
+                     (share_id,trip_id,actor,token_hash))
+        conn.commit()
+    return {'share_id':share_id,'token':token,'read_only':True,'revocable':True,
+            'url_path':f'/api/shared/trips/{token}'}
+
+
+@router.delete('/trips/{trip_id}/share')
+def revoke_trip_share(trip_id: str, request: Request):
+    trip, actor = _verified_trip_owner(request, trip_id)
+    from app.db_migrations_core_upgrade import migrate_core_upgrade
+    with get_connection() as conn:
+        migrate_core_upgrade(conn)
+        changed = conn.execute('UPDATE trip_share_links SET revoked_at=? WHERE trip_id=? AND user_id=? AND revoked_at IS NULL',
+            (datetime.now(timezone.utc).isoformat(),trip_id,actor)).rowcount
+        conn.commit()
+    return {'revoked':bool(changed)}
+
+
+@router.get('/shared/trips/{token}')
+def get_shared_trip(token: str):
+    if len(token) < 32 or len(token) > 128:
+        raise HTTPException(404, {'detail':'Shared itinerary not found.','code':'SHARE_NOT_FOUND'})
+    from app.db_migrations_core_upgrade import migrate_core_upgrade
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    with get_connection() as conn:
+        migrate_core_upgrade(conn)
+        share = conn.execute('SELECT trip_id FROM trip_share_links WHERE token_hash=? AND revoked_at IS NULL',(token_hash,)).fetchone()
+        if not share:
+            raise HTTPException(404, {'detail':'Shared itinerary not found or its link was revoked.','code':'SHARE_NOT_FOUND'})
+        trip = conn.execute('SELECT id,destination_name,start_date,end_date,duration_days,currency FROM trips WHERE id=?',(share['trip_id'],)).fetchone()
+        if not trip:
+            raise HTTPException(404, {'detail':'Shared itinerary not found.','code':'TRIP_NOT_FOUND'})
+        itinerary = conn.execute('SELECT id FROM itineraries WHERE trip_id=?',(trip['id'],)).fetchone()
+        activities = []
+        if itinerary:
+            activities = [dict(row) for row in conn.execute('''SELECT id,day_number,order_index,time_slot,title,category,
+                description,location_name,neighborhood,duration_minutes,cost_estimate,status FROM itinerary_activities
+                WHERE itinerary_id=? AND status!='rejected' ORDER BY day_number,order_index,id''',(itinerary['id'],))]
+    return {'trip':dict(trip),'activities':activities,'read_only':True}
+
 # ==============================================================================
 # REALISTIC MINIMUM TRIP BUDGET ENDPOINTS
 # ==============================================================================
 
 @router.patch('/trips/{trip_id}', response_model=TripResponse)
-def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
+def edit_trip(trip_id: str, payload: Dict[str, Any], request: Request, user_id: str = Query(...)):
     from pydantic import ValidationError
     from app.core.party import normalize_party, party_type
+    _, actor = _verified_trip_owner(request, trip_id)
+    if actor != user_id:
+        raise HTTPException(403, {'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
     allowed = {'start_date','end_date','party','travellers_count','companions','total_budget',
                'travel_pace','transit_pref','accommodation_tier','departure_location',
-               'trip_preferences','food_style','notes','regeneration_mode','schedule_prefs'}
+               'trip_preferences','trip_type','food_style','notes','regeneration_mode','schedule_prefs',
+               'destination_arrival_time','hotel_checkin_time','hotel_checkout_time','transport_departure_time',
+               'departure_terminal','departure_transport_mode','final_day_activities','luggage_storage',
+               'terminal_arrival_buffer_minutes','station_arrival_buffer_minutes','terminal_journey_minutes',
+               'lunch_start_time','lunch_end_time','lunch_duration_minutes','dinner_start_time','dinner_end_time',
+               'rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr'}
     unknown = set(payload)-allowed
     if unknown:
         raise HTTPException(422, 'Unsupported edit fields: '+', '.join(sorted(unknown)))
@@ -1485,10 +1720,12 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
             start = datetime.strptime(updated.start_date, '%Y-%m-%d')
             end = datetime.strptime(updated.end_date, '%Y-%m-%d')
             duration = (end-start).days+1
-            if duration < 1 or duration > 366:
-                raise ValueError('Trip must last between 1 and 366 days.')
+            if duration < 1 or duration > 90:
+                raise ValueError('Trip must last between 1 and 90 days.')
             if updated.total_budget < 0:
                 raise ValueError('Budget cannot be negative.')
+            if start.date() < datetime.now(ZoneInfo('Asia/Kolkata')).date() and current.get('status') not in ('completed', 'archived'):
+                raise ValueError('Active trips cannot be moved to a past start date.')
         except (ValidationError, ValueError) as exc:
             raise HTTPException(422, str(exc))
         existing = conn.execute('SELECT id FROM itineraries WHERE trip_id=?',(trip_id,)).fetchone()
@@ -1541,10 +1778,17 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], user_id: str = Query(...)):
 
 
 @router.delete('/trips/{trip_id}')
-def delete_trip(trip_id: str, user_id: str = Query(...)):
+def delete_trip(trip_id: str, request: Request, user_id: str = Query(...)):
+    _, actor = _verified_trip_owner(request, trip_id)
+    if actor != user_id:
+        raise HTTPException(403, {'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
     with get_connection() as conn:
         if not conn.execute('SELECT id FROM trips WHERE id=? AND user_id=?',(trip_id,user_id)).fetchone():
             raise HTTPException(404, 'Trip not found or unauthorized')
+        runtime_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_runtime'").fetchone()
+        runtime = conn.execute('SELECT status FROM trip_runtime WHERE trip_id=?',(trip_id,)).fetchone() if runtime_table else None
+        if runtime and runtime['status']=='completed':
+            raise HTTPException(409, {'detail':'Completed trips are retained in your archive and cannot be deleted.','code':'COMPLETED_TRIP_ARCHIVED'})
         itinerary_ids = [r[0] for r in conn.execute('SELECT id FROM itineraries WHERE trip_id=?',(trip_id,))]
         for itinerary_id in itinerary_ids:
             conn.execute('DELETE FROM live_activity_contexts WHERE itinerary_id=?',(itinerary_id,))
@@ -1640,8 +1884,11 @@ def generate_trip_itinerary(trip_id: str, user_id: str, user=Depends(require_pro
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Generation failed: {str(e)}")
 
 @router.get("/itinerary/{trip_id}", response_model=ItineraryResponse)
-def get_itinerary(trip_id: str, user_id: str):
+def get_itinerary(trip_id: str, user_id: str,request: Request):
     """Fetch existing itinerary with all activity cards and feedback states."""
+    trip,_actor=_verified_trip_owner(request,trip_id)
+    if user_id!=_actor:
+        raise HTTPException(403,{'detail':'This trip belongs to another user.','code':'NOT_OWNER'})
     with get_connection() as conn:
         itin = get_itinerary_details(conn, user_id=user_id, trip_id=trip_id)
         if not itin:
@@ -1649,18 +1896,19 @@ def get_itinerary(trip_id: str, user_id: str):
         return ItineraryResponse(**itin)
 
 @router.post("/itinerary/feedback/{user_id}", response_model=ActivityFeedbackResponse)
-def submit_activity_feedback(user_id: str, payload: ActivityFeedbackRequest):
+def submit_activity_feedback(user_id: str, payload: ActivityFeedbackRequest, request: Request):
     """
     Submits user interaction feedback (ACCEPT, REJECT, MODIFY) on a specific activity card.
     Updates LinUCB parameters (if not trip-specific) and logs interaction history.
     """
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT trip_id FROM itineraries WHERE id = ?", (payload.itinerary_id,))
+        cursor.execute("SELECT trip_id FROM itineraries WHERE id = ? AND user_id=?", (payload.itinerary_id,user_id))
         i_row = cursor.fetchone()
         if not i_row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
         trip_id = i_row[0]
+        _verified_trip_owner(request, trip_id)
 
         try:
             res = process_activity_feedback(
@@ -1672,7 +1920,8 @@ def submit_activity_feedback(user_id: str, payload: ActivityFeedbackRequest):
                 action_type=payload.action_type,
                 rejection_reason=payload.rejection_reason,
                 is_trip_specific=payload.is_trip_specific,
-                is_implicit=False
+                is_implicit=False,
+                occurrence_id=payload.occurrence_id,
             )
 
             # If user provided a replacement activity ID for modify
@@ -1688,12 +1937,14 @@ def submit_activity_feedback(user_id: str, payload: ActivityFeedbackRequest):
                         SET activity_id = ?, title = ?, category = ?, description = ?,
                             location_name = ?, neighborhood = ?, latitude = ?, longitude = ?,
                             duration_minutes = ?, cost_estimate = ?, status = 'accepted'
-                        WHERE itinerary_id = ? AND activity_id = ?
+                        WHERE itinerary_id = ? AND id = ?
                     """, (
                         rep_data["id"], rep_data["name"], rep_data["category"], rep_data["description"],
                         rep_data["name"], rep_data["neighborhood"], rep_data["latitude"], rep_data["longitude"],
                         rep_data["duration_minutes"], __import__("app.core.cost_model",fromlist=["activity_fee_inr"]).activity_fee_inr(rep_data),
-                        payload.itinerary_id, payload.activity_id
+                        payload.itinerary_id, payload.occurrence_id or conn.execute(
+                            'SELECT id FROM itinerary_activities WHERE itinerary_id=? AND activity_id=?',
+                            (payload.itinerary_id,payload.activity_id)).fetchone()[0]
                     ))
                     conn.commit()
 
@@ -1706,20 +1957,48 @@ def submit_activity_feedback(user_id: str, payload: ActivityFeedbackRequest):
                         activity_id=rep_data["id"],
                         action_type="accept",
                         is_trip_specific=payload.is_trip_specific,
-                        is_implicit=False
+                        is_implicit=False,
+                        occurrence_id=payload.occurrence_id,
                     )
 
+            accepted_count = cursor.execute("SELECT COUNT(*) FROM itinerary_activities WHERE itinerary_id=? AND status='accepted'",(payload.itinerary_id,)).fetchone()[0]
+            remaining = cursor.execute("SELECT COUNT(*) FROM itinerary_activities WHERE itinerary_id=? AND status='proposed'",(payload.itinerary_id,)).fetchone()[0]
             return ActivityFeedbackResponse(
                 status=res["status"],
                 message=f"Recorded {payload.action_type.upper()} feedback with reward {res['reward_assigned']}.",
                 reward_assigned=res["reward_assigned"],
                 is_trip_specific=res["is_trip_specific"],
-                policy_updated=res["policy_updated"]
+                policy_updated=res["policy_updated"],
+                accepted_count=accepted_count,
+                remaining_unreviewed=remaining,
             )
         except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+            conflict = 'occurs more than once' in str(e)
+            raise HTTPException(status_code=409 if conflict else 422, detail={
+                'detail':str(e),'code':'AMBIGUOUS_OCCURRENCE' if conflict else 'INVALID_FEEDBACK',
+                'field':'occurrence_id' if conflict else 'activity_id'})
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Feedback error: {str(e)}")
+
+
+@router.post('/itinerary/{itinerary_id}/accept-all')
+def accept_all_itinerary_occurrences(itinerary_id: str, payload: ItineraryAcceptAllRequest, request: Request,
+                                     user_id: str = Query(...)):
+    if payload.itinerary_id != itinerary_id:
+        raise HTTPException(422, {'detail':'The itinerary IDs must match.','code':'INVALID_INPUT','field':'itinerary_id'})
+    with get_connection() as conn:
+        itinerary = conn.execute('SELECT trip_id FROM itineraries WHERE id=? AND user_id=?',(itinerary_id,user_id)).fetchone()
+        if not itinerary:
+            raise HTTPException(404, {'detail':'Itinerary not found.','code':'ITINERARY_NOT_FOUND'})
+        _verified_trip_owner(request,itinerary['trip_id'])
+        pending = conn.execute("SELECT id,activity_id FROM itinerary_activities WHERE itinerary_id=? AND status='proposed' ORDER BY day_number,order_index,id",(itinerary_id,)).fetchall()
+        for occurrence in pending:
+            process_activity_feedback(conn,user_id,itinerary['trip_id'],itinerary_id,occurrence['activity_id'],
+                                      'accept',is_trip_specific=True,occurrence_id=occurrence['id'],commit=False)
+        conn.commit()
+        accepted = conn.execute("SELECT COUNT(*) FROM itinerary_activities WHERE itinerary_id=? AND status='accepted'",(itinerary_id,)).fetchone()[0]
+        remaining = conn.execute("SELECT COUNT(*) FROM itinerary_activities WHERE itinerary_id=? AND status='proposed'",(itinerary_id,)).fetchone()[0]
+    return {'itinerary_id':itinerary_id,'accepted_count':accepted,'remaining_unreviewed':remaining}
 
 @router.get("/itinerary/alternatives/{itinerary_id}/{activity_id}")
 def get_alternatives(itinerary_id: str, activity_id: str, user_id: str):

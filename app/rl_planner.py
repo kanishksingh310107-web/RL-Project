@@ -379,7 +379,9 @@ def process_activity_feedback(
     action_type: str, # 'accept', 'reject', 'modify'
     rejection_reason: Optional[str] = None,
     is_trip_specific: bool = False,
-    is_implicit: bool = False
+    is_implicit: bool = False,
+    occurrence_id: Optional[str] = None,
+    commit: bool = True,
 ) -> Dict[str, Any]:
     """
     Executes reward calculation, policy update, feedback logging, and status update.
@@ -388,19 +390,33 @@ def process_activity_feedback(
     cursor = conn.cursor()
 
     # Retrieve activity and itinerary details
-    cursor.execute("""
+    where = 'ia.id = ?' if occurrence_id else 'ia.activity_id = ?'
+    cursor.execute(f"""
         SELECT ia.category, ia.neighborhood, ia.duration_minutes, ia.cost_estimate,
-               ia.day_number, i.total_days, t.destination_id
+               ia.day_number, i.total_days, t.destination_id, ia.status, ia.id, ia.activity_id
         FROM itinerary_activities ia
         JOIN itineraries i ON ia.itinerary_id = i.id
         JOIN trips t ON i.trip_id = t.id
-        WHERE ia.itinerary_id = ? AND ia.activity_id = ?
-    """, (itinerary_id, activity_id))
+        WHERE ia.itinerary_id = ? AND {where}
+    """, (itinerary_id, occurrence_id or activity_id))
     row = cursor.fetchone()
 
     if not row:
         raise ValueError("Activity not found in specified itinerary")
+    if occurrence_id and row[9] != activity_id:
+        raise ValueError('The occurrence does not match the selected catalogue activity.')
+    if not occurrence_id:
+        cursor.execute('SELECT COUNT(*) FROM itinerary_activities WHERE itinerary_id=? AND activity_id=?',
+                       (itinerary_id, activity_id))
+        if cursor.fetchone()[0] > 1:
+            raise ValueError('This place occurs more than once. Supply its itinerary occurrence ID.')
 
+    desired_status = {'accept':'accepted','reject':'rejected','modify':'modified'}.get(action_type.lower())
+    if desired_status is None:
+        raise ValueError('Choose accept, reject or modify.')
+    if row[7] == desired_status:
+        return {'status':'unchanged','action_type':action_type,'new_status':desired_status,
+                'reward_assigned':0.0,'is_trip_specific':is_trip_specific,'policy_updated':False}
     category = row[0]
     cost_est = row[3]
     day_num = row[4]
@@ -461,8 +477,8 @@ def process_activity_feedback(
     cursor.execute("""
         UPDATE itinerary_activities
         SET status = ?, rejection_reason = ?
-        WHERE itinerary_id = ? AND activity_id = ?
-    """, (new_status, rejection_reason, itinerary_id, activity_id))
+        WHERE itinerary_id = ? AND id = ?
+    """, (new_status, rejection_reason, itinerary_id, row[8]))
 
     # 4. Insert into RL Feedback Log
     cursor.execute("""
@@ -484,7 +500,8 @@ def process_activity_feedback(
         reward,
         json.dumps(context_x.tolist())
     ))
-    conn.commit()
+    if commit:
+        conn.commit()
 
     return {
         "status": "success",

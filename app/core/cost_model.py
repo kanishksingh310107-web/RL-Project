@@ -1,12 +1,18 @@
 """Single indicative INR model for estimates, itinerary ledgers and live alerts."""
 import json
 import math
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 from app.core.assumptions import (STAY_RATES_INR, ROOM_OCCUPANCY, INTERCITY_RATES_INR,
     LOCAL_DAILY_INR, FOOD_DAILY_INR, FOOD_TIER_MULTIPLIER, INCIDENTALS_DAILY_INR,
     SHOPPING_INR, CONTINGENCY_RATE, CHILD_ENTRY_FACTOR, SENIOR_ENTRY_FACTOR,
     UNKNOWN_ENTRY_INR, LEGACY_USD_TO_INR, CIRCUITY_FACTOR, BUDGET_BAND_LABELS)
 from app.core.party import normalize_party
+
+
+def whole_inr(value):
+    """Round an INR amount deterministically to the nearest whole rupee."""
+    return int(Decimal(str(value or 0)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 def canonical_tier(value):
@@ -38,8 +44,8 @@ def activity_fee_inr(activity):
 def leg_cost_inr(distance_km, mode):
     from app.core.assumptions import LOCAL_LEG_RATE_INR, LOCAL_LEG_BASE_INR
     if mode=='walk': return 0
-    return round(distance_km * LOCAL_LEG_RATE_INR.get(mode,LOCAL_LEG_RATE_INR['cab']) +
-                 (LOCAL_LEG_BASE_INR if mode in ('auto','cab') else 0),2)
+    return whole_inr(distance_km * LOCAL_LEG_RATE_INR.get(mode,LOCAL_LEG_RATE_INR['cab']) +
+                     (LOCAL_LEG_BASE_INR if mode in ('auto','cab') else 0))
 
 
 def estimate_cost(trip, activities=None, minimum=False):
@@ -99,9 +105,9 @@ def estimate_cost(trip, activities=None, minimum=False):
                   'shopping': (SHOPPING_INR * (.25 if minimum else 1) * people) if prefs.get('include_shopping', trip.get('include_shopping', False)) else 0,
                   'necessary_extras': INCIDENTALS_DAILY_INR * days * people}
     components['contingency_buffer'] = sum(components.values()) * CONTINGENCY_RATE
-    components = {k: round(v, 2) for k,v in components.items()}
-    total = round(sum(components.values()), 2)
-    budget = float(trip.get('total_budget') or 0)
+    components = {k: whole_inr(v) for k,v in components.items()}
+    total = sum(components.values())
+    budget = whole_inr(trip.get('total_budget') or 0)
     return {'total': total, 'cost_breakdown': {k: {'per_party': v, 'per_person': round(v/people, 2)} for k,v in components.items()},
             'per_person': round(total/people, 2), 'per_person_per_day': round(total/people/days, 2),
             'rooms': rooms, 'nights': nights, 'days': days, 'travellers_count': people,
@@ -158,19 +164,19 @@ def daily_transit_options(
     return {
         "day_rental_with_driver": {
             "style_name": "Full-day Chauffeur / Rental",
-            "estimated_cost_inr": round(day_rental_cost, 2),
+            "estimated_cost_inr": whole_inr(day_rental_cost),
             "convenience": "high",
             "description": "Vehicle reserved for the day; no wait times between stops.",
         },
         "cab_per_trip": {
             "style_name": "Point-to-Point Cabs",
-            "estimated_cost_inr": round(cab_cost, 2),
+            "estimated_cost_inr": whole_inr(cab_cost),
             "convenience": "moderate",
             "description": "Book a cab per leg; wait times depend on local availability.",
         },
         "public_and_auto": {
             "style_name": "Auto-Rickshaw & Public Transit",
-            "estimated_cost_inr": round(public_cost, 2),
+            "estimated_cost_inr": whole_inr(public_cost),
             "convenience": "budget",
             "description": "Economical mix of local auto-rickshaws, metro, and short walks.",
         },

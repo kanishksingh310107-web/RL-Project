@@ -215,7 +215,7 @@ class CPostFeedback(CActor):
         if not self.draft:
             if set(self.ratings)!=C_RATING_KEYS:
                 raise ValueError('Rate overall and every shared trip parameter before submitting.')
-            for key in ('trip_type','would_revisit','liked','disliked'):
+            for key in ('would_revisit','liked','disliked'):
                 if not getattr(self,key):
                     raise ValueError(f'{key} is required before submitting. Save a draft to resume later.')
         ids = [row.activity_id for row in self.per_place_ratings]
@@ -278,6 +278,7 @@ def c_transaction(trip_id,actor):
         if runtime['status']=='live' and not runtime['operation_in_flight'] and runtime['preview_json']:
             preview=json.loads(runtime['preview_json'])
             if preview.get('confirmed') and c_adjustment_applied(conn,trip_id,preview):
+                c_log_adjustment(conn,trip_id,preview)
                 c_finish_adjustment(conn,trip_id,preview['token'])
         if runtime['status']=='completed' and not runtime['operation_in_flight']:
             saved=conn.execute('SELECT submitted_at,delivery_started_at FROM post_trip_feedback WHERE trip_id=?',(trip_id,)).fetchone()
@@ -307,9 +308,10 @@ def c_schedule(conn,trip_id):
         custom = conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone()
         timed = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='timed_itineraries'").fetchone()
         if custom and timed and conn.execute('SELECT 1 FROM timed_itineraries WHERE trip_id=?',(trip_id,)).fetchone():
-            scheduled = {(r[0],r[1]) for r in conn.execute("SELECT day_number,activity_id FROM timed_itinerary_slots WHERE trip_id=? AND slot_type='activity'",(trip_id,))}
+            scheduled = {(r[0],r[1]) for r in conn.execute("SELECT day_number,activity_id FROM timed_itinerary_slots WHERE trip_id=? AND slot_type IN ('activity','shopping')",(trip_id,))}
             # Historical runs survive later changes to the remaining schedule.
-            rows = [row for row in rows if (row['day_number'],row['activity_id']) in scheduled or c_run(conn,trip_id,row['id'])]
+            rows = [row for row in rows if (row['day_number'],row['activity_id']) in scheduled or
+                    row.get('is_pinned') or row.get('is_fixed_booking') or c_run(conn,trip_id,row['id'])]
     return rows
 
 
@@ -399,8 +401,20 @@ def c_adjustment_applied(conn,trip_id,preview):
     schedule=[dict(r) for r in conn.execute('''SELECT ia.* FROM itinerary_activities ia
         JOIN itineraries i ON i.id=ia.itinerary_id WHERE i.trip_id=? AND ia.status!='rejected' ''',(trip_id,))]
     if preview['operation']=='remove':
-        return not any(s['activity_id']==preview['catalogue_activity_id'] for s in schedule)
+        target=conn.execute('SELECT status FROM itinerary_activities WHERE id=?',(preview['target_activity_id'],)).fetchone()
+        return target is None or target['status']=='rejected'
     return any(s['id']==preview['target_activity_id'] and s['activity_id']==preview['replacement_activity_id'] for s in schedule)
+
+
+def c_log_adjustment(conn,trip_id,preview):
+    before = preview.get('before_activity') or {}
+    after = conn.execute('SELECT * FROM itinerary_activities WHERE id=?',(preview['target_activity_id'],)).fetchone()
+    after = dict(after) if after and after['status']!='rejected' else None
+    conn.execute('''INSERT OR IGNORE INTO trip_edit_history(id,trip_id,user_id,before_json,after_json)
+        VALUES(?,?,?,?,?)''',(preview['token'],trip_id,preview['user_id'],
+        json.dumps({'operation':preview['operation'],'occurrence_id':preview['target_activity_id'],'activity':before}),
+        json.dumps({'activity':after,'cost_delta_inr':preview.get('cost_delta_inr',0),
+                    'duration_delta_minutes':preview.get('duration_delta_minutes',0)})))
 
 
 def c_finish_adjustment(conn,trip_id,token):
@@ -433,6 +447,12 @@ def c_snapshot(conn,trip):
     if feedback:
         feedback['ratings'] = json.loads(feedback['ratings_json'])
         feedback['per_place_ratings'] = json.loads(feedback['per_place_ratings_json'])
+    outcomes_today = [r for r in runs if r['day_number']==runtime['current_day'] and r.get('ended_at')]
+    day_counts = {'completed':0,'early_ended':0,'skipped':0,'not_done':0}
+    for run in outcomes_today:
+        outcome = run.get('outcome') or 'not_done'
+        day_counts[outcome] = day_counts.get(outcome,0)+1
+    days_finished = max(0, runtime['current_day'] - 1 + int(bool(runtime['day_ended'])))
     if runtime['status']=='completed': phase='completed'
     elif runtime['day_ended']: phase='day_summary'
     elif review: phase='activity_review'
@@ -441,13 +461,29 @@ def c_snapshot(conn,trip):
     else: phase='awaiting_day_end' if runtime['status']=='live' else runtime['status']
     last_today = bool(current and today and current['id']==today[-1]['id'])
     label = ('End trip' if runtime['current_day']==trip['duration_days'] else 'End day') if last_today else 'End activity'
+    feedback_pending = runtime['status']=='completed' and not (feedback and feedback['submitted_at'])
+    archived = runtime['status']=='completed' and bool(feedback and feedback['submitted_at'])
+    status_now = runtime['status']
+    permitted = (['edit','generate','finalize'] if status_now=='draft' else
+                 ['start'] if status_now=='finalized' else
+                 ['start_activity','end_activity','review_activity','adjust_remaining','end_day','start_next_day','end_trip'] if status_now=='live' else
+                 ['submit_feedback'] if feedback_pending else [])
     return {'trip_id':tid,'status':runtime['status'],'runtime':runtime,'phase':phase,
         'current_activity':current,'pending_review':review,'today':today,'schedule':schedule,'runs':runs,
         'total_days':trip['duration_days'],'end_activity_label':label,
+        'day_summary':{'current_day':runtime['current_day'],'days_finished':days_finished,
+            'total_trip_days':trip['duration_days'],'outcomes_today':day_counts,
+            'completed_today':[r for r in outcomes_today if r.get('outcome')=='completed'],
+            'ended_early_today':[r for r in outcomes_today if r.get('outcome')=='early_ended'],
+            'skipped_today':[r for r in outcomes_today if r.get('outcome') in ('skipped','not_done')]},
+        'tab_access':{'pre_trip':{'available':status_now in ('draft','finalized'),'read_only':status_now!='draft'},
+            'live':{'available':status_now=='live','read_only':status_now!='live'},
+            'post_trip':{'available':status_now=='completed','read_only':archived}},
+        'permitted_actions':permitted,'active':status_now!='completed','archived':archived,
         'pending_decision':json.loads(runtime['pending_decision_json']) if runtime['pending_decision_json'] else None,
         'preview':json.loads(runtime['preview_json']) if runtime['preview_json'] else None,
-        'post_feedback':feedback,'feedback_required':runtime['status']=='completed' and not (feedback and feedback['submitted_at']),
-        'closed_out':bool(feedback and feedback['submitted_at']), 'rating_keys':sorted(C_RATING_KEYS)}
+        'post_feedback':feedback,'feedback_required':feedback_pending,'feedback_pending':feedback_pending,
+        'closed_out':archived, 'rating_keys':sorted(C_RATING_KEYS)}
 
 
 @runtime_router.get('/{trip_id}/runtime')
@@ -680,7 +716,7 @@ async def c_preview(trip_id: str,request: Request,payload: CPreview):
         if payload.operation=='remove' and json.loads(c_runtime(conn,trip_id)['pending_decision_json'])['action']!='change':
             c_error(422,'Choose change in the activity review to remove upcoming activities.','INVALID_OPERATION','operation')
         fingerprint = c_fingerprint(conn,trip_id)
-        affected = [s for s in c_schedule(conn,trip_id) if s['activity_id']==slot['activity_id']] if payload.operation=='remove' else [slot]
+        affected = [slot]
         for s in affected: c_upcoming(conn,trip_id,s)
         if payload.operation=='swap':
             if not conn.execute('SELECT id FROM destination_activities WHERE id=?',(payload.replacement_activity_id,)).fetchone():
@@ -694,7 +730,14 @@ async def c_preview(trip_id: str,request: Request,payload: CPreview):
         title = f"Remove {slot['title']} ({len(affected)} upcoming occurrence(s))"
     preview = {'token':uuid.uuid4().hex,'fingerprint':fingerprint,'operation':payload.operation,
         'target_activity_id':slot['id'],'catalogue_activity_id':slot['activity_id'],
-        'replacement_activity_id':payload.replacement_activity_id,'title':title,'affected_count':len(affected)}
+        'replacement_activity_id':payload.replacement_activity_id,'title':title,'affected_count':len(affected),
+        'before_activity':slot,'user_id':actor}
+    if payload.operation=='swap':
+        preview['cost_delta_inr']=int(round(float(alternative.get('cost_estimate') or 0)-float(slot.get('cost_estimate') or 0)))
+        preview['duration_delta_minutes']=int(alternative.get('duration_minutes') or 0)-int(slot.get('duration_minutes') or 0)
+    else:
+        preview['cost_delta_inr']=-int(round(float(slot.get('cost_estimate') or 0)))
+        preview['duration_delta_minutes']=-int(slot.get('duration_minutes') or 0)
     with c_transaction(trip_id,actor) as (conn,trip):
         c_upcoming(conn,trip_id,c_slot(conn,trip_id,slot['id']))
         if c_fingerprint(conn,trip_id)!=fingerprint: c_error(409,'The itinerary changed. Request a fresh preview.','STALE_PREVIEW')
@@ -725,19 +768,60 @@ async def c_confirm(trip_id: str,request: Request,payload: CConfirm):
                 'itinerary_activity_id':preview['target_activity_id'],'replacement_activity_id':preview['replacement_activity_id'],
                 'reason':'Confirmed activity review improvement','is_trip_specific':True})
         else:
-            await c_call_existing(request,'DELETE',f"/api/trip-actions/{trip_id}/activity/{preview['catalogue_activity_id']}?user_id={actor}")
+            await c_call_existing(request,'DELETE',f"/api/trip-actions/{trip_id}/activity/{preview['target_activity_id']}?user_id={actor}")
     except Exception as exc:
         with c_transaction(trip_id,actor) as (conn,trip):
             # The endpoint may have committed before its response was lost.
             # Accept that exact confirmed result instead of applying it twice.
             if c_adjustment_applied(conn,trip_id,preview):
+                c_log_adjustment(conn,trip_id,preview)
                 c_finish_adjustment(conn,trip_id,payload.token)
                 return c_snapshot(conn,trip)
             conn.execute('UPDATE trip_runtime SET operation_in_flight=0,operation_started_at=NULL WHERE trip_id=?',(trip_id,))
         if isinstance(exc,HTTPException): raise
         c_error(503,'The itinerary update failed. Your preview has been kept; retry or leave the itinerary as it is.','DOWNSTREAM_UNAVAILABLE')
     with c_transaction(trip_id,actor) as (conn,trip):
+        c_log_adjustment(conn,trip_id,preview)
         c_finish_adjustment(conn,trip_id,payload.token)
+        return c_snapshot(conn,trip)
+
+
+@runtime_router.post('/{trip_id}/adjustments/undo')
+async def c_undo_adjustment(trip_id: str,request: Request,payload: CActor = Body(default=CActor())):
+    actor=c_actor(request,payload)
+    with c_transaction(trip_id,actor) as (conn,trip):
+        runtime=c_runtime(conn,trip_id)
+        if runtime['status'] not in ('draft','live'):
+            c_error(409,'Only draft or live trips can undo a recent itinerary change.','ILLEGAL_STATE')
+        if runtime['status']=='live':
+            c_require_live(runtime)
+            if runtime['current_activity_id'] or c_pending_review(conn,trip_id):
+                c_error(409,'Finish the current activity review before undoing an itinerary change.','ACTIVITY_IN_PROGRESS')
+        row=conn.execute('''SELECT * FROM trip_edit_history WHERE trip_id=? AND user_id=? AND undone_at IS NULL
+            ORDER BY created_at DESC,id DESC LIMIT 1''',(trip_id,actor)).fetchone()
+        if not row:
+            c_error(409,'There is no confirmed itinerary change to undo.','NOTHING_TO_UNDO')
+        history=dict(row)
+        before=json.loads(history['before_json'])
+        original=before.get('activity') or {}
+        occurrence=before.get('occurrence_id')
+        if before.get('operation')=='swap' and original.get('activity_id'):
+            action={'kind':'swap','occurrence_id':occurrence,'replacement_activity_id':original['activity_id']}
+        elif before.get('operation')=='remove':
+            action={'kind':'restore','occurrence_id':occurrence}
+        else:
+            c_error(409,'This itinerary change cannot be undone.','UNDO_UNAVAILABLE')
+    try:
+        if action['kind']=='swap':
+            await c_call_existing(request,'POST',f"/api/trip-actions/{trip_id}/activity/{action['occurrence_id']}/swap",{
+                'user_id':actor,'occurrence_id':action['occurrence_id'],
+                'replacement_activity_id':action['replacement_activity_id'],'is_trip_specific':True})
+        else:
+            await c_call_existing(request,'POST',f"/api/trip-actions/{trip_id}/activity/{action['occurrence_id']}/restore?user_id={actor}")
+    except Exception:
+        c_error(503,'The change could not be undone. The current itinerary has been kept.','UNDO_FAILED')
+    with c_transaction(trip_id,actor) as (conn,trip):
+        conn.execute('UPDATE trip_edit_history SET undone_at=? WHERE id=? AND undone_at IS NULL',(c_now(),history['id']))
         return c_snapshot(conn,trip)
 
 
@@ -758,7 +842,11 @@ async def c_post_feedback(trip_id: str,request: Request,payload: CPostFeedback):
             slot = c_slot(conn,trip_id,item.activity_id)
             if set(item.ratings)-set(c_applicable(slot)): c_error(422,'A per-place rating parameter does not apply to that activity.','INVALID_RATINGS','per_place_ratings')
             places.append({'activity_id':slot['id'],'catalogue_activity_id':slot['activity_id'],'ratings':item.ratings})
-        draft = dict(trip_id=trip_id,user_id=actor,ratings_json=json.dumps(payload.ratings),trip_type=payload.trip_type,
+        try: saved_prefs=json.loads(trip.get('trip_preferences_json') or '{}')
+        except (TypeError,ValueError): saved_prefs={}
+        from app.core.party import trip_type as canonical_trip_type
+        resolved_trip_type=payload.trip_type or saved_prefs.get('trip_type') or canonical_trip_type(dict(trip),saved_prefs.get('party'))
+        draft = dict(trip_id=trip_id,user_id=actor,ratings_json=json.dumps(payload.ratings),trip_type=resolved_trip_type,
                      would_revisit=payload.would_revisit,liked=payload.liked or '',disliked=payload.disliked or '',
                      notes=payload.notes,per_place_ratings_json=json.dumps(places),submitted_at=None,
                      delivery_started_at=None if payload.draft else c_now())
