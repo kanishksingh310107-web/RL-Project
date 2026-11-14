@@ -1,6 +1,7 @@
 # Data models for auth and traveller profile
 from pydantic import BaseModel, Field, model_validator, field_validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
+from datetime import datetime
 
 # Auth models
 class AuthRequest(BaseModel):
@@ -291,7 +292,30 @@ class Party(BaseModel):
     seniors: int = Field(0, ge=0, le=30, strict=True)
 
 
+TRIP_PLANNING_DETAIL_FIELDS = (
+    'destination_arrival_time', 'hotel_checkin_time', 'hotel_checkout_time',
+    'transport_departure_time', 'departure_terminal', 'departure_transport_mode',
+    'final_day_activities', 'luggage_storage', 'terminal_arrival_buffer_minutes',
+    'station_arrival_buffer_minutes', 'terminal_journey_minutes', 'lunch_start_time',
+    'lunch_end_time', 'lunch_duration_minutes', 'dinner_start_time', 'dinner_end_time',
+    'rest_preference', 'shopping_enabled', 'shopping_duration_minutes', 'shopping_budget_inr',
+)
+
+
 class TripCreate(BaseModel):
+    @field_validator('destination_id','destination_name','departure_location', mode='before')
+    @classmethod
+    def clean_trip_text(cls, value, info):
+        if value is None and info.field_name != 'destination_id':
+            return value
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError('Enter a non-empty '+info.field_name.replace('_',' ')+'.')
+        value=value.strip()
+        limits={'destination_id':120,'destination_name':200,'departure_location':200}
+        if len(value)>limits[info.field_name]:
+            raise ValueError(info.field_name.replace('_',' ').title()+' is too long.')
+        return value
+
     @field_validator('accommodation_tier','travel_pace','transit_pref')
     @classmethod
     def valid_trip_option(cls,value,info):
@@ -310,7 +334,7 @@ class TripCreate(BaseModel):
     @model_validator(mode='after')
     def sync_party(self):
         from app.core.party import normalize_party, party_type
-        explicitly_solo = 'companions' in self.model_fields_set and self.companions == 'solo'
+        explicitly_solo = ('companions' in self.model_fields_set and self.companions == 'solo') or self.trip_type == 'solo'
         composition = normalize_party(self.model_dump())
         if sum(composition.values()) > 30:
             raise ValueError('A trip can include at most 30 travellers.')
@@ -318,10 +342,36 @@ class TripCreate(BaseModel):
             raise ValueError('Solo requires exactly one adult. Change the party type or traveller counts.')
         self.party = Party(**composition)
         self.travellers_count = sum(composition.values())
+        # trip_type is the user's relationship/context choice. Keep the old
+        # companions alias derived from counts for clients that still consume it.
+        if self.trip_type is None:
+            aliases = {'partner': 'couple', 'alone': 'solo'}
+            legacy = aliases.get((self.companions or '').strip().lower(), (self.companions or '').strip().lower())
+            self.trip_type = legacy if legacy in ('solo','couple','friends','family') else (
+                'family' if composition['children'] or composition['seniors'] else
+                ('solo' if composition['adults'] == 1 else 'couple' if composition['adults'] == 2 else 'friends'))
         self.companions = party_type(composition)
         self.has_children = composition['children'] > 0
         self.has_elderly = composition['seniors'] > 0
-        self.trip_preferences = dict(self.trip_preferences or {}, party=composition)
+        self.trip_preferences = dict(self.trip_preferences or {}, party=composition, trip_type=self.trip_type)
+        for key in TRIP_PLANNING_DETAIL_FIELDS:
+            value = getattr(self, key, None)
+            if value is not None:
+                self.trip_preferences[key] = value
+        from datetime import date
+        try:
+            start_date = date.fromisoformat(self.start_date)
+            end_date = date.fromisoformat(self.end_date)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('Use valid YYYY-MM-DD travel dates.') from exc
+        if (end_date - start_date).days not in range(0, 90):
+            raise ValueError('A trip must last between 1 and 90 days.')
+        if self.dinner_end_time <= self.dinner_start_time:
+            raise ValueError('Dinner end time must be after dinner start time.')
+        if self.lunch_end_time <= self.lunch_start_time:
+            raise ValueError('Lunch end time must be after lunch start time.')
+        if self.trip_type == 'solo' and composition != {'adults': 1, 'children': 0, 'seniors': 0}:
+            raise ValueError('Solo trips require exactly one adult.')
         return self
 
     destination_id: str
@@ -344,6 +394,64 @@ class TripCreate(BaseModel):
     travel_pace: str = "balanced" # 'relaxed', 'balanced', 'packed'
     specific_interests: List[str] = []
     trip_preferences: Optional[Dict[str, Any]] = None
+    trip_type: Optional[Literal['solo','couple','friends','family']] = None
+    destination_arrival_time: Optional[str] = None
+    hotel_checkin_time: Optional[str] = None
+    hotel_checkout_time: Optional[str] = None
+    transport_departure_time: Optional[str] = None
+    departure_terminal: Optional[str] = Field(None, max_length=200)
+    departure_transport_mode: Optional[Literal['flight','train','bus','other']] = None
+    final_day_activities: bool = False
+    luggage_storage: bool = False
+    terminal_arrival_buffer_minutes: int = Field(120, ge=0, le=360, strict=True)
+    station_arrival_buffer_minutes: int = Field(45, ge=30, le=60, strict=True)
+    terminal_journey_minutes: int = Field(0, ge=0, le=600, strict=True)
+    lunch_start_time: str = '12:30'
+    lunch_end_time: str = '14:30'
+    lunch_duration_minutes: int = Field(60, ge=15, le=180, strict=True)
+    dinner_start_time: str = '19:00'
+    dinner_end_time: str = '21:00'
+    rest_preference: Literal['none','short','standard','long'] = 'standard'
+    shopping_enabled: bool = False
+    shopping_duration_minutes: int = Field(0, ge=0, le=480, strict=True)
+    shopping_budget_inr: Optional[int] = Field(None, ge=0, le=1_000_000_000, strict=True)
+
+    @field_validator('destination_arrival_time','hotel_checkin_time','hotel_checkout_time',
+                     'transport_departure_time','lunch_start_time','lunch_end_time','dinner_start_time','dinner_end_time')
+    @classmethod
+    def valid_trip_times(cls, value):
+        if value is None:
+            return value
+        try:
+            if len(value) != 5 or datetime.strptime(value, '%H:%M').strftime('%H:%M') != value:
+                raise ValueError
+        except (TypeError, ValueError) as exc:
+            raise ValueError('Use 24-hour HH:MM time.') from exc
+        return value
+
+    @field_validator('departure_terminal', mode='before')
+    @classmethod
+    def clean_terminal(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError('Enter a terminal, station or stop, or leave it blank.')
+        return value.strip()
+
+    @field_validator('total_budget', mode='before')
+    @classmethod
+    def whole_budget_amount(cls, value):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not float(value).is_integer():
+            raise ValueError('Budget must be a whole amount.')
+        return int(value)
+
+    @field_validator('currency')
+    @classmethod
+    def valid_currency_code(cls, value):
+        value = value.strip().upper()
+        if len(value) != 3 or not value.isalpha():
+            raise ValueError('Use a valid three-letter currency code.')
+        return value
     stay_id: Optional[str] = None
     stay_name: Optional[str] = None
     stay_lat: Optional[float] = None
@@ -358,6 +466,27 @@ class TripResponse(BaseModel):
 
     party: Optional[Party] = None
     party_type: Optional[str] = None
+    trip_type: Optional[str] = None
+    destination_arrival_time: Optional[str] = None
+    hotel_checkin_time: Optional[str] = None
+    hotel_checkout_time: Optional[str] = None
+    transport_departure_time: Optional[str] = None
+    departure_terminal: Optional[str] = None
+    departure_transport_mode: Optional[str] = None
+    final_day_activities: bool = False
+    luggage_storage: bool = False
+    terminal_arrival_buffer_minutes: int = 120
+    station_arrival_buffer_minutes: int = 45
+    terminal_journey_minutes: int = 0
+    lunch_start_time: str = '12:30'
+    lunch_end_time: str = '14:30'
+    lunch_duration_minutes: int = 60
+    dinner_start_time: str = '19:00'
+    dinner_end_time: str = '21:00'
+    rest_preference: str = 'standard'
+    shopping_enabled: bool = False
+    shopping_duration_minutes: int = 0
+    shopping_budget_inr: Optional[int] = None
     party_label: Optional[str] = None
     status: str = 'planned'
     message: Optional[str] = None
@@ -452,10 +581,15 @@ class ItineraryResponse(BaseModel):
 class ActivityFeedbackRequest(BaseModel):
     itinerary_id: str
     activity_id: str
+    occurrence_id: Optional[str] = None
     action_type: str # 'accept', 'reject', 'modify'
     rejection_reason: Optional[str] = None # 'too_expensive', 'too_crowded', 'too_physically_demanding', 'not_interested', 'schedule_conflict', 'trip_specific_other'
     is_trip_specific: bool = False # If True, don't permanently modify user general profile
     replacement_activity_id: Optional[str] = None # For modify
+
+
+class ItineraryAcceptAllRequest(BaseModel):
+    itinerary_id: str = Field(min_length=1, max_length=100)
 
 class ActivityFeedbackResponse(BaseModel):
     status: str
@@ -463,6 +597,8 @@ class ActivityFeedbackResponse(BaseModel):
     reward_assigned: float
     is_trip_specific: bool
     policy_updated: bool
+    accepted_count: int = 0
+    remaining_unreviewed: int = 0
     replacement_activity: Optional[ItineraryActivityModel] = None
 
 class ItineraryRegenerateRequest(BaseModel):

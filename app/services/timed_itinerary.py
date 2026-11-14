@@ -59,6 +59,9 @@ def init_timed_tables(conn: sqlite3.Connection):
     """)
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_timed_slots_trip_day ON timed_itinerary_slots(trip_id, day_number)")
+    columns = {row[1] for row in cursor.execute("PRAGMA table_info(timed_itinerary_slots)")}
+    if 'provenance_json' not in columns:
+        cursor.execute("ALTER TABLE timed_itinerary_slots ADD COLUMN provenance_json TEXT")
     conn.commit()
 
 
@@ -481,6 +484,7 @@ def _get_slot_templates_for_pace(pace: str) -> List[Dict[str, Any]]:
 def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
     """Pack ranked places at their real durations into available windows."""
     result, used = [], set()
+    shopping_added = False
     daily_limit = sum(t['slot_type'] == 'activity' for t in _get_slot_templates_for_pace(pace))
     base_start = minute_of_day(prefs['activity_start_time'])
     for day in range(1, total_days + 1):
@@ -497,8 +501,16 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 be += 1440
             if bs < end and be > start:
                 free.append((max(start, bs), min(end, be), block['label']))
+        candidates = list(selected_by_day.get(day, [])) if selected_by_day is not None else sorted(activities, key=lambda a: a['id'] in used)
+        for booking in candidates:
+            if not booking.get('is_fixed_booking') or not booking.get('booking_start_time') or not booking.get('booking_end_time'):
+                continue
+            bs, be = minute_of_day(booking['booking_start_time']), minute_of_day(booking['booking_end_time'])
+            if start <= bs < end and bs < be <= end:
+                free.append((bs,be,'fixed booking'))
         free.sort()
         slots, cursor = [], start
+        notes = []
 
         def fit(duration, earliest=None, latest=None):
             candidate = max(cursor, earliest if earliest is not None else start)
@@ -517,15 +529,32 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 title=title, location=activity.get('neighborhood') or '',
                 estimated_cost=float(activity.get('cost_amount') or activity.get('cost_estimate') or activity.get('estimated_cost') or 0),
                 activity_id=activity.get('id'), category=activity.get('category') or kind,
-                description=activity.get('description') or ''))
+                description=activity.get('description') or '',
+                provenance={'source':'assumed','is_estimate':True,'notes':'Travel duration estimated from straight-line distance and mode assumptions.'} if kind=='transit' else None))
             cursor = at + duration
 
-        candidates = list(selected_by_day.get(day, [])) if selected_by_day is not None else sorted(activities, key=lambda a: a['id'] in used)
         scheduled = 0
+        lunch_start = minute_of_day(prefs.get('lunch_start_time','12:30'))
+        lunch_end = minute_of_day(prefs.get('lunch_end_time','14:30'))
+        lunch_duration = int(prefs.get('lunch_duration_minutes',60))
+        dinner_start = minute_of_day(prefs.get('dinner_start_time','19:00'))
+        dinner_end = minute_of_day(prefs.get('dinner_end_time','21:00'))
+        dinner_duration = int(prefs.get('dinner_duration_minutes',60))
+        rest_duration = {'none':0,'short':20,'standard':30,'long':60}.get(prefs.get('rest_preference','standard'),30)
+        stay = prefs.get('stay_anchor') or {}
+        previous = {'latitude':stay.get('lat'),'longitude':stay.get('lon'),'id':stay.get('stay_id')}
         for activity in candidates:
-            if scheduled >= daily_limit:
+            is_pinned = bool(activity.get('is_pinned') or activity.get('is_fixed_booking'))
+            if scheduled >= daily_limit and not is_pinned:
                 break
-            duration = max(15, int(activity.get('duration_minutes') or 60))
+            if activity.get('id') in used and not is_pinned:
+                notes.append(f"Repeated place {activity.get('name') or activity.get('title') or activity['id']} was left unscheduled.")
+                continue
+            is_shopping = activity.get('category') in ('shopping_local','shopping')
+            if is_shopping and (not prefs.get('shopping_enabled') or shopping_added):
+                continue
+            duration = max(15, int((prefs.get('shopping_duration_minutes') or activity.get('duration_minutes') or 60)
+                                   if is_shopping else (activity.get('duration_minutes') or 60)))
             opening, closing = None, None
             if activity.get('opening_time') and activity.get('closing_time'):
                 opening, closing = minute_of_day(activity['opening_time']), minute_of_day(activity['closing_time'])
@@ -534,24 +563,97 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 if closing <= start and end > 1440:
                     opening += 1440
                     closing += 1440
-            travel = 20 if scheduled else 0
+            if activity.get('is_fixed_booking') and activity.get('booking_start_time') and activity.get('booking_end_time'):
+                at=minute_of_day(activity['booking_start_time'])
+                fixed_end=minute_of_day(activity['booking_end_time'])
+                fixed_duration=fixed_end-at
+                conflict=[]
+                if at<start or fixed_end>end: conflict.append('outside the available travel window')
+                if opening is not None and (at<opening or fixed_end>closing): conflict.append('outside venue opening hours')
+                if any(at<be and fixed_end>bs for bs,be,_ in free if _!='fixed booking'): conflict.append('overlaps a free-time block')
+                if any(s['slot_type'] in ('activity','shopping') and minute_of_day(s['start_time'])<fixed_end and minute_of_day(s['end_time'])>at for s in slots):
+                    conflict.append('overlaps another scheduled activity')
+                if conflict:
+                    notes.append(f"Booking conflict for {activity.get('title') or activity.get('name')}: {', '.join(conflict)}. The fixed booking time was preserved for review.")
+                if previous.get('latitude') is not None and activity.get('latitude') is not None:
+                    from app.planning.transport import estimate_travel_leg
+                    leg=estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
+                        float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'))
+                    travel=leg.duration_minutes
+                    if at-travel>=cursor:
+                        append('transit',at-travel,travel,'Estimated travel to fixed booking')
+                    else:
+                        notes.append(f"There is not enough travel time to the fixed booking for {activity.get('title') or activity.get('name')}.")
+                append('activity',at,fixed_duration,activity.get('title') or activity.get('name') or 'Fixed booking',activity)
+                slots[-1].update(is_pinned=True,is_fixed_booking=True,booking_label=activity.get('booking_label'))
+                cursor=max(cursor,at+fixed_duration)
+                used.add(activity['id'])
+                previous={'latitude':activity.get('latitude'),'longitude':activity.get('longitude'),'id':activity.get('id')}
+                scheduled+=1
+                continue
+            travel = 0
+            if previous.get('latitude') is not None and previous.get('longitude') is not None and activity.get('latitude') is not None and activity.get('longitude') is not None:
+                from app.planning.transport import estimate_travel_leg
+                travel_leg = estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
+                    float(activity['latitude']),float(activity['longitude']),previous.get('id'),activity.get('id'))
+                travel = travel_leg.duration_minutes
+            elif scheduled:
+                travel = 20
             at = fit(duration + travel, (opening - travel) if opening is not None else None, closing)
             if at is None:
+                if is_pinned:
+                    notes.append(f"Pinned must-visit {activity.get('title') or activity.get('name') or activity['id']} does not fit the selected day window and needs manual rescheduling.")
                 continue
             if travel:
-                append('transit', at, travel, 'Travel / transit buffer')
-            append('activity', at + travel, duration, activity.get('name') or activity.get('title') or 'Activity', activity)
+                append('transit', at, travel, 'Estimated travel to next stop')
+            kind = 'shopping' if is_shopping else 'activity'
+            title = ('Shopping at ' if is_shopping else '') + (activity.get('name') or activity.get('title') or 'Activity')
+            append(kind, at + travel, duration, title, activity)
+            if is_pinned:
+                slots[-1]['is_pinned']=True
+            if is_shopping:
+                slots[-1]['estimated_cost'] = float(prefs.get('shopping_budget_inr') or slots[-1]['estimated_cost'])
+                shopping_added = True
             used.add(activity['id'])
+            previous = {'latitude':activity.get('latitude'),'longitude':activity.get('longitude'),'id':activity.get('id')}
             scheduled += 1
             if scheduled < daily_limit:
-                kind, title, length = ('meal', 'Lunch / local dining', 45) if scheduled == 1 else ('rest', 'Rest time', 30)
-                at = fit(length)
-                if at is not None:
-                    append(kind, at, length, title)
+                if scheduled == 1:
+                    at = fit(lunch_duration, earliest=lunch_start, latest=lunch_end)
+                    if at is not None:
+                        append('meal', at, lunch_duration, 'Lunch / local dining')
+                    else:
+                        notes.append('Lunch could not fit inside the selected midday window and was not moved to another time.')
+                elif rest_duration:
+                    at = fit(rest_duration)
+                    if at is not None:
+                        append('rest', at, rest_duration, 'Rest break')
         if end - start >= 360:
-            at = fit(45)
+            at = fit(dinner_duration, earliest=dinner_start, latest=dinner_end)
             if at is not None:
-                append('meal', at, 45, 'Dinner / local dining')
+                append('meal', at, dinner_duration, 'Dinner / local dining')
+            else:
+                notes.append('Dinner could not fit inside the selected evening window.')
+        if day == total_days and prefs.get('transport_departure_time'):
+            journey = int(prefs.get('terminal_journey_minutes',0))
+            buffer = (int(prefs.get('terminal_arrival_buffer_minutes',120))
+                      if prefs.get('departure_transport_mode') == 'flight' else
+                      int(prefs.get('station_arrival_buffer_minutes',45))
+                      if prefs.get('departure_transport_mode') == 'train' else 30)
+            at = end
+            if journey:
+                append('transit',at,journey,'Estimated travel to departure terminal')
+                at += journey
+            append('buffer',at,buffer,'Terminal arrival buffer')
+        if not (day == total_days and prefs.get('transport_departure_time')) and stay.get('lat') is not None and stay.get('lon') is not None and previous.get('latitude') is not None and previous.get('longitude') is not None:
+            from app.planning.transport import estimate_travel_leg
+            return_leg = estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
+                float(stay['lat']),float(stay['lon']),previous.get('id'),stay.get('stay_id'))
+            at = fit(return_leg.duration_minutes)
+            if at is not None:
+                append('transit',at,return_leg.duration_minutes,'Estimated travel back to lodging')
+            else:
+                notes.append('Return travel to lodging does not fit in the remaining day window.')
         for bs, be, label in free:
             append('free_time', bs, be-bs, label)
         def relative(slot):
@@ -561,10 +663,11 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         for index, slot in enumerate(slots):
             slot['order_index'] = index
         dropped = max(0, min(len(candidates), daily_limit) - scheduled)
-        note = (f'{dropped} lower-ranked activities were dropped because of hotel buffers, free time, opening hours or activity duration.' if dropped else None)
+        if dropped:
+            notes.append(f'{dropped} lower-ranked activities were dropped because of hotel buffers, free time, opening hours or activity duration.')
         if not scheduled:
-            note = 'No activity fits the available window and opening hours; activities were dropped.'
-        result.append(dict(day_number=day, slots=slots, note=note,
+            notes.append('No activity fits the available window and opening hours; activities were dropped.')
+        result.append(dict(day_number=day, slots=slots, note=' '.join(dict.fromkeys(notes)) or None,
             arrival_marker=prefs['hotel_arrival_time'] if day == 1 else None,
             departure_marker=prefs['hotel_departure_time'] if day == total_days else None,
             total_cost=round(sum(s['estimated_cost'] for s in slots), 2), activities_count=scheduled))
@@ -927,8 +1030,8 @@ def save_timed_itinerary(
                 INSERT INTO timed_itinerary_slots (
                     id, itinerary_id, trip_id, day_number, order_index,
                     slot_type, start_time, end_time, duration_mins,
-                    title, location, estimated_cost, activity_id, category, description
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    title, location, estimated_cost, activity_id, category, description, provenance_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 slot_id,
                 itin_id,
@@ -944,7 +1047,7 @@ def save_timed_itinerary(
                 s.get("estimated_cost", 0.0),
                 s.get("activity_id"),
                 s.get("category", ""),
-                s.get("description", "")
+                s.get("description", ""), json.dumps(s.get('provenance')) if s.get('provenance') else None
             ))
             s["id"] = slot_id
 
@@ -971,6 +1074,28 @@ def regenerate_timed_itinerary_for_trip(conn: sqlite3.Connection, trip_id: str, 
         }
     else:
         prefs = dict(LEGACY_SCHEDULE_PREFS)
+    try:
+        trip_prefs = json.loads(trip.get('trip_preferences_json') or '{}')
+    except (TypeError, ValueError):
+        trip_prefs = {}
+    for key in ('destination_arrival_time','transport_departure_time','departure_transport_mode',
+                'final_day_activities','luggage_storage','terminal_arrival_buffer_minutes',
+                'station_arrival_buffer_minutes','terminal_journey_minutes','lunch_start_time',
+                'lunch_end_time','lunch_duration_minutes','dinner_start_time','dinner_end_time',
+                'rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr'):
+        if key in trip_prefs:
+            prefs[key] = trip_prefs[key]
+    if trip_prefs.get('hotel_checkin_time'):
+        prefs['hotel_arrival_time'] = trip_prefs['hotel_checkin_time']
+    if trip_prefs.get('hotel_checkout_time'):
+        prefs['hotel_departure_time'] = trip_prefs['hotel_checkout_time']
+    if any(key in trip_prefs for key in ('destination_arrival_time','transport_departure_time','final_day_activities')):
+        prefs.pop('legacy_defaults', None)
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_stays'").fetchone():
+        stay_row = conn.execute('SELECT stay_json FROM core_stays WHERE trip_id=? ORDER BY created_at DESC LIMIT 1',(trip_id,)).fetchone()
+        if stay_row:
+            try: prefs['stay_anchor'] = json.loads(stay_row['stay_json'])
+            except (TypeError,ValueError): pass
     target_pace = pace or trip.get("travel_pace") or "balanced"
     selected = None
     if pref_row and conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='itinerary_activities'").fetchone():

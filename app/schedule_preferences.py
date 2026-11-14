@@ -175,9 +175,22 @@ def schedule_window(prefs, day, total_days, custom=True):
         end += 1440
     if custom and day == 1:
         start = max(start, _minute(prefs['hotel_arrival_time']) + 60)
+        if prefs.get('destination_arrival_time'):
+            arrival = _minute(prefs['destination_arrival_time']) + int(prefs.get('arrival_journey_minutes',45))
+            start = max(start, arrival)
     if custom and day == total_days:
-        departure = _minute(prefs['hotel_departure_time'])
-        if overnight and departure <= _minute(prefs['bed_time']):
-            departure += 1440
-        end = min(end, departure - 60)
+        if prefs.get('final_day_activities') is False:
+            return start, start
+        if prefs.get('transport_departure_time'):
+            departure = _minute(prefs['transport_departure_time'])
+            buffer = (int(prefs.get('terminal_arrival_buffer_minutes',120))
+                      if prefs.get('departure_transport_mode') == 'flight' else
+                      int(prefs.get('station_arrival_buffer_minutes',45))
+                      if prefs.get('departure_transport_mode') == 'train' else 30)
+            end = min(end, departure - int(prefs.get('terminal_journey_minutes',0)) - buffer)
+        elif not prefs.get('final_day_activities'):
+            departure = _minute(prefs['hotel_departure_time'])
+            if overnight and departure <= _minute(prefs['bed_time']):
+                departure += 1440
+            end = min(end, departure - 60)
     return start, end
