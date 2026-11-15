@@ -1,13 +1,14 @@
 """Atomic planning previews, reusing existing mutation endpoints in isolation."""
 import hashlib
 import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, StrictInt, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, StrictInt, StrictBool, field_validator, model_validator
 
 from app.database import CONNECTION_OVERRIDE, get_connection
 from app.modules.live import c_call_existing
@@ -22,7 +23,7 @@ def error(status, message, code='INVALID_INPUT', field=None):
 
 class Preview(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    operation: Literal['swap','remove','reschedule','move_day','reorder','pin','must_visit','set_priority','add_custom','budget_allocation','preferences','rebalance','trip_plan']
+    operation: Literal['swap','remove','reschedule','move_day','reorder','pin','must_visit','set_priority','fix_booking','add_custom','budget_allocation','preferences','rebalance','trip_plan']
     target_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
     replacement_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
     before_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
@@ -35,6 +36,44 @@ class Preview(BaseModel):
     planning_priority: Optional[Literal['must_do','nice_to_do','avoid']] = None
     preferences: Optional[dict] = None
     plan_changes: list[dict] = Field(default_factory=list,max_length=20)
+    booking_start_time: Optional[str] = Field(None,max_length=5)
+    booking_end_time: Optional[str] = Field(None,max_length=5)
+    booking_cost_inr: Optional[StrictInt] = Field(None,ge=0,le=1_000_000_000)
+    booking_label: Optional[str] = Field(None,max_length=120)
+    booking_confirmed: StrictBool = False
+
+    @field_validator('booking_start_time','booking_end_time')
+    @classmethod
+    def valid_booking_time(cls,value):
+        if value is None:return value
+        try:
+            if len(value)!=5 or datetime.strptime(value,'%H:%M').strftime('%H:%M')!=value:raise ValueError
+        except (TypeError,ValueError) as exc:
+            raise ValueError('Use 24-hour HH:MM booking times.') from exc
+        return value
+
+    @field_validator('booking_label',mode='before')
+    @classmethod
+    def clean_booking_label(cls,value):
+        if value is None:return value
+        if not isinstance(value,str):raise ValueError('Enter a short booking label.')
+        cleaned=re.sub(r'<[^>]*>','',value).strip()
+        if not cleaned:raise ValueError('Enter a short booking label.')
+        return cleaned
+
+    @model_validator(mode='after')
+    def valid_booking_details(self):
+        details=(self.booking_start_time,self.booking_end_time,self.booking_cost_inr,self.booking_label)
+        if self.operation=='fix_booking':
+            if not self.booking_confirmed:raise ValueError('Confirm that you have booked this activity before fixing its time.')
+            if any(value is None for value in details):
+                raise ValueError('Confirm the booking, time, label and whole-rupee cost.')
+            start=datetime.strptime(self.booking_start_time,'%H:%M')
+            end=datetime.strptime(self.booking_end_time,'%H:%M')
+            if end<=start:raise ValueError('Booking end must be after its start on the same day.')
+        elif any(value is not None for value in details) or self.booking_confirmed:
+            raise ValueError('Booking details are only valid when fixing a confirmed booking.')
+        return self
 
 
 class Token(BaseModel):
@@ -87,7 +126,7 @@ async def apply(request,trip_id,actor,payload):
         target=next((r for r in rows if r['id']==payload.target_activity_id),None)
         requires_target=payload.operation not in ('add_custom','budget_allocation','preferences','rebalance','trip_plan')
         if requires_target and not target: error(404,'Activity occurrence not found.','ACTIVITY_NOT_FOUND')
-        if target and (target['is_fixed_booking'] or target['is_pinned']) and payload.operation not in ('pin','must_visit'):
+        if target and (target['is_fixed_booking'] or target['is_pinned']) and payload.operation not in ('pin','must_visit','fix_booking'):
             error(409,'Unpin this activity before moving or replacing it.','PINNED_ACTIVITY')
         if payload.target_day and payload.target_day>conn.execute('SELECT duration_days FROM trips WHERE id=?',(trip_id,)).fetchone()[0]:
             error(404,'Trip day not found.','DAY_NOT_FOUND')
@@ -153,6 +192,13 @@ async def apply(request,trip_id,actor,payload):
             if payload.planning_priority not in ('must_do','nice_to_do','avoid'):
                 error(422,'Choose must_do, nice_to_do, or avoid.','INVALID_PRIORITY','planning_priority')
             conn.execute('UPDATE itinerary_activities SET planning_priority=? WHERE id=?',(payload.planning_priority,target['id']))
+        elif payload.operation=='fix_booking':
+            if not target: error(404,'Activity occurrence not found.','ACTIVITY_NOT_FOUND')
+            conn.execute('''UPDATE itinerary_activities SET is_pinned=1,is_fixed_booking=1,
+                booking_start_time=?,booking_end_time=?,booking_label=?,cost_estimate=?
+                WHERE id=? AND itinerary_id=?''',
+                (payload.booking_start_time,payload.booking_end_time,payload.booking_label,
+                 payload.booking_cost_inr,target['id'],itinerary))
         else:
             column='is_pinned' if payload.operation=='pin' else 'must_visit'
             if target['is_fixed_booking'] and column=='is_pinned':error(409,'Fixed bookings stay pinned.','FIXED_BOOKING')

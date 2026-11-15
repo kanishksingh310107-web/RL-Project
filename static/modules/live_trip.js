@@ -2,6 +2,7 @@
 (function () {
   const state = {snapshot:null, epoch:0, busy:false};
   let resumedTrip=null;
+  let lifecycleOrigin=null,itineraryReturnTab=null;
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const label = value => String(value).replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
   const button = 'px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold disabled:opacity-50';
@@ -20,8 +21,9 @@
     let data;
     try { data=await response.json(); } catch (_) { throw new Error('The server response could not be read. Please retry.'); }
     if(!response.ok) {
-      const error=new Error(typeof data.detail==='string'?data.detail:'The request could not be completed.');
-      error.field=data.field; error.code=data.code; throw error;
+      const detail=data.detail&&typeof data.detail==='object'?data.detail:null;
+      const error=new Error(typeof data.detail==='string'?data.detail:typeof detail?.detail==='string'?detail.detail:'The request could not be completed.');
+      error.field=data.field||detail?.field; error.code=data.code||detail?.code; throw error;
     }
     return data;
   }
@@ -37,6 +39,29 @@
     document.querySelectorAll('[onclick="editSelectedTrip()"]').forEach(control=>{control.disabled=locked;});
   }
 
+  function rememberLifecycleOrigin(box){if(!lifecycleOrigin&&box?.parentNode)lifecycleOrigin={parent:box.parentNode,next:box.nextSibling};}
+  function restoreLifecycle(box){
+    if(!box||!lifecycleOrigin?.parent?.isConnected)return;
+    const next=lifecycleOrigin.next?.parentNode===lifecycleOrigin.parent?lifecycleOrigin.next:null;
+    if(box.parentNode!==lifecycleOrigin.parent||box.nextSibling!==next)lifecycleOrigin.parent.insertBefore(box,next);
+  }
+  function placeLifecycle(snapshot){
+    const box=document.getElementById('cTripLifecycle');if(!box)return;rememberLifecycleOrigin(box);
+    if(!['draft','finalized'].includes(snapshot?.status)){restoreLifecycle(box);return;}
+    const editor=document.getElementById('workspaceEditorContainer'),card=editor?.querySelector('.te-card');
+    if(card&&box.parentElement!==card)card.append(box);
+  }
+  function addItineraryReturnTab(){
+    if(itineraryReturnTab?.isConnected)return itineraryReturnTab;
+    const anchor=document.getElementById('shoppingTab')||document.getElementById('exBudgetTab')||document.getElementById('wsTabBtn-post')?.parentElement;
+    if(!anchor)return null;
+    itineraryReturnTab=document.createElement('button');itineraryReturnTab.type='button';itineraryReturnTab.id='cItineraryReturnTab';
+    itineraryReturnTab.className='ex-button';itineraryReturnTab.textContent='Itinerary';itineraryReturnTab.hidden=true;
+    itineraryReturnTab.setAttribute('aria-label','Return to the itinerary');
+    itineraryReturnTab.onclick=()=>{window.switchWorkspaceMode?.('pre');window.switchPreSubtab?.('itin');document.getElementById('workspaceEditorContainer')?.scrollIntoView({behavior:'smooth',block:'start'});};
+    anchor.after(itineraryReturnTab);return itineraryReturnTab;
+  }
+
   function lifecycle(ctx,snapshot) {
     if(!isCurrent(ctx)) return false;
     if(window.TripExperience?.applySnapshot(ctx,snapshot)===false){
@@ -47,11 +72,13 @@
     state.snapshot=snapshot;
     const box=document.getElementById('cTripLifecycle');
     if(!box) return;
+    rememberLifecycleOrigin(box);
     const action=snapshot.status==='draft'?'Finalize itinerary':snapshot.status==='finalized'?'Start trip':null;
-    box.innerHTML=`<div class="flex flex-wrap items-center gap-3"><strong>${esc(label(snapshot.status))}</strong>
+    const stateText=snapshot.status==='draft'?'Review your plan before locking it.':snapshot.status==='finalized'?'Your itinerary is ready to start.':snapshot.status==='live'?'Trip in progress.':snapshot.closed_out?'Trip closed out. Feedback saved.':'Trip ended. Feedback is required to close it out.';
+    box.innerHTML=`<div class="flex flex-wrap items-center gap-3">${snapshot.status==='draft'?'':`<strong>${esc(stateText)}</strong>`}
       ${action?`<button class="${button}" data-c-lifecycle>${action}</button>`:''}
       ${snapshot.status==='finalized'?'<button class="border rounded-lg px-3 py-2" data-c-reopen>Reopen to edit</button>':''}
-      <span>${snapshot.feedback_required?'Post-trip feedback required to close out this trip.':snapshot.closed_out?'Trip closed out. Feedback saved.':snapshot.status==='live'?`Day ${snapshot.runtime.current_day} of ${snapshot.total_days}`:'Finalize your itinerary when ready.'}</span></div><div data-c-error></div>`;
+      <span>${snapshot.feedback_required?'Post-trip feedback required to close out this trip.':snapshot.status==='live'?`Day ${snapshot.runtime.current_day} of ${snapshot.total_days}`:snapshot.status==='draft'?stateText:''}</span></div><div data-c-error></div>`;
     box.querySelector('[data-c-lifecycle]')?.addEventListener('click',async event=>{
       await submitButton(event.currentTarget,box,async()=>{
         const next=await api(ctx,snapshot.status==='draft'?'/finalize':'/start');
@@ -68,6 +95,8 @@
         await loadTripItinerary(ctx.tripId);
       });
     });
+    placeLifecycle(snapshot);addItineraryReturnTab();
+    if(itineraryReturnTab)itineraryReturnTab.hidden=snapshot.status!=='live';
     applyLocks(snapshot);
   }
 
@@ -314,7 +343,10 @@
     const title=document.getElementById('itinDestinationTitle');
     if(title) new MutationObserver(()=>loadLifecycle()).observe(title,{childList:true});
     const editor=document.getElementById('workspaceEditorContainer');
-    if(editor) new MutationObserver(()=>{if(state.snapshot) applyLocks(state.snapshot);}).observe(editor,{childList:true,subtree:true});
+    if(editor) new MutationObserver(()=>{if(state.snapshot){applyLocks(state.snapshot);placeLifecycle(state.snapshot);}}).observe(editor,{childList:true});
+    addItineraryReturnTab();
+    window.addEventListener('trip:runtime',event=>{addItineraryReturnTab();if(itineraryReturnTab&&event.detail?.tripId===getWorkspaceContext()?.tripId)itineraryReturnTab.hidden=event.detail.snapshot?.status!=='live';});
+    window.addEventListener('trip:timeline-rendered',event=>{if(state.snapshot&&event.detail?.tripId===getWorkspaceContext()?.tripId)placeLifecycle(state.snapshot);});
     document.getElementById('userTripsSelect')?.addEventListener('change',()=>loadLifecycle());
     loadLifecycle();
   }

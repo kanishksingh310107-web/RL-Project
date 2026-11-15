@@ -12,30 +12,6 @@
       .replace(/'/g, "&#039;");
   }
 
-  // Local storage helper for packing list checked state
-  function getCheckedItems(tripId) {
-    try {
-      const saved = localStorage.getItem(`prep_packed_${tripId}`);
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function setCheckedItem(tripId, itemName, isChecked) {
-    try {
-      const state = getCheckedItems(tripId);
-      if (isChecked) {
-        state[itemName] = true;
-      } else {
-        delete state[itemName];
-      }
-      localStorage.setItem(`prep_packed_${tripId}`, JSON.stringify(state));
-    } catch (e) {
-      // Ignore localStorage exceptions
-    }
-  }
-
   async function render(container, ctx) {
     if (!ctx || !ctx.tripId) {
       container.innerHTML = `
@@ -61,8 +37,6 @@
         ctx.api(`/api/prep/${ctx.tripId}/reminders`),
         ctx.api(`/api/prep/${ctx.tripId}/safety`).catch(() => ({ nearby_facilities: [], emergency_numbers: [], permits_and_ticketing: [] })),
       ]);
-
-      const checkedMap = getCheckedItems(ctx.tripId);
 
       // Group packing items by category
       const packingByCat = {};
@@ -132,7 +106,7 @@
                   <i class="fa-solid fa-clipboard-check text-indigo-600"></i> Personalized Packing List
                 </h3>
                 <p class="text-xs text-slate-500">
-                  Driven by weather, ${escapeHtml(packing.itinerary_status === 'generated' ? 'itinerary activities' : 'default recommendations')}, and personal profile.
+                  Suggestions based on weather, ${escapeHtml(packing.itinerary_status === 'generated' ? 'itinerary activities' : 'general travel needs')}, and your profile. Choose what works for you.
                 </p>
               </div>
               <div class="flex items-center gap-2">
@@ -149,18 +123,16 @@
                   </h4>
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     ${packingByCat[category].map(item => {
-                      const isChecked = !!checkedMap[item.name];
                       return `
-                        <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-100 hover:bg-slate-50/80 cursor-pointer transition">
-                          <input type="checkbox" data-item="${escapeHtml(item.name)}" class="prep-pack-check mt-1 rounded text-indigo-600 focus:ring-indigo-500" ${isChecked ? 'checked' : ''} />
+                        <article class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-100 bg-slate-50/60">
                           <div class="flex-1 min-w-0">
                             <div class="flex items-center justify-between">
-                              <span class="font-medium text-xs text-slate-900 ${isChecked ? 'line-through text-slate-400' : ''}">${escapeHtml(item.name)}</span>
+                              <span class="font-medium text-xs text-slate-900">${escapeHtml(item.name)}</span>
                               ${item.quantity ? `<span class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 ml-1 whitespace-nowrap">${escapeHtml(item.quantity)}</span>` : ''}
                             </div>
                             <p class="text-[11px] text-slate-500 mt-0.5 leading-snug">${escapeHtml(item.reason)}</p>
                           </div>
-                        </label>`;
+                        </article>`;
                     }).join("")}
                   </div>
                 </div>
@@ -327,19 +299,6 @@
           </div>
 
         </div>`;
-
-      // Event listeners for packing checkboxes
-      container.querySelectorAll(".prep-pack-check").forEach(chk => {
-        chk.addEventListener("change", e => {
-          const name = e.target.getAttribute("data-item");
-          setCheckedItem(ctx.tripId, name, e.target.checked);
-          const labelSpan = e.target.parentElement.querySelector("span");
-          if (labelSpan) {
-            labelSpan.classList.toggle("line-through", e.target.checked);
-            labelSpan.classList.toggle("text-slate-400", e.target.checked);
-          }
-        });
-      });
 
       // Event listeners for reminder action buttons
       container.querySelectorAll(".prep-rem-action").forEach(btn => {
