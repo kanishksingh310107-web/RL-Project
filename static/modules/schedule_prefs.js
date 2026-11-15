@@ -8,8 +8,8 @@
   mount.innerHTML = `<section class="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-3" aria-labelledby="schedulePrefsTitle">
     <h4 id="schedulePrefsTitle" class="font-bold text-slate-800">Daily schedule</h4>
     <div class="grid grid-cols-2 gap-2">
-      ${field("hotelArrivalTime", "Hotel arrival (day 1)", "14:00")}
-      ${field("hotelDepartureTime", "Hotel departure (last day)", "11:00")}
+      ${field("hotelArrivalTime", "Accommodation arrival (day 1)", "14:00")}
+      ${field("hotelDepartureTime", "Accommodation check-out (last day)", "11:00")}
       ${field("wakeTime", "Wake time", "07:00")}
       ${field("activityStartTime", "Activity start time", "09:00")}
       ${field("bedTime", "Bed time", "21:00", "Earlier clock times are treated as after midnight.")}
@@ -71,7 +71,7 @@
     panel.className = "mb-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-900";
     const heading = document.createElement("strong"); heading.textContent = "Your schedule preferences"; panel.appendChild(heading);
     const details = document.createElement("p");
-    details.textContent = `Day 1 hotel arrival ${prefs.hotel_arrival_time} · Last day hotel checkout ${prefs.hotel_departure_time} · Activities ${prefs.activity_start_time}–${prefs.bed_time}`;
+    details.textContent = `Day 1 accommodation arrival ${prefs.hotel_arrival_time} · Last day check-out ${prefs.hotel_departure_time} · Activities ${prefs.activity_start_time}–${prefs.bed_time}`;
     panel.appendChild(details);
     (prefs.free_blocks || []).forEach(block => {
       const line = document.createElement("p"); line.textContent = `${block.day ? `Day ${block.day}` : "Every day"}: ${block.start}–${block.end} · ${block.label}`; panel.appendChild(line);
@@ -103,7 +103,7 @@
     const departure = experience ? minutes(experience.transport_departure_time)-experience.terminal_buffer_minutes-experience.terminal_travel_minutes : minutes(p.hotel_departure_time);
     const lastDayActivities = experience?.final_day_activities !== false;
     const startDate = document.getElementById("tripStartDateInput")?.value, endDate = document.getElementById("tripEndDateInput")?.value;
-    if (startDate && endDate && startDate === endDate && lastDayActivities && Number.isFinite(arrival) && arrival >= departure) { show("hotelArrivalTime", "Hotel arrival must be before departure on a same-day trip."); valid = false; }
+    if (startDate && endDate && startDate === endDate && lastDayActivities && Number.isFinite(arrival) && arrival >= departure) { show("hotelArrivalTime", "Accommodation arrival must be before departure on a same-day trip."); valid = false; }
     if (startDate && endDate && startDate === endDate && lastDayActivities && Number.isFinite(start) && Number.isFinite(arrival) && Number.isFinite(departure)) {
       const firstActivity = Math.max(start, arrival + 60);
       if (departure - (experience ? 0 : 60) - firstActivity < 60) { show("hotelDepartureTime", "Transport departure must leave room for an activity after travel and check-in buffers."); valid = false; }
@@ -147,7 +147,7 @@
       if (maxGap < 60) {
         const row = sorted.find(item => !item[3] || Number(item[3]) === day)?.[2];
         if (row) row.querySelector(".freeError").textContent = `Free blocks leave no activity window on day ${day}.`;
-        else show(day === 1 ? "hotelArrivalTime" : "hotelDepartureTime", `Hotel buffers leave no activity window on day ${day}.`);
+        else show(day === 1 ? "hotelArrivalTime" : "hotelDepartureTime", `Accommodation arrival and transport buffers leave no activity window on day ${day}.`);
         valid = false;
       }
     }

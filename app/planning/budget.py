@@ -207,13 +207,15 @@ def calculate_minimum_trip_budget(destination_id=None, destination_name=None,
         departure_location="Delhi", start_date=None, end_date=None, duration_days=None,
         travellers_count=1, accommodation_tier="boutique", transit_pref="public_transit",
         travel_pace="balanced", include_shopping=False, profile=None, party=None,
-        food_style=None, destination_lat=None, destination_lon=None):
+        food_style=None, destination_lat=None, destination_lon=None, accommodation_cost_inr=None, intercity_cost_inr=None):
     from app.core.cost_model import estimate_cost
     trip = dict(destination_id=destination_id, destination_name=destination_name,
         departure_location=departure_location, start_date=start_date, end_date=end_date,
         duration_days=duration_days, travellers_count=travellers_count,
         accommodation_tier=accommodation_tier, transit_pref=transit_pref,
         travel_pace=travel_pace, include_shopping=include_shopping, party=party,
+        trip_preferences={**({'accommodation': {'expected_total_cost_inr': accommodation_cost_inr}}
+            if accommodation_cost_inr is not None else {}), **({'intercity_cost_inr':intercity_cost_inr} if intercity_cost_inr is not None else {})},
         food_style=food_style, destination_lat=destination_lat, destination_lon=destination_lon)
     low, rec = estimate_cost(trip, minimum=True), estimate_cost(trip)
     categories = []

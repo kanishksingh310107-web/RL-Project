@@ -1,7 +1,7 @@
 # Data models for auth and traveller profile
 from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import List, Optional, Dict, Any, Literal
-from datetime import datetime
+from datetime import date, datetime
 
 # Auth models
 class AuthRequest(BaseModel):
@@ -354,6 +354,70 @@ class TripCreate(BaseModel):
         self.has_children = composition['children'] > 0
         self.has_elderly = composition['seniors'] > 0
         self.trip_preferences = dict(self.trip_preferences or {}, party=composition, trip_type=self.trip_type)
+        accommodation = self.trip_preferences.get('accommodation') or {}
+        if not isinstance(accommodation, dict):
+            raise ValueError('Accommodation details must be an object.')
+        property_name = accommodation.get('property_name')
+        property_type = accommodation.get('property_type')
+        if property_type is not None and property_type not in {'hostel','budget','mid_range','boutique','resort','apartment','budget_hostel'}:
+            raise ValueError('Choose a valid accommodation property type.')
+        if property_name is not None:
+            if not isinstance(property_name, str) or not property_name.strip() or len(property_name.strip()) > 160:
+                raise ValueError('Enter an accommodation property name up to 160 characters.')
+            accommodation['property_name'] = property_name.strip()
+        expected_cost = accommodation.get('expected_total_cost_inr')
+        if expected_cost is not None and (type(expected_cost) is not int or expected_cost < 0 or expected_cost > 1_000_000_000):
+            raise ValueError('Accommodation cost must be between ₹0 and ₹1,000,000,000.')
+        if bool(property_name) != (expected_cost is not None):
+            raise ValueError('Enter both the property name and its full stay cost, or leave both blank until the stay is confirmed.')
+        if accommodation:
+            self.trip_preferences['accommodation'] = accommodation
+        intercity_cost = self.trip_preferences.get('intercity_cost_inr')
+        if intercity_cost is not None and (type(intercity_cost) is not int or intercity_cost < 0 or intercity_cost > 1_000_000_000):
+            raise ValueError('Confirmed intercity travel cost must be between ₹0 and ₹1,000,000,000.')
+        checkout_choice=self.trip_preferences.get('checkout_gap_choice')
+        if checkout_choice not in (None,'','activity','late_checkout'):
+            raise ValueError('Choose an option for the final-day check-out gap.')
+        if 'checkout_gap_choice' in self.trip_preferences and self.hotel_checkout_time and self.transport_departure_time:
+            try:
+                trip_days=(date.fromisoformat(self.end_date)-date.fromisoformat(self.start_date)).days+1
+                departure=datetime.strptime(self.transport_departure_time,'%H:%M').hour*60+datetime.strptime(self.transport_departure_time,'%H:%M').minute
+                checkout=datetime.strptime(self.hotel_checkout_time,'%H:%M').hour*60+datetime.strptime(self.hotel_checkout_time,'%H:%M').minute
+                buffer=self.terminal_arrival_buffer_minutes if self.departure_transport_mode=='flight' else self.station_arrival_buffer_minutes if self.departure_transport_mode=='train' else 30
+                if trip_days>1 and departure-buffer-self.terminal_journey_minutes-checkout>=180 and checkout_choice not in ('activity','late_checkout'):
+                    raise ValueError
+            except (TypeError,ValueError) as exc:
+                raise ValueError('Choose an option for the final-day check-out gap.') from exc
+        if 'night_activities' in self.trip_preferences and type(self.trip_preferences['night_activities']) is not bool:
+            raise ValueError('Choose whether you want activities after dinner.')
+        overrides = self.trip_preferences.get('meal_overrides', {})
+        if not isinstance(overrides, dict) or len(overrides) > 90:
+            raise ValueError('Meal overrides must be a day-keyed object with at most 90 days.')
+        try:
+            days = (date.fromisoformat(self.end_date) - date.fromisoformat(self.start_date)).days + 1
+            for day_key, meals in overrides.items():
+                day = int(day_key)
+                if str(day) != str(day_key) or not 1 <= day <= days or not isinstance(meals, dict):
+                    raise ValueError
+                if set(meals)-{'lunch_start_time','lunch_duration_minutes','dinner_start_time','dinner_duration_minutes'}:
+                    raise ValueError
+                for meal in ('lunch', 'dinner'):
+                    start_time = meals.get(f'{meal}_start_time')
+                    duration = meals.get(f'{meal}_duration_minutes')
+                    if start_time is not None and (not isinstance(start_time, str) or len(start_time) != 5 or datetime.strptime(start_time, '%H:%M').strftime('%H:%M') != start_time):
+                        raise ValueError
+                    if duration is not None and (type(duration) is not int or not 15 <= duration <= 180):
+                        raise ValueError
+                lunch_time=meals.get('lunch_start_time');dinner_time=meals.get('dinner_start_time')
+                if lunch_time and dinner_time:
+                    lunch_min=datetime.strptime(lunch_time,'%H:%M').hour*60+datetime.strptime(lunch_time,'%H:%M').minute
+                    dinner_min=datetime.strptime(dinner_time,'%H:%M').hour*60+datetime.strptime(dinner_time,'%H:%M').minute
+                    lunch_end=lunch_min+int(meals.get('lunch_duration_minutes',self.lunch_duration_minutes))
+                    dinner_end=dinner_min+int(meals.get('dinner_duration_minutes',self.dinner_duration_minutes))
+                    if lunch_min < dinner_end and dinner_min < lunch_end:
+                        raise ValueError
+        except (TypeError, ValueError):
+            raise ValueError('Meal override day, time, or duration is invalid.')
         if any(key in self.model_fields_set for key in TRIP_PLANNING_DETAIL_FIELDS):
             for key in TRIP_PLANNING_DETAIL_FIELDS:
                 value = getattr(self, key, None)
@@ -663,6 +727,8 @@ class MinimumBudgetRequest(BaseModel):
     travel_pace: Optional[str] = "balanced"
     include_shopping: bool = False
     user_id: Optional[str] = None
+    accommodation_cost_inr: Optional[int] = Field(None, ge=0, le=1_000_000_000, strict=True)
+    intercity_cost_inr: Optional[int] = Field(None, ge=0, le=1_000_000_000, strict=True)
 
 class MinimumBudgetResponse(BaseModel):
     budget_band_labels: Dict[str, str] = {}

@@ -139,8 +139,14 @@ def estimate_cost(trip, activities=None, minimum=False):
                 if local_mode == 'bus_metro':
                     fare *= people
                 route_local_total += whole_inr(fare)
+    entered_stay = prefs.get('accommodation') if isinstance(prefs.get('accommodation'), dict) else {}
+    stay_cost = nights * rooms * STAY_RATES_INR[tier][0 if minimum else 1]
+    if not minimum and entered_stay.get('expected_total_cost_inr') is not None:
+        stay_cost = whole_inr(entered_stay['expected_total_cost_inr'])
+    if not minimum and prefs.get('intercity_cost_inr') is not None:
+        intercity = whole_inr(prefs['intercity_cost_inr'])
     components = {'intercity_transit': intercity, 'local_transit': route_local_total if route_local_total is not None else local_daily * days * people,
-                  'accommodation': nights * rooms * STAY_RATES_INR[tier][0 if minimum else 1],
+                  'accommodation': stay_cost,
                   'food': food * days * people, 'activities': tickets * ticket_people,
                   'shopping': (SHOPPING_INR * (.25 if minimum else 1) * people) if prefs.get('include_shopping', trip.get('include_shopping', False)) else 0,
                   'necessary_extras': INCIDENTALS_DAILY_INR * days * people}

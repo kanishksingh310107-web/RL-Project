@@ -541,6 +541,10 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 activity_id=activity.get('id'), category=activity.get('category') or kind,
                 description=activity.get('description') or '',
                 provenance={'source':'assumed','is_estimate':True,'notes':'Travel duration estimated from straight-line distance and mode assumptions.'} if kind=='transit' else None))
+            if activity.get('id') and kind in ('activity','shopping','meal'):
+                slots[-1].update(booking_required=bool(activity.get('booking_required') or activity.get('requires_booking') or activity.get('is_fixed_booking')),
+                    proposed_day=day,proposed_start_time=f'{at // 60 % 24:02d}:{at % 60:02d}',
+                    proposed_end_time=f'{(at+duration) // 60 % 24:02d}:{(at+duration) % 60:02d}')
             cursor = at + duration
 
         scheduled = 0
@@ -550,6 +554,14 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         dinner_start = minute_of_day(prefs.get('dinner_start_time','19:00'))
         dinner_end = minute_of_day(prefs.get('dinner_end_time','21:00'))
         dinner_duration = int(prefs.get('dinner_duration_minutes',60))
+        day_meals = (prefs.get('meal_overrides') or {}).get(str(day), {})
+        lunch_start = minute_of_day(day_meals.get('lunch_start_time', prefs.get('lunch_start_time','12:30')))
+        lunch_duration = int(day_meals.get('lunch_duration_minutes', lunch_duration))
+        lunch_end = lunch_start + lunch_duration
+        dinner_start = minute_of_day(day_meals.get('dinner_start_time', prefs.get('dinner_start_time','19:00')))
+        dinner_duration = int(day_meals.get('dinner_duration_minutes', dinner_duration))
+        dinner_end = dinner_start + dinner_duration
+        restaurant_lunch = restaurant_dinner = False
         rest_duration = {'none':0,'short':20,'standard':30,'long':60}.get(prefs.get('rest_preference','standard'),30)
         stay = prefs.get('stay_anchor') or {}
         previous = {'latitude':stay.get('lat'),'longitude':stay.get('lon'),'id':stay.get('stay_id')}
@@ -565,6 +577,20 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 notes.append(f"Repeated place {activity.get('name') or activity.get('title') or activity['id']} was left unscheduled.")
                 continue
             is_shopping = activity.get('category') in ('shopping_local','shopping')
+            if activity.get('category') in ('food_dining','restaurant','cafe','café'):
+                dinner_venue = minute_of_day(activity.get('preferred_meal_time') or '19:00') >= 16*60
+                meal_start, meal_duration = (dinner_start,dinner_duration) if dinner_venue else (lunch_start,lunch_duration)
+                at = fit(max(15,int(activity.get('duration_minutes') or meal_duration)), earliest=meal_start,
+                         latest=meal_start + meal_duration)
+                if at is None:
+                    continue
+                append('meal',at,max(15,int(activity.get('duration_minutes') or meal_duration)),
+                       activity.get('name') or activity.get('title') or ('Dinner / local dining' if dinner_venue else 'Lunch / local dining'),activity)
+                restaurant_dinner = restaurant_dinner or dinner_venue
+                restaurant_lunch = restaurant_lunch or not dinner_venue
+                used.add(activity['id'])
+                scheduled += 1
+                continue
             if is_shopping and (not prefs.get('shopping_enabled') or shopping_added):
                 continue
             duration = max(15, int((prefs.get('shopping_duration_minutes') or activity.get('duration_minutes') or 60)
@@ -644,7 +670,7 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             previous = {'latitude':activity.get('latitude'),'longitude':activity.get('longitude'),'id':activity.get('id')}
             scheduled += 1
             if scheduled < daily_limit:
-                if scheduled == 1:
+                if scheduled == 1 and not restaurant_lunch:
                     at = fit(lunch_duration, earliest=lunch_start, latest=lunch_end)
                     if at is not None:
                         append('meal', at, lunch_duration, 'Lunch / local dining')
@@ -654,7 +680,7 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                     at = fit(rest_duration)
                     if at is not None:
                         append('rest', at, rest_duration, 'Rest break')
-        if end - start >= 360:
+        if end - start >= 360 and not restaurant_dinner:
             at = fit(dinner_duration, earliest=dinner_start, latest=dinner_end)
             if at is not None:
                 append('meal', at, dinner_duration, 'Dinner / local dining')
@@ -671,6 +697,10 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 append('transit',at,journey,'Estimated travel to departure terminal')
                 at += journey
             append('buffer',at,buffer,'Terminal arrival buffer')
+            if prefs.get('checkout_gap_choice')=='late_checkout':
+                notes.append('You chose to request late check-out. Confirm availability directly with your accommodation; no booking has been made.')
+            elif prefs.get('checkout_gap_choice')=='activity':
+                notes.append('You chose to add an activity during the final-day check-out gap. Any activity must fit before the terminal transfer deadline.')
         if not (day == total_days and prefs.get('transport_departure_time')) and stay.get('lat') is not None and stay.get('lon') is not None and previous.get('latitude') is not None and previous.get('longitude') is not None:
             from app.planning.transport import estimate_travel_leg
             return_leg = estimate_travel_leg(float(previous['latitude']),float(previous['longitude']),
@@ -694,7 +724,15 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             slot['order_index'] = index
         dropped = max(0, min(len(candidates), daily_limit) - scheduled)
         if dropped:
-            notes.append(f'{dropped} lower-ranked activities were dropped because of hotel buffers, free time, opening hours or activity duration.')
+            notes.append(f'{dropped} lower-ranked activities were dropped because of accommodation and departure buffers, free time, opening hours or activity duration.')
+        if scheduled == 1:
+            optional_start = max(cursor, lunch_end)
+            optional_end = min(end, dinner_start)
+            if optional_end - optional_start >= 60:
+                append('optional',optional_start,optional_end-optional_start,'Optional second-half rest or shopping time')
+                notes.append('Only one activity fits this day; the second half is left optional for rest or shopping.')
+        if prefs.get('night_activities') and end - dinner_end >= 45:
+            append('optional',dinner_end,end-dinner_end,'Optional after-dinner activity time')
         if not scheduled:
             if end<=start:
                 notes.append('Departure day: activities are disabled or no time remains before your terminal transfer.')
@@ -820,7 +858,7 @@ def generate_timed_schedule(
         available = max(0, day_end - day_start)
         notes = []
         if available < 60:
-            notes.append("No activity fits after applying hotel arrival/departure buffers; activities were dropped.")
+            notes.append("No activity fits after applying accommodation arrival/departure buffers; activities were dropped.")
         for slot_tpl in slot_templates:
             stype = slot_tpl["slot_type"]
             role = slot_tpl["role"]
@@ -982,8 +1020,8 @@ def generate_timed_schedule(
                     "start_time": start_t,
                     "end_time": end_t,
                     "duration_mins": dur,
-                    "title": "Rest Time / Evening Hotel Leisure",
-                    "location": "Hotel / Lodging",
+                    "title": "Rest time / evening accommodation break",
+                    "location": "Accommodation",
                     "estimated_cost": 0.0,
                     "activity_id": None,
                     "category": "relaxation",
@@ -1070,6 +1108,10 @@ def save_timed_itinerary(
         day_num = day["day_number"]
         for s in day["slots"]:
             slot_id = str(uuid.uuid4())
+            provenance = dict(s.get('provenance') or {})
+            for metadata_key in ('booking_required','proposed_day','proposed_start_time','proposed_end_time'):
+                if metadata_key in s:
+                    provenance[metadata_key] = s[metadata_key]
             cursor.execute("""
                 INSERT INTO timed_itinerary_slots (
                     id, itinerary_id, trip_id, day_number, order_index,
@@ -1091,7 +1133,7 @@ def save_timed_itinerary(
                 s.get("estimated_cost", 0.0),
                 s.get("activity_id"),
                 s.get("category", ""),
-                s.get("description", ""), json.dumps(s.get('provenance')) if s.get('provenance') else None
+                s.get("description", ""), json.dumps(provenance) if provenance else None
             ))
             s["id"] = slot_id
 
@@ -1126,7 +1168,7 @@ def regenerate_timed_itinerary_for_trip(conn: sqlite3.Connection, trip_id: str, 
                 'final_day_activities','luggage_storage','terminal_arrival_buffer_minutes',
                 'station_arrival_buffer_minutes','terminal_journey_minutes','lunch_start_time',
                 'lunch_end_time','lunch_duration_minutes','dinner_start_time','dinner_end_time',
-                'dinner_duration_minutes','rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr',
+                'dinner_duration_minutes','meal_overrides','night_activities','checkout_gap_choice','rest_preference','shopping_enabled','shopping_duration_minutes','shopping_budget_inr',
                 'walking_limit_km','accessibility_notes','transport_preferences'):
         if key in trip_prefs:
             prefs[key] = trip_prefs[key]
