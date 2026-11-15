@@ -4,6 +4,7 @@ from itertools import combinations
 from unittest.mock import Mock
 import pytest
 import requests
+import uuid
 from app.providers.geo import haversine_distance_km
 
 
@@ -25,6 +26,42 @@ def create(client, user, **overrides):
     response = client.post('/api/trips/'+user,json=trip_payload(**overrides))
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def test_new_submission_with_same_dates_never_reuses_live_trip(client, deep_user):
+    from app.database import get_connection
+    original = create(client, deep_user, creation_request_id=str(uuid.uuid4()))
+    with get_connection() as conn:
+        conn.execute("INSERT INTO trip_runtime(trip_id,status,started_at) VALUES(?,'live','2026-11-26T09:00:00Z')", (original['id'],))
+        before = dict(conn.execute('SELECT * FROM trip_runtime WHERE trip_id=?', (original['id'],)).fetchone())
+    key = str(uuid.uuid4())
+    new_trip = create(client, deep_user, creation_request_id=key)
+    assert new_trip['id'] != original['id']
+    assert create(client, deep_user, creation_request_id=key)['id'] == new_trip['id']
+    with get_connection() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM trips WHERE user_id=?', (deep_user,)).fetchone()[0] == 2
+        assert dict(conn.execute('SELECT * FROM trip_runtime WHERE trip_id=?', (original['id'],)).fetchone()) == before
+
+
+def test_legacy_create_never_selects_a_live_trip(client, deep_user):
+    from app.database import get_connection
+    original = create(client, deep_user)
+    with get_connection() as conn:
+        conn.execute("INSERT INTO trip_runtime(trip_id,status) VALUES(?,'live')", (original['id'],))
+    assert create(client, deep_user)['id'] != original['id']
+
+
+def test_creation_request_key_conflict_and_invalid_key(client, deep_user):
+    key = str(uuid.uuid4())
+    original = create(client, deep_user, creation_request_id=key)
+    changed = trip_payload(creation_request_id=key)
+    changed['total_budget'] += 1000
+    response = client.post('/api/trips/' + deep_user, json=changed)
+    assert response.status_code == 409, response.text
+    assert response.json()['code'] == 'CREATION_REQUEST_CONFLICT'
+    assert create(client, deep_user, creation_request_id=key)['id'] == original['id']
+    response = client.post('/api/trips/' + deep_user, json=trip_payload(creation_request_id='invalid'))
+    assert response.status_code == 422, response.text
 
 
 def test_offline_stays_are_real_areas_inside_radius(client):

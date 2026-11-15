@@ -23,7 +23,7 @@ def error(status, message, code='INVALID_INPUT', field=None):
 
 class Preview(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    operation: Literal['swap','remove','reschedule','move_day','reorder','pin','must_visit','set_priority','fix_booking','add_custom','budget_allocation','preferences','rebalance','trip_plan']
+    operation: Literal['swap','remove','reschedule','move_day','reorder','pin','must_visit','set_priority','fix_booking','meal_times','add_custom','budget_allocation','preferences','rebalance','trip_plan']
     target_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
     replacement_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
     before_activity_id: Optional[str] = Field(None,min_length=1,max_length=100)
@@ -124,7 +124,7 @@ async def apply(request,trip_id,actor,payload):
     with get_connection() as conn:
         itinerary,rows,_=state(conn,trip_id)
         target=next((r for r in rows if r['id']==payload.target_activity_id),None)
-        requires_target=payload.operation not in ('add_custom','budget_allocation','preferences','rebalance','trip_plan')
+        requires_target=payload.operation not in ('add_custom','budget_allocation','preferences','rebalance','trip_plan','meal_times')
         if requires_target and not target: error(404,'Activity occurrence not found.','ACTIVITY_NOT_FOUND')
         if target and (target['is_fixed_booking'] or target['is_pinned']) and payload.operation not in ('pin','must_visit','fix_booking'):
             error(409,'Unpin this activity before moving or replacing it.','PINNED_ACTIVITY')
@@ -138,6 +138,21 @@ async def apply(request,trip_id,actor,payload):
                 if validated.operation not in ('swap','remove','reschedule','move_day','reorder','preferences','budget_allocation'):
                     error(422,'This plan contains an unsupported change.','INVALID_PLAN')
                 await apply(request,trip_id,actor,validated)
+        elif payload.operation=='meal_times':
+            if not payload.target_day:error(422,'Choose the day whose meals you want to move.','INVALID_MEAL_DAY','target_day')
+            changes=payload.preferences or {}
+            allowed={'lunch_start_time','lunch_duration_minutes','dinner_start_time','dinner_duration_minutes'}
+            if not changes or set(changes)-allowed:error(422,'Choose lunch or dinner times and durations for this day.','INVALID_MEAL_TIMES','preferences')
+            trip=dict(conn.execute('SELECT * FROM trips WHERE id=?',(trip_id,)).fetchone())
+            prefs=json.loads(trip.get('trip_preferences_json') or '{}')
+            overrides=dict(prefs.get('meal_overrides') or {})
+            overrides[str(payload.target_day)]={**overrides.get(str(payload.target_day),{}),**changes}
+            prefs['meal_overrides']=overrides
+            from app.models import TripCreate, TRIP_PLANNING_DETAIL_FIELDS
+            validation={**trip,**{key:prefs[key] for key in TRIP_PLANNING_DETAIL_FIELDS if key in prefs},'trip_preferences':prefs}
+            validation['specific_interests']=json.loads(trip.get('specific_interests') or '[]')
+            TripCreate.model_validate(validation)
+            conn.execute('UPDATE trips SET trip_preferences_json=? WHERE id=?',(json.dumps(prefs),trip_id))
         elif payload.operation=='preferences':
             from app.recommendation_budget import DayPreferences
             validated=DayPreferences.model_validate(payload.preferences or {})
@@ -205,7 +220,17 @@ async def apply(request,trip_id,actor,payload):
             conn.execute(f'UPDATE itinerary_activities SET {column}=? WHERE id=?',(not target[column],target['id']))
         if payload.operation!='budget_allocation':
             from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
-            regenerate_timed_itinerary_for_trip(conn,trip_id,actor)
+            schedule=regenerate_timed_itinerary_for_trip(conn,trip_id,actor)
+            if payload.operation=='meal_times':
+                slots=schedule['days'][payload.target_day-1]['slots']
+                for meal in ('lunch','dinner'):
+                    override=overrides[str(payload.target_day)]
+                    requested=override.get(meal+'_start_time',prefs.get(meal+'_start_time')) if any(key.startswith(meal+'_') for key in payload.preferences) else None
+                    from app.schedule_preferences import minute_of_day
+                    label = 'Lunch' if meal == 'lunch' else 'Dinner'
+                    if requested and not any(s['slot_type']=='meal' and (s['title'].startswith(label) or s.get('category') in ('food_dining','restaurant','cafe','café'))
+                            and abs(minute_of_day(s['start_time'])-minute_of_day(requested))<=60 for s in slots):
+                        error(409,f'{meal.title()} does not fit that time around your activities, bookings or departure. Choose another time.','MEAL_TIME_CONFLICT',meal+'_start_time')
 
 
 @router.get('/api/trip-experience/capabilities')

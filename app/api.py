@@ -1298,16 +1298,41 @@ def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require
         dest_match = DESTINATIONS_BY_ID.get(payload.destination_id) or next((d for d in DESTINATIONS if d["id"] == payload.destination_id), None)
         dest_name = dest_match["name"] if dest_match else payload.destination_id.replace("_", " ").title()
 
-    # Serialize duplicate check/create with SQLite's writer lock, below. The
-    # canonical party is part of the identity; different parties remain distinct.
-    with get_connection() as conn:
-        rows = conn.execute("SELECT * FROM trips WHERE user_id=? AND destination_id=? AND start_date=? AND end_date=? AND created_at >= datetime('now','-5 minutes')", (user_id,payload.destination_id,payload.start_date,payload.end_date)).fetchall()
+    # A deliberate new plan has its own request ID, even for identical dates and
+    # destination. Only a retry of that same submission may reuse its trip.
+    request_hash = hashlib.sha256(json.dumps(payload.model_dump(mode='json'),sort_keys=True).encode()).hexdigest()
+    def existing_creation(conn):
+        if payload.creation_request_id:
+            row = conn.execute("""SELECT * FROM trips WHERE user_id=? AND
+                CASE WHEN json_valid(trip_preferences_json) THEN json_extract(trip_preferences_json,'$._creation_request_id') END=?""",
+                (user_id,payload.creation_request_id)).fetchone()
+            if not row:
+                return None
+            preferences = json.loads(row['trip_preferences_json'])
+            if preferences.get('_creation_request_hash') != request_hash:
+                return JSONResponse(status_code=409,content={'detail':'This submission was already used for different trip details. Update the form and submit again.',
+                    'code':'CREATION_REQUEST_CONFLICT','field':'creation_request_id'})
+            return TripResponse(**_hydrate_trip_row(dict(row)))
+        # Compatibility for clients without request IDs: never reuse an ongoing
+        # or completed trip as a new draft.
+        rows = conn.execute("""SELECT * FROM trips WHERE user_id=? AND destination_id=? AND start_date=? AND end_date=?
+            AND created_at >= datetime('now','-5 minutes') AND status NOT IN ('live','completed','finalized','archived')
+            AND NOT EXISTS (SELECT 1 FROM trip_runtime WHERE trip_id=trips.id AND status<>'draft')""",
+            (user_id,payload.destination_id,payload.start_date,payload.end_date)).fetchall()
         from app.core.party import normalize_party
         for row in rows:
             if normalize_party(dict(row)) == payload.party.model_dump():
                 existing = _hydrate_trip_row(dict(row))
                 existing['message'] = 'This trip already exists; selected the existing trip.'
                 return TripResponse(**existing)
+        return None
+    with get_connection() as conn:
+        existing = existing_creation(conn)
+        if existing is not None:
+            return existing
+    if payload.creation_request_id:
+        trip_pref_input['_creation_request_id'] = payload.creation_request_id
+        trip_pref_input['_creation_request_hash'] = request_hash
     trip_id = str(uuid.uuid4())
     # Calculate realistic minimum budget reference
     min_budget_data = calculate_minimum_trip_budget(
@@ -1388,13 +1413,9 @@ def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require
 
     with get_connection() as conn:
         conn.execute('BEGIN IMMEDIATE')
-        from app.core.party import normalize_party
-        duplicate_rows = conn.execute("SELECT * FROM trips WHERE user_id=? AND destination_id=? AND start_date=? AND end_date=? AND created_at >= datetime('now','-5 minutes')",(user_id,payload.destination_id,payload.start_date,payload.end_date)).fetchall()
-        for duplicate in duplicate_rows:
-            if normalize_party(dict(duplicate)) == payload.party.model_dump():
-                result = _hydrate_trip_row(dict(duplicate))
-                result['message'] = 'This trip already exists; selected the existing trip.'
-                return TripResponse(**result)
+        existing = existing_creation(conn)
+        if existing is not None:
+            return existing
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO trips (

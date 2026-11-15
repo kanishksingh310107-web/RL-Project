@@ -36,7 +36,7 @@ def activity_fee_inr(activity):
     amount = max(0,float(amount))
     # Legacy curated ticket values <=50 were USD. New generated INR values
     # are converted before storage; positive converted values are >=83 INR.
-    if activity.get('currency') != 'INR' and amount <= 50:
+    if not activity.get('is_fixed_booking') and activity.get('currency') != 'INR' and amount <= 50:
         amount *= LEGACY_USD_TO_INR
     return amount
 

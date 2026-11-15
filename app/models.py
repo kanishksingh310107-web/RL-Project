@@ -302,6 +302,7 @@ class DestinationRecommendation(BaseModel):
     country: str
     tagline: str
     image_url: Optional[str] = None
+    image_source_url: Optional[str] = None
     duration: Optional[str] = "4 - 7 days"
     match_score: float
     why_it_suits: str
@@ -433,6 +434,9 @@ class TripCreate(BaseModel):
         if accommodation:
             self.trip_preferences['accommodation'] = accommodation
         intercity_cost = self.trip_preferences.get('intercity_cost_inr')
+        journey_mode = self.trip_preferences.get('intercity_transport_mode')
+        if journey_mode is not None and journey_mode not in ('flight', 'train', 'bus', 'car'):
+            raise ValueError('Choose flight, train, intercity bus or private car for travel to your destination.')
         if intercity_cost is not None and (type(intercity_cost) is not int or intercity_cost < 0 or intercity_cost > 1_000_000_000):
             raise ValueError('Confirmed intercity travel cost must be between ₹0 and ₹1,000,000,000.')
         checkout_choice=self.trip_preferences.get('checkout_gap_choice')
@@ -468,7 +472,7 @@ class TripCreate(BaseModel):
                         raise ValueError
                     if duration is not None and (type(duration) is not int or not 15 <= duration <= 180):
                         raise ValueError
-                lunch_time=meals.get('lunch_start_time');dinner_time=meals.get('dinner_start_time')
+                lunch_time=meals.get('lunch_start_time',self.lunch_start_time);dinner_time=meals.get('dinner_start_time',self.dinner_start_time)
                 if lunch_time and dinner_time:
                     lunch_min=datetime.strptime(lunch_time,'%H:%M').hour*60+datetime.strptime(lunch_time,'%H:%M').minute
                     dinner_min=datetime.strptime(dinner_time,'%H:%M').hour*60+datetime.strptime(dinner_time,'%H:%M').minute
@@ -521,6 +525,7 @@ class TripCreate(BaseModel):
     specific_interests: List[str] = []
     trip_preferences: Optional[Dict[str, Any]] = None
     trip_type: Optional[Literal['solo','couple','friends','family']] = None
+    creation_request_id: Optional[str] = Field(None, pattern=r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
     destination_arrival_time: Optional[str] = None
     hotel_checkin_time: Optional[str] = None
     hotel_checkout_time: Optional[str] = None

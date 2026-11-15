@@ -129,7 +129,12 @@
   plan.onclick = async () => {
     if (plan.disabled) return;
     plan.disabled = true;
-    try { await window.toggleTripFormModal(); }
+    try {
+      if (window.TripExperience?.route) {
+        if (location.hash === '#/trips/new') await window.TripExperience.route();
+        else location.hash = '/trips/new';
+      } else await window.toggleTripFormModal();
+    }
     catch (error) { window.showAppNotice?.(error.message || 'Trip planning could not open. Please retry.'); }
     finally { plan.disabled = false; }
   };

@@ -92,10 +92,13 @@
     register(item);const box=U.el('article',null,'ex-destination-card');
     const photo=U.el('img');photo.className='ex-destination-photo';photo.alt='Photo of '+name(item);photo.loading='lazy';photo.decoding='async';
     const fallback='/static/images/destination-placeholder.svg';
-    let imageUrl=typeof item.image_url==='string'?item.image_url.trim():'';
+    let imageUrl=typeof item.image_url==='string'&&item.image_url.trim()?item.image_url.trim():fallback;
     try{const parsed=new URL(imageUrl,location.origin);if(!['https:','http:'].includes(parsed.protocol)||(parsed.protocol==='http:'&&location.protocol==='https:'))imageUrl='';else imageUrl=parsed.href;}catch(_){imageUrl='';}
     photo.src=imageUrl||fallback;photo.onerror=()=>{photo.onerror=null;photo.src=fallback;};
     box.append(photo,U.el('h3',name(item)));
+    if(typeof item.image_source_url==='string'&&item.image_source_url.startsWith('https://en.wikipedia.org/wiki/')){
+      const credit=U.el('a','Photo source','ex-muted');credit.href=item.image_source_url;credit.target='_blank';credit.rel='noopener noreferrer';box.append(credit);
+    }
     if(!savedOnly){
     box.append(U.el('strong',window.TripExperience.matchLabel(item)));
     U.lines(box,'Why this fits',reasons(item));

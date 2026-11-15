@@ -576,7 +576,7 @@ def discover_suggestions(payload: DiscoveryInput, request: Request):
             reasons.append('Lower-cost options are prioritized because you marked a prior suggestion too expensive')
             rank_score -= cost['total'] / 1000
         ranked.append({'_rank_score':rank_score,'destination_id': dest['id'], 'name': dest['name'], 'country': dest['country'],
-            'image_url': dest.get('image_url'), 'why_recommended': reasons, 'trade_off': drawback,
+            'image_url': dest.get('image_url'), 'image_source_url': dest.get('image_source_url'), 'why_recommended': reasons, 'trade_off': drawback,
             'estimated_total_cost_inr': cost['total'], 'cost_breakdown': cost['cost_breakdown'],
             'travel_distance_km': distance, 'travel_time_minutes': None,
             'estimated_travel_minutes':estimated_minutes,'travel_estimate_is_verified':False,
@@ -711,10 +711,14 @@ def saved_destinations(request: Request):
     return {'destinations': destinations}
 
 
+class ComparisonContext(DiscoveryInput):
+    comfortable_budget_inr: Optional[StrictInt] = Field(None,gt=0,le=1_000_000_000)
+
+
 class DestinationComparison(BaseModel):
     model_config = ConfigDict(extra='forbid')
     destination_ids: list[str] = Field(min_length=2,max_length=3)
-    context: DiscoveryInput
+    context: ComparisonContext
 
     @field_validator('destination_ids')
     @classmethod
@@ -726,14 +730,27 @@ class DestinationComparison(BaseModel):
 
 @router.post('/api/discovery/compare')
 def compare_destinations(payload: DestinationComparison, request: Request):
-    _actor(request)
+    actor=_actor(request)
+    values=payload.context.model_dump()
+    if values['comfortable_budget_inr'] is None:
+        with get_connection() as conn:
+            daily=_profile(conn,actor).get('daily_budget_inr')
+        if type(daily) is not int or daily<=0:
+            fail(422,'Enter a budget in Help me choose, or add your usual daily budget to your basic profile before comparing costs.','COMPARISON_BUDGET_REQUIRED','comfortable_budget_inr')
+        days=payload.context.duration_days or ((payload.context.end_date-payload.context.start_date).days+1)
+        values['comfortable_budget_inr']=daily*days*payload.context.party_size
+    try:
+        context=DiscoveryInput.model_validate(values)
+    except ValidationError as exc:
+        issue=exc.errors()[0]
+        fail(422,str(issue['msg']).removeprefix('Value error, '),'INVALID_COMPARISON_CONTEXT',str(issue['loc'][-1]) if issue['loc'] else 'context')
     choices = []
     for destination in payload.destination_ids:
-        query = payload.context.model_copy(update={'mode':'known_destination','destination_id':destination})
+        query = context.model_copy(update={'mode':'known_destination','destination_id':destination})
         result = discover_suggestions(query, request)
         if result['recommendations']:
             choices.extend(result['recommendations'])
-    return {'destinations':choices, 'comparison_basis':payload.context.model_dump(mode='json')}
+    return {'destinations':choices, 'comparison_basis':context.model_dump(mode='json')}
 
 
 @router.get('/api/trips/{trip_id}/budget')

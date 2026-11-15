@@ -4,6 +4,7 @@ Requires Playwright and its Chromium browser in the integration test environment
 Uses the real static app with mocked APIs; it never calls external travel services.
 """
 import os
+import re
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -48,7 +49,9 @@ def ui(static_url):
         elif path == "/api/trip-experience/capabilities":
             result = {key: options["capabilities"] for key in ["schedule_preferences_v2", "explicit_trip_type", "occurrence_acceptance", "itinerary_preview", "custom_activities", "expenses", "readonly_sharing", "live_adjustments"]}
         elif path == "/api/trips/ui-user":
-            result = [trip]
+            result = trip if request.method == 'POST' else [trip]
+        elif path == "/api/itinerary/generate/trip-1":
+            result = {"id": "itin-1", "trip_id": "trip-1", "destination_name": "Hampi", "total_days": 2, "days": []}
         elif path == "/api/trips/detail/trip-1":
             result = trip
         elif path == "/api/trips/trip-1/runtime":
@@ -58,7 +61,7 @@ def ui(static_url):
         elif path == "/api/trip-actions/trip-1/timed-view":
             result = {"trip": trip, "itinerary": {"id": "itin-1"}, "days": [{"day_number": 1, "timeline": blocks, "formatted_date": "1 Jan 2099"}], "has_itinerary": True}
         elif path == "/api/recommendations/ui-user":
-            result = {"recommended_for_you": [{"id": "hampi_india", "name": "Hampi", "match_score": 51, "why_recommended": "You enjoy heritage walks."}], "trending_trips": [], "seasonal_and_upcoming": []}
+            result = {"recommended_for_you": [{"id": "hampi_india", "name": "Hampi", "image_url":"/static/images/destinations/hampi_karnataka_india.jpg", "image_source_url":"https://en.wikipedia.org/wiki/Hampi", "match_score": 51, "why_recommended": "You enjoy heritage walks."}], "trending_trips": [], "seasonal_and_upcoming": []}
         elif path == "/api/trip-actions/trip-1/acceptance":
             body = request.post_data_json
             for block in blocks:
@@ -101,10 +104,10 @@ def test_new_trip_is_full_page_and_retains_draft(ui):
     page.evaluate("location.hash='/trips/new'")
     playwright.expect(page.locator("#tripExperienceView")).to_be_visible()
     page.locator("#tripNotesInput").fill("Keep an afternoon free")
-    page.locator("#teTripType").select_option("family")
+    playwright.expect(page.locator("#teTripType")).to_be_hidden()
     page.locator("#tripAdultsInput").fill("3")
     page.locator("#tripAdultsInput").dispatch_event("change")
-    playwright.expect(page.locator("#teTripType")).to_have_value("family")
+    playwright.expect(page.locator("#teTripType")).to_have_value("friends")
     page.get_by_role("link", name="Back to main menu").click()
     playwright.expect(page.locator("#dashboardView")).to_be_visible()
     page.go_back()
@@ -117,6 +120,83 @@ def test_recommendations_have_reasons_and_honest_match_label(ui):
     playwright.expect(page.locator("#teDestinationRecommendations")).to_contain_text("heritage walks")
     playwright.expect(page.locator("#teDestinationRecommendations")).not_to_contain_text("90%")
     assert page.locator("#tripDestSelect").is_hidden()
+
+
+def test_dashboard_destination_photo_loads_without_external_network(ui):
+    page, _, _, _ = ui
+    page.evaluate('loadRecommendations()')
+    photo=page.locator('#recommendedGrid img').first
+    playwright.expect(photo).to_have_attribute('src',re.compile(r'/static/images/destinations/hampi_karnataka_india.jpg$'))
+    page.wait_for_function("document.querySelector('#recommendedGrid img')?.naturalWidth > 0")
+    playwright.expect(page.locator('#recommendedGrid').get_by_role('link',name='Photo source')).to_have_attribute('href','https://en.wikipedia.org/wiki/Hampi')
+
+
+@pytest.mark.parametrize('with_meal_override', [False, True])
+def test_create_trip_submits_preferences_and_generates_itinerary(ui, with_meal_override):
+    page, _, _, recorded = ui
+    errors, dialogs = [], []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.on('dialog', lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
+    page.locator('#headerPlanTripBtn').click()
+    playwright.expect(page.locator('#teDestinationRecommendations')).to_contain_text('Hampi')
+    page.locator('#teDestinationRecommendations button').click()
+    page.locator('#tripStartDateInput').fill('2099-01-01')
+    page.locator('#tripEndDateInput').fill('2099-01-02')
+    page.locator('#tripBudgetInput').fill('25000')
+    assert page.locator('#teJourneyMode option').evaluate_all('(options)=>options.map(option=>option.value)') == ['flight','train','bus','car']
+    page.locator('#teJourneyMode').select_option('train')
+    page.locator('#tripTransitSelect').select_option('cab_rental')
+    playwright.expect(page.locator('#teTripType')).to_be_hidden()
+    playwright.expect(page.locator('#teRestDuration')).to_be_hidden()
+    playwright.expect(page.locator('#teShopping')).to_be_hidden()
+    page.locator('#teCheckoutGapChoice').select_option('activity')
+    page.locator('#tripNotesInput').fill('Keep my travel preferences')
+    if with_meal_override:
+        page.get_by_role('button', name='Add a per-day meal time', exact=True).click()
+        page.locator('.teMealOverrideLunch').fill('13:30')
+        page.get_by_role('link', name='Back to main menu').click()
+        page.go_back()
+        playwright.expect(page.locator('.teMealOverrideLunch')).to_have_value('13:30')
+    page.locator('#generateItinerarySubmitBtn').click()
+    playwright.expect(page).to_have_url(re.compile(r'#/trips/trip-1$'))
+    bodies = [body for method, path, body in recorded if method == 'POST' and path == '/api/trips/ui-user']
+    assert len(bodies) == 1
+    assert bodies[0]['trip_type'] == 'couple'
+    assert bodies[0]['trip_preferences']['intercity_transport_mode'] == 'train'
+    assert bodies[0]['transit_pref'] == 'cab_rental'
+    assert bodies[0]['trip_preferences']['notes'] == 'Keep my travel preferences'
+    overrides = bodies[0]['trip_preferences']['meal_overrides']
+    assert overrides.get('1', {}).get('lunch_start_time') == ('13:30' if with_meal_override else None)
+    assert any(method == 'POST' and path == '/api/itinerary/generate/trip-1' for method, path, _ in recorded)
+    first_key = bodies[0]['creation_request_id']
+    assert re.fullmatch(r'[a-f0-9-]{36}', first_key)
+    if not with_meal_override:
+        page.locator('#headerPlanTripBtn').click()
+        playwright.expect(page.locator('#tripFormModal')).to_be_visible()
+        page.locator('#teDestinationRecommendations button').click()
+        page.locator('#tripStartDateInput').fill('2099-01-01')
+        page.locator('#tripEndDateInput').fill('2099-01-02')
+        page.locator('#tripBudgetInput').fill('25000')
+        page.locator('#teCheckoutGapChoice').select_option('activity')
+        page.locator('#generateItinerarySubmitBtn').click()
+        playwright.expect(page).to_have_url(re.compile(r'#/trips/trip-1$'))
+        bodies = [body for method, path, body in recorded if method == 'POST' and path == '/api/trips/ui-user']
+        assert len(bodies) == 2
+        assert bodies[1]['creation_request_id'] != first_key
+    assert errors == []
+    assert dialogs == []
+
+
+def test_changing_destination_clears_stale_manali_coordinates(ui):
+    page, _, _, _ = ui
+    page.locator('#headerPlanTripBtn').click()
+    page.evaluate("async()=>{await handleFeaturedDestinationChange('manali_spiti_india');await handleFeaturedDestinationChange('udaipur_india');}")
+    coords=page.evaluate('activeTripCoords')
+    assert coords['destination_id']=='udaipur_india'
+    assert coords['lat']==pytest.approx(24.5854,abs=.02)
+    assert coords['lon']==pytest.approx(73.7125,abs=.02)
+    page.evaluate("async()=>await handleFeaturedDestinationChange('unknown_destination')")
+    assert page.evaluate('activeTripCoords') is None
 
 
 def test_single_accept_does_not_accept_same_place_on_other_occurrence(ui):
@@ -204,6 +284,8 @@ def test_departure_buffers_and_lunch_inputs_are_separate_from_checkout(ui):
     assert prefs["lunch_duration_minutes"] == 45
     page.locator("#teFinalActivities").select_option("no")
     playwright.expect(page.locator("#teDepartureWindow")).to_contain_text("reserved for departure")
+    page.locator('#teCheckoutGapChoice').select_option('activity')
+    playwright.expect(page.locator('#teFinalActivities')).to_have_value('yes')
 
 
 def test_timeline_includes_travel_and_accessible_reordering(ui):
@@ -212,6 +294,58 @@ def test_timeline_includes_travel_and_accessible_reordering(ui):
     playwright.expect(page.locator("#workspaceEditorContainer")).to_contain_text("Travel to market")
     playwright.expect(page.get_by_role("button", name="Move Temple visit earlier")).to_be_enabled()
     assert page.locator("#workspaceEditorContainer [draggable=true]").count() == 2
+
+
+def test_shopping_gap_is_visible_with_budget_label_and_no_activity_buttons(ui):
+    page, _, _, _ = ui
+    payload=page.evaluate("async()=> (await fetch('/api/trip-actions/trip-1/timed-view')).json()")
+    payload['days'][0]['timeline'].append({'type':'shopping','id':None,'activity_id':None,
+        'title':'Shopping time','time_range':'14:00 – 15:00','duration_minutes':60,
+        'cost_estimate':0,'description':'Shopping near an existing stop.'})
+    page.route('**/api/trip-actions/trip-1/timed-view?*',lambda route:route.fulfill(json=payload))
+    open_trip(page)
+    card=page.locator('#workspaceEditorContainer article').filter(has_text='Shopping time')
+    playwright.expect(card).to_contain_text('Use your shopping budget')
+    assert card.locator('button').count()==0
+
+
+def test_per_day_meal_control_previews_and_retains_values_on_failure(ui):
+    page, options, _, recorded=ui
+    open_trip(page)
+    page.get_by_role('button',name='Move meals for Day 1',exact=True).click()
+    form=page.locator('[data-meal-form]')
+    form.locator('[name=lunch_start_time]').fill('13:30')
+    form.get_by_role('button',name='Preview meal times').click()
+    playwright.expect(page.get_by_role('dialog')).to_contain_text('Review itinerary change')
+    writes=[body for method,path,body in recorded if method=='POST' and path.endswith('/preview')]
+    assert writes[-1]=={'operation':'meal_times','target_day':1,'preferences':{'lunch_start_time':'13:30','lunch_duration_minutes':60}}
+    page.get_by_role('button',name='Cancel / close').click()
+    options['preview_fails']=True
+    page.get_by_role('button',name='Move meals for Day 1',exact=True).click()
+    form=page.locator('[data-meal-form]')
+    form.locator('[name=lunch_start_time]').fill('13:45')
+    form.get_by_role('button',name='Preview meal times').click()
+    playwright.expect(page.get_by_role('dialog')).to_contain_text('Preview unavailable')
+    playwright.expect(form.locator('[name=lunch_start_time]')).to_have_value('13:45')
+
+
+def test_fix_booking_asks_for_actual_cost_and_sends_confirmation(ui):
+    page, _, _, recorded=ui
+    open_trip(page)
+    page.locator('[data-occurrence="occ-1"] [data-booking]').click()
+    form=page.locator('[data-booking-form]')
+    playwright.expect(form.locator('[name=cost]')).to_have_value('')
+    form.locator('[name=confirmed]').check()
+    form.locator('[name=start]').fill('10:00')
+    form.locator('[name=end]').fill('11:00')
+    form.locator('[name=cost]').fill('25')
+    form.get_by_role('button',name='Preview fixed slot').click()
+    playwright.expect(page.get_by_role('dialog')).to_contain_text('Review itinerary change')
+    body=next(body for method,path,body in recorded if method=='POST' and path.endswith('/preview'))
+    assert body['operation']=='fix_booking' and body['booking_cost_inr']==25
+    assert body['booking_confirmed'] is True
+    assert body['booking_start_time']=='10:00' and body['booking_end_time']=='11:00'
+    assert not any(path.endswith('/confirm') for _,path,_ in recorded)
 
 
 def test_deep_profile_gate_prevents_new_trip(ui):

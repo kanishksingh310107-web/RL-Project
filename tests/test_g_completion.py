@@ -5,6 +5,158 @@ from app.database import get_connection
 from app.services.timed_itinerary import _custom_schedule
 
 
+def test_meal_preference_shifts_without_dropping_second_activity():
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'21:00',
+        'free_blocks':[], 'final_day_activities':True,'lunch_start_time':'13:00','lunch_duration_minutes':60}
+    activities=[{'id':'long-visit','name':'Morning visit','category':'culture_history','duration_minutes':270},
+                {'id':'second-visit','name':'Afternoon visit','category':'nature_outdoors','duration_minutes':60}]
+    slots=_custom_schedule([],1,'balanced',prefs,{1:activities})[0]['slots']
+    assert sum(s['slot_type']=='activity' for s in slots)==2
+    lunch=next(s for s in slots if s['title']=='Lunch / local dining')
+    assert lunch['start_time']=='13:30' and lunch['end_time']=='14:30'
+    assert 'preferred 13:00' in lunch['description']
+    assert next(s for s in slots if s['activity_id']=='second-visit')['start_time']>='14:30'
+
+
+def test_meal_preference_moves_around_confirmed_booking():
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'21:00',
+        'free_blocks':[], 'final_day_activities':True,'lunch_start_time':'13:00','lunch_duration_minutes':60}
+    booking={'id':'paid','title':'Confirmed visit','category':'culture_history','is_fixed_booking':True,
+        'booking_start_time':'12:30','booking_end_time':'13:30','duration_minutes':60}
+    slots=_custom_schedule([],1,'balanced',prefs,{1:[booking]})[0]['slots']
+    assert next(s for s in slots if s['activity_id']=='paid')['start_time']=='12:30'
+    assert next(s for s in slots if s['title']=='Lunch / local dining')['start_time']=='13:30'
+
+
+def test_lunch_can_move_earlier_to_keep_a_visit_with_early_closing():
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'21:00',
+        'free_blocks':[], 'final_day_activities':True,'lunch_start_time':'13:00','lunch_duration_minutes':60}
+    activities=[{'id':'morning','name':'Morning visit','category':'culture_history','duration_minutes':180},
+                {'id':'early-close','name':'Afternoon visit','category':'culture_history','duration_minutes':150,'opening_time':'09:00','closing_time':'16:30'}]
+    slots=_custom_schedule([],1,'balanced',prefs,{1:activities})[0]['slots']
+    assert sum(s['slot_type']=='activity' for s in slots)==2
+    lunch=next(s for s in slots if s['title']=='Lunch / local dining')
+    assert '12:00'<=lunch['start_time']<'13:00'
+    assert next(s for s in slots if s['activity_id']=='early-close')['end_time']<='16:30'
+
+
+def test_catalogue_destination_overrides_stale_previous_trip_coordinates():
+    from app.providers.geo import resolve_trip_location
+    location=resolve_trip_location(destination_id='udaipur_india',destination_name='Udaipur',lat=32.2432,lon=77.1892,allow_live_geocode=False)
+    assert location['lat']==pytest.approx(24.5854,abs=.02)
+    assert location['lon']==pytest.approx(73.7125,abs=.02)
+    dynamic=resolve_trip_location(destination_id='geo_my_place',lat=26.3,lon=73.0,allow_live_geocode=False)
+    assert dynamic['lat']==26.3 and dynamic['lon']==73.0
+
+
+def test_udaipur_five_day_plan_repairs_stale_location_and_fills_full_days(client,deep_user):
+    start=date.today()+timedelta(days=7)
+    response=client.post('/api/trips/'+deep_user,json={'destination_id':'udaipur_india',
+        'destination_lat':32.2432,'destination_lon':77.1892,'start_date':str(start),'end_date':str(start+timedelta(days=4)),
+        'total_budget':60000,'hotel_checkin_time':'14:00','hotel_checkout_time':'11:00','final_day_activities':True,
+        'transport_departure_time':'18:00','departure_transport_mode':'flight','terminal_journey_minutes':60,
+        'lunch_start_time':'13:00','lunch_duration_minutes':60,'dinner_start_time':'19:00',
+        'schedule_prefs':{'hotel_arrival_time':'14:00','hotel_departure_time':'11:00'}})
+    assert response.status_code==200,response.text
+    trip=response.json()
+    with get_connection() as conn:
+        conn.execute('UPDATE trips SET destination_lat=32.2432,destination_lon=77.1892 WHERE id=?',(trip['id'],))
+    response=client.post('/api/itinerary/generate/'+trip['id']+'?user_id='+deep_user)
+    assert response.status_code==200,response.text
+    view=client.get('/api/trip-actions/'+trip['id']+'/timed-view').json()
+    counts=[sum(s['type']=='activity' for s in d['timeline']) for d in view['days']]
+    assert all(n>=2 for n in counts[1:-1]),counts
+    with get_connection() as conn:
+        saved=conn.execute('SELECT destination_lat,destination_lon FROM trips WHERE id=?',(trip['id'],)).fetchone()
+        rows=conn.execute('SELECT a.activity_id,a.latitude,a.longitude FROM itinerary_activities a JOIN itineraries i ON i.id=a.itinerary_id WHERE i.trip_id=?',(trip['id'],)).fetchall()
+    assert saved[0]==pytest.approx(24.5854,abs=.02)
+    assert len({r['activity_id'] for r in rows})==len(rows)
+    assert all(24<r['latitude']<25 and 73<r['longitude']<74 for r in rows)
+    assert not any('dharohar' in r['activity_id'] for r in rows)
+    assert view['days'][-1]['timeline'][-1]['type']=='departure'
+
+
+@pytest.mark.parametrize('mode,buffer', [('flight',120),('train',45),('bus',30)])
+@pytest.mark.parametrize('activities_allowed',[True,False])
+def test_departure_day_always_ends_at_actual_return(mode,buffer,activities_allowed):
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'11:00',
+        'free_blocks':[], 'final_day_activities':activities_allowed,'transport_departure_time':'18:00',
+        'departure_transport_mode':mode,'terminal_arrival_buffer_minutes':120,'station_arrival_buffer_minutes':45,'terminal_journey_minutes':60}
+    slots=_custom_schedule([],2,'balanced',prefs,{})[-1]['slots']
+    assert slots[-1]['slot_type']=='departure'
+    assert slots[-1]['start_time']==slots[-1]['end_time']=='18:00'
+    assert slots[-2]['slot_type']=='buffer' and slots[-2]['duration_mins']==buffer
+    assert [s['start_time'] for s in slots]==sorted(s['start_time'] for s in slots)
+    assert all(s['end_time']<='18:00' for s in slots)
+    if not activities_allowed:
+        assert not any(s['slot_type'] in ('unplanned','optional') for s in slots)
+
+
+def test_saved_departure_timeline_is_repaired_without_changing_activity_rows(client,deep_user):
+    from test_integration_upgrade import planned
+    trip,_=planned(client,deep_user)
+    with get_connection() as conn:
+        conn.execute("DELETE FROM timed_itinerary_slots WHERE trip_id=? AND slot_type='departure'",(trip['id'],))
+        conn.execute("UPDATE timed_itinerary_slots SET order_index=99 WHERE trip_id=? AND day_number=3 AND slot_type NOT IN ('transit','buffer')",(trip['id'],))
+        before=[tuple(r) for r in conn.execute('SELECT * FROM itinerary_activities WHERE itinerary_id IN (SELECT id FROM itineraries WHERE trip_id=?) ORDER BY id',(trip['id'],))]
+    response=client.get('/api/trip-actions/'+trip['id']+'/timed-view')
+    assert response.status_code==200,response.text
+    final=response.json()['days'][-1]['timeline']
+    assert final[-1]['type']=='departure' and final[-1]['time_range']=='18:00'
+    assert [b['time_range'].split(' – ')[0] for b in final]==sorted(b['time_range'].split(' – ')[0] for b in final)
+    with get_connection() as conn:
+        assert before==[tuple(r) for r in conn.execute('SELECT * FROM itinerary_activities WHERE itinerary_id IN (SELECT id FROM itineraries WHERE trip_id=?) ORDER BY id',(trip['id'],))]
+
+
+def test_departure_only_day_still_has_lunch_before_terminal_transfer():
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'11:00',
+        'free_blocks':[],'final_day_activities':False,'transport_departure_time':'18:00','departure_transport_mode':'flight',
+        'terminal_arrival_buffer_minutes':120,'terminal_journey_minutes':60,'lunch_start_time':'13:00','lunch_duration_minutes':45}
+    slots=_custom_schedule([],2,'balanced',prefs,{})[-1]['slots']
+    assert any(s['title']=='Lunch / local dining' and s['start_time']=='13:00' and s['end_time']=='13:45' for s in slots)
+    assert slots[-1]['title']=='Return flight departure'
+
+
+def test_checkout_gap_activity_starts_after_checkout_and_keeps_lunch():
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'11:00',
+        'free_blocks':[],'final_day_activities':True,'checkout_gap_choice':'activity','transport_departure_time':'18:00',
+        'departure_transport_mode':'flight','terminal_arrival_buffer_minutes':120,'terminal_journey_minutes':60,
+        'lunch_start_time':'13:00','lunch_duration_minutes':45}
+    activity={'id':'gap-activity','name':'Local garden','category':'nature_outdoors','duration_minutes':60}
+    slots=_custom_schedule([],2,'balanced',prefs,{2:[activity]})[-1]['slots']
+    assert next(s for s in slots if s.get('activity_id')=='gap-activity')['start_time']=='11:00'
+    assert any(s['title']=='Lunch / local dining' and s['start_time']=='13:00' for s in slots)
+
+
+def test_manali_full_days_have_two_distinct_visits_without_live_providers(client,deep_user):
+    start=date.today()+timedelta(days=7)
+    response=client.post('/api/trips/'+deep_user,json={'destination_id':'manali_spiti_india','start_date':str(start),'end_date':str(start+timedelta(days=4)),
+        'total_budget':60000,'hotel_checkin_time':'14:00','hotel_checkout_time':'11:00','final_day_activities':False,
+        'transport_departure_time':'18:00','departure_transport_mode':'flight','terminal_journey_minutes':60,
+        'schedule_prefs':{'hotel_arrival_time':'14:00','hotel_departure_time':'11:00'}})
+    assert response.status_code==200,response.text
+    trip=response.json()
+    response=client.post('/api/itinerary/generate/'+trip['id']+'?user_id='+deep_user)
+    assert response.status_code==200,response.text
+    view=client.get('/api/trip-actions/'+trip['id']+'/timed-view').json()
+    counts=[sum(b['type']=='activity' for b in day['timeline']) for day in view['days']]
+    assert all(n>=2 for n in counts[1:-1]),(counts, [[b['title'] for b in day['timeline'] if b['type']=='activity'] for day in view['days']])
+    ids=[b['activity_id'] for day in view['days'] for b in day['timeline'] if b['type']=='activity']
+    assert len(ids)==len(set(ids))
+
+
+def test_all_india_recommendations_have_local_destination_photos(client):
+    from pathlib import Path
+    from app.recommender import DESTINATIONS
+    root=Path(__file__).resolve().parents[1]
+    for destination in DESTINATIONS:
+        if destination.get('country')!='India':continue
+        url=destination['image_url']
+        assert url.startswith('/static/images/destinations/'),destination['id']
+        assert (root / url.lstrip('/')).read_bytes().startswith(b'\xff\xd8\xff')
+        assert destination['image_source_url'].startswith('https://en.wikipedia.org/wiki/')
+
+
 def test_small_catalogue_is_spread_across_five_days():
     prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'21:00','free_blocks':[],'final_day_activities':True}
     activities=[{'id':str(i),'name':f'Place {i}','category':'culture_history','duration_minutes':60} for i in range(5)]
@@ -22,6 +174,65 @@ def test_empty_day_explains_shortage_without_fabricating_attractions():
         assert 'No unused places' in day['note']
         assert any(s['slot_type']=='unplanned' for s in day['slots'])
         assert not any(s.get('activity_id') for s in day['slots'])
+
+
+def test_single_activity_day_adds_a_sorted_shopping_window():
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'21:00','free_blocks':[],'final_day_activities':True}
+    activity={'id':'only-place','name':'A quiet morning walk','category':'nature','duration_minutes':60}
+    day=_custom_schedule([activity],1,'balanced',prefs)[0]
+    shopping=next(slot for slot in day['slots'] if slot['slot_type']=='shopping')
+    assert shopping['title']=='Shopping time'
+    assert shopping['duration_mins']==90 and shopping['activity_id'] is None
+    ordered=sorted(day['slots'],key=lambda slot:int(slot['start_time'][:2])*60+int(slot['start_time'][3:]))
+    assert day['slots']==ordered
+    for before,after in zip(day['slots'],day['slots'][1:]):
+        before_end=int(before['end_time'][:2])*60+int(before['end_time'][3:])
+        after_start=int(after['start_time'][:2])*60+int(after['start_time'][3:])
+        assert before_end<=after_start
+
+
+def test_shopping_fills_gap_on_two_activity_day_and_survives_reload(client,deep_user):
+    from test_integration_upgrade import planned
+    trip,_=planned(client,deep_user)
+    base='/api/trip-actions/'+trip['id']+'/timed-view'
+    first=client.get(base)
+    assert first.status_code==200,first.text
+    second=client.get(base)
+    assert second.status_code==200,second.text
+    def breaks(response):
+        return [(d['day_number'],s['time_range'],s['duration_minutes']) for d in response.json()['days']
+            for s in d['timeline'] if s['title']=='Shopping time']
+    assert breaks(first) and breaks(first)==breaks(second)
+    for day in first.json()['days']:
+        assert sum(s['title']=='Shopping time' for s in day['timeline'])<=1
+        for slot in day['timeline']:
+            if slot['title']=='Shopping time':
+                assert slot['type']=='shopping' and slot['id'] is None
+                assert slot['cost_estimate']==0 and slot['duration_minutes']<=90
+
+
+def test_shopping_gap_does_not_overlap_meals_reserved_time_or_departure():
+    prefs={'activity_start_time':'09:00','bed_time':'21:00','hotel_arrival_time':'08:00','hotel_departure_time':'11:00',
+        'free_blocks':[{'day':2,'start':'14:00','end':'14:30','label':'Reserved time'}],
+        'final_day_activities':True,'transport_departure_time':'18:00','departure_transport_mode':'flight',
+        'terminal_arrival_buffer_minutes':120,'terminal_journey_minutes':60,
+        'lunch_start_time':'13:00','lunch_duration_minutes':60}
+    activities=[{'id':'first','name':'First visit','category':'culture_history','duration_minutes':60},
+                {'id':'second','name':'Second visit','category':'culture_history','duration_minutes':60}]
+    day=_custom_schedule([],2,'balanced',prefs,{2:activities})[-1]
+    shopping=next(s for s in day['slots'] if s['title']=='Shopping time')
+    assert shopping['end_time']<='15:00'
+    assert day['slots'][-1]['slot_type']=='departure'
+    for before,after in zip(day['slots'],day['slots'][1:]):
+        assert before['end_time']<=after['start_time']
+
+
+def test_no_shopping_suggestion_when_no_gap_or_shopping_already_planned():
+    from app.services.timed_itinerary import _offer_shopping_gap
+    slots=[dict(day_number=1,slot_type='activity',title='Visit',start_time='09:00',duration_mins=120)]
+    assert _offer_shopping_gap(slots,540,660,{},1)==slots
+    explicit=[dict(day_number=1,slot_type='shopping',title='Market',start_time='10:00',duration_mins=60)]
+    assert _offer_shopping_gap(explicit,540,1140,{},1)==explicit
 
 
 def test_deep_profile_required_before_trip_creation(client,demo_user):

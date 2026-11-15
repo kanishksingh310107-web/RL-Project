@@ -82,11 +82,13 @@
   }
   const timeField = (id,label,value) => `<label>${label}<input type="time" id="${id}" value="${value}" required></label>`;
   const numberField = (id,label,value,min,max) => `<label>${label}<input type="number" id="${id}" value="${value}" min="${min}" max="${max}" step="1" required></label>`;
+  // Form setup, draft persistence, routing and request serialization share these.
+  let budgetTouched=false, overridesHost, addMealOverride, suggestProfileBudget, updateCheckoutGapPrompt;
   if(form) {
     const extra=document.createElement('section'); extra.className='te-card'; extra.id='teTripPreferences';
     extra.innerHTML=`<h3>Travel plans & personal time</h3><p id="teCapabilityNotice" role="status"></p>
-      <label>Trip type<select id="teTripType"><option value="solo">Solo</option><option value="couple">Couple</option><option value="friends">Friends</option><option value="family">Family (adults, with or without children)</option></select></label>
-      <p>Trip type is your choice. Ages and accessibility needs are entered separately below.</p>
+      <input type="hidden" id="teTripType" value="solo">
+      <input type="hidden" id="teCreationRequestId" value="">
       <fieldset data-te-capability="schedule_preferences_v2" disabled><legend>Arrival and return journey</legend><div class="te-grid">
       ${timeField('teDestinationArrival','Arrival at destination (day 1)','12:00')}
       <label>Return transport<select id="teDepartureMode"><option value="flight">Flight</option><option value="train">Train</option><option value="road">Road</option></select></label>
@@ -96,7 +98,9 @@
       ${numberField('teTerminalTravel','Travel from last stop to terminal (minutes)',60,0,360)}
       <label>Activities on the last day?<select id="teFinalActivities"><option value="yes">Yes, if time allows</option><option value="no">No, keep the day free</option></select></label></div>
       <p id="teDepartureWindow" role="status">Accommodation check-out and transport departure are separate. Allow time to collect luggage.</p></fieldset>
-      <fieldset data-te-capability="schedule_preferences_v2" disabled><legend>Meals, rest and shopping</legend><div class="te-grid">
+      <fieldset data-te-capability="schedule_preferences_v2" disabled><legend>Meals, rest and shopping</legend>
+      <p>Meal times are preferences. The itinerary can move lunch or dinner by up to one hour to fit activities. Confirmed bookings and departure times stay fixed.</p>
+      <div class="te-grid">
       ${timeField('teLunchTime','Preferred lunch time','13:00')}${numberField('teLunchDuration','Lunch duration (minutes)',60,15,180)}
       ${timeField('teDinnerTime','Preferred dinner time','19:00')}${numberField('teDinnerDuration','Dinner duration (minutes)',60,15,180)}
       <label>Daily rest<select id="teRestDuration"><option value="0">None</option><option value="20">Short · 20 minutes</option><option value="30" selected>Standard · 30 minutes</option><option value="60">Long · 60 minutes</option></select></label>
@@ -105,38 +109,57 @@
       ${numberField('teShoppingBudget','Shopping budget, INR (optional)',0,0,1000000)}</div></fieldset>
       <div id="teFormError" class="te-error" role="alert"></div>`;
     el('schedulePrefsMount')?.after(extra);
+    ['teRestDuration','teShopping','teShoppingDuration','teShoppingBudget'].forEach(id=>{
+      const field=el(id)?.closest('label');
+      if(field){field.dataset.tePostPlan='true';field.hidden=true;}
+    });
     const formBlock=id=>[...form.children].find(node=>node.querySelector?.(`#${id}`));
-    ['tripCitySearchInput','tripTravellersInput','tripBudgetInput','tripAccomSelect','tripDepartureInput','schedulePrefsMount','teTripPreferences']
-      .map(formBlock).filter(Boolean).forEach(node=>form.append(node));
-    const partyBlock=formBlock('tripTravellersInput'),tripTypeLabel=el('teTripType')?.closest('label'),tripTypeHelp=tripTypeLabel?.nextElementSibling;
-    if(partyBlock&&tripTypeLabel){partyBlock.append(tripTypeLabel);if(tripTypeHelp)partyBlock.append(tripTypeHelp);tripTypeLabel.firstChild.textContent='Trip type';}
-    const legacyHotelFlow=formBlock('hotelWorkflowOptB');if(legacyHotelFlow)legacyHotelFlow.hidden=true;
-    const accommodationBlock=formBlock('tripAccomSelect');
+    const destinationBlock=formBlock('tripCitySearchInput'),partyBlock=formBlock('tripTravellersInput'),budgetBlock=formBlock('tripBudgetInput');
+    const accommodationBlock=formBlock('tripAccomSelect'),departureBlock=formBlock('tripDepartureInput');
+    const legacyHotelFlow=formBlock('hotelWorkflowOptB')?.querySelector('#hotelWorkflowOptB')?.closest('.bg-slate-50');
+    if(legacyHotelFlow)legacyHotelFlow.hidden=true;
     if(accommodationBlock){
       const stayFields=document.createElement('section');stayFields.id='teAccommodationDetails';stayFields.className='te-card';
       stayFields.innerHTML='<h3>Accommodation details</h3><p>Choose a property type. If you already have a property, enter its name and the full expected cost for the stay. The trip guide does not book accommodation.</p><div class="te-grid"><label>Property name (optional until confirmed)<input id="teAccommodationName" maxlength="160" autocomplete="organization"></label><label>Full expected stay cost (₹)<input id="teAccommodationCost" type="number" min="0" max="1000000000" step="1" inputmode="numeric"></label></div><p id="teAccommodationError" class="te-error" role="alert"></p>';
       accommodationBlock.after(stayFields);
       const transitLabel=el('tripTransitSelect')?.closest('div');
-      if(transitLabel){const logistics=document.createElement('section');logistics.id='teTransportPreferenceBlock';logistics.className='te-card';logistics.innerHTML='<h3>Transport preference</h3><label>Confirmed intercity travel cost (₹, optional)<input id="teIntercityCost" type="number" min="0" max="1000000000" step="1" inputmode="numeric"></label><p>Confirmed trip costs are fixed in the plan; live prices are not booked.</p>';logistics.append(transitLabel);stayFields.after(logistics);}
+      if(transitLabel){
+        const logistics=document.createElement('section');logistics.id='teTransportPreferenceBlock';logistics.className='te-card';
+        logistics.innerHTML='<h3>Travel to your destination</h3><label>Intercity / international transport<select id="teJourneyMode"><option value="flight">Flight (domestic or international)</option><option value="train">Train (within India)</option><option value="bus">Intercity bus (within India)</option><option value="car">Private car / cab (within India)</option></select></label><label>Confirmed intercity / international travel cost (₹, optional)<input id="teIntercityCost" type="number" min="0" max="1000000000" step="1" inputmode="numeric"></label><p>Choose a journey mode and confirm the route with your provider. Availability and fares are not checked here.</p>';
+        stayFields.after(logistics);
+        extra.querySelector('fieldset')?.append(transitLabel);
+      }
+      const departureQuestion=el('teFinalActivities')?.closest('label');
+      if(departureQuestion){
+        const intent=document.createElement('section');intent.id='teDepartureDayIntent';intent.className='te-card';
+        intent.innerHTML='<h3>Departure-day plan</h3><p>Would you like to include activities on the day you leave?</p>';
+        intent.append(departureQuestion);
+        (el('teTransportPreferenceBlock')||stayFields).after(intent);
+      }
     }
-    let budgetTouched=false,budgetSuggestionAvailable=false;
+    const editOptions=el('tripEditOptions'),submitFooter=el('generateItinerarySubmitBtn')?.parentElement;
+    const ordered=[destinationBlock,partyBlock,budgetBlock,accommodationBlock,el('teAccommodationDetails'),el('teTransportPreferenceBlock'),el('teDepartureDayIntent'),departureBlock,el('schedulePrefsMount'),extra].filter(Boolean);
+    const orderedSet=new Set(ordered);
+    const trailing=[...form.children].filter(node=>!orderedSet.has(node)&&node!==editOptions&&node!==submitFooter);
+    [editOptions,...ordered,...trailing,submitFooter].filter(Boolean).forEach(node=>form.append(node));
+    let budgetSuggestionAvailable=false;
     const budgetInput=el('tripBudgetInput'),budgetSuggestion=document.createElement('p');budgetSuggestion.id='teProfileBudgetSuggestion';budgetSuggestion.className='text-xs text-slate-600';budgetSuggestion.setAttribute('role','status');budgetInput?.after(budgetSuggestion);
     budgetInput?.addEventListener('input',()=>{budgetTouched=true;});
     const oldBudgetEstimate=window.calculateTripMinimumBudget;
     if(typeof oldBudgetEstimate==='function')window.calculateTripMinimumBudget=async(...args)=>{const keep=budgetSuggestionAvailable&&!budgetTouched?budgetInput?.value:null;const result=await oldBudgetEstimate.apply(window,args);if(keep&&budgetInput){budgetInput.value=keep;window.onBudgetNumberInputChange?.(keep);}return result;};
     const oldFetch=window.fetch;
     if(typeof oldFetch==='function')window.fetch=async(input,init={})=>{const url=new URL(typeof input==='string'?input:input.url,location.href);if(url.pathname==='/api/budget/estimate-minimum'&&init.body){try{const body=JSON.parse(init.body),cost=el('teAccommodationCost')?.value,intercity=el('teIntercityCost')?.value;if(cost&&/^\\d+$/.test(cost))body.accommodation_cost_inr=Number(cost);if(intercity&&/^\\d+$/.test(intercity))body.intercity_cost_inr=Number(intercity);init={...init,body:JSON.stringify(body)};}catch(_){}}return oldFetch.call(window,input,init);};
-    async function suggestProfileBudget(){
+    suggestProfileBudget=async function(){
       if(editingTripId||budgetTouched||!user()?.user_id)return;
       const userId=user().user_id,start=el('tripStartDateInput').value,end=el('tripEndDateInput').value,days=start&&end?Math.max(1,Math.floor((Date.parse(end)-Date.parse(start))/86400000)+1):1;
       const people=Math.max(1,Number(el('tripAdultsInput').value||0)+Number(el('tripChildrenInput').value||0)+Number(el('tripSeniorsInput').value||0));
-      try{const profile=await api(`/api/profile/${encodeURIComponent(userId)}`);if(userId!==user()?.user_id)return;const band=String(profile.raw_answers?.b10_budget||profile.budget_tier||'').toLowerCase();const daily=band.includes('backpacker')||band==='budget'?1750:band.includes('premium')||band==='luxury'?10500:band.includes('mid_range')||band==='balanced'?4250:null;if(!daily){budgetSuggestion.textContent='Profile budget band is unavailable. Enter your preferred whole-trip budget.';return;}const total=Math.round(daily*people*days);budgetSuggestionAvailable=true;budgetInput.value=String(total);budgetSuggestion.textContent=`Suggested from your profile: ₹${daily.toLocaleString('en-IN')} per person/day × ${people} travellers × ${days} days = ₹${total.toLocaleString('en-IN')} whole-party total. Edit this amount anytime.`;window.onBudgetNumberInputChange?.(String(total));}
+      try{const profile=await api(`/api/profile/${encodeURIComponent(userId)}`);if(userId!==user()?.user_id)return;const band=String(profile.raw_answers?.b10_budget||profile.budget_tier||'').toLowerCase();const tierDaily=band.includes('backpacker')||band==='budget'?1750:band.includes('premium')||band==='luxury'?10500:band.includes('mid_range')||band==='balanced'?4250:null;const profileDaily=Number(profile.daily_budget_inr);const daily=Number.isInteger(profileDaily)&&profileDaily>0?profileDaily:tierDaily;if(!daily){budgetSuggestion.textContent='Profile budget is unavailable. Enter your preferred whole-trip budget.';return;}const total=Math.round(daily*people*days);budgetSuggestionAvailable=true;budgetInput.value=String(total);budgetSuggestion.textContent=`Suggested from your profile: ₹${daily.toLocaleString('en-IN')} per person/day × ${people} travellers × ${days} days = ₹${total.toLocaleString('en-IN')} whole-party total. Edit this amount anytime.`;window.onBudgetNumberInputChange?.(String(total));}
       catch(_){if(userId===user()?.user_id)budgetSuggestion.textContent='Profile budget suggestion is temporarily unavailable. Your entered details are kept; enter your preferred whole-trip budget.';}
-    }
+    };
     ['tripStartDateInput','tripEndDateInput','tripAdultsInput','tripChildrenInput','tripSeniorsInput'].forEach(id=>el(id)?.addEventListener('change',()=>setTimeout(suggestProfileBudget,0)));
-    const discard=document.createElement('button');discard.type='button';discard.className='text-xs underline';discard.textContent='Discard saved form draft';
-    discard.onclick=()=>{if(!confirm('Discard these unsaved form changes? This cannot be undone.'))return;try{sessionStorage.removeItem(draftKey());}catch(_){}form.reset();window.SchedulePrefs?.fill({});selectedDynamicLocation=null;el('tripDestSelect').value='';dirty=false;notice('Saved form draft discarded.',el('teFormError'));};
-    form.prepend(discard);
+    const discard=document.createElement('button');discard.id='teDiscardFormDraft';discard.type='button';discard.className='text-xs underline';discard.textContent='Discard saved form draft';discard.hidden=true;
+    discard.onclick=()=>{if(!confirm('Discard these unsaved form changes? This cannot be undone.'))return;try{sessionStorage.removeItem(draftKey());}catch(_){}form.reset();window.SchedulePrefs?.fill({});selectedDynamicLocation=null;el('tripDestSelect').value='';discard.hidden=true;dirty=false;notice('Saved form draft discarded.',el('teFormError'));};
+    destinationBlock?.after(discard);
     const oldShopping=el('tripIncludeShoppingCheck')?.closest('label');if(oldShopping)oldShopping.hidden=true;
     el('hotelArrivalTime')?.parentElement.childNodes.forEach(n => {if(n.nodeType===3) n.textContent='Accommodation arrival (day 1)';});
     el('hotelDepartureTime')?.parentElement.childNodes.forEach(n => {if(n.nodeType===3) n.textContent='Accommodation checkout (last day)';});
@@ -153,10 +176,10 @@
     const nightLabel=document.createElement('label');nightLabel.innerHTML='<input type="checkbox" id="teNightActivities"> I would like to see optional activities after dinner';
     extra.querySelector('fieldset:nth-of-type(2) .te-grid')?.append(nightLabel);
     const overrideButton=document.createElement('button');overrideButton.type='button';overrideButton.textContent='Add a per-day meal time';
-    const overridesHost=document.createElement('div');overridesHost.id='teMealOverrides';overridesHost.className='space-y-2';
-    const overrideLabel=document.createElement('label');overrideLabel.textContent='Per-day meal time overrides';overrideLabel.append(overrideButton,overridesHost);
+    overridesHost=document.createElement('div');overridesHost.id='teMealOverrides';overridesHost.className='space-y-2';
+    const overrideLabel=document.createElement('div');overrideLabel.textContent='Per-day meal time overrides';overrideLabel.append(overrideButton,overridesHost);
     extra.querySelector('fieldset:nth-of-type(2)')?.append(overrideLabel);
-    function addMealOverride(value={}){
+    addMealOverride=function(value={}){
       const start=el('tripStartDateInput').value,end=el('tripEndDateInput').value;
       const count=start&&end?Math.floor((Date.parse(end)-Date.parse(start))/86400000)+1:0;
       if(overridesHost.children.length>=Math.min(90,Math.max(0,count))){el('teFormError').textContent='Choose valid dates first; one override is allowed per trip day.';return null;}
@@ -167,7 +190,7 @@
       for(const [key,selector]of [['lunch_start_time','.teMealOverrideLunch'],['lunch_duration_minutes','.teMealOverrideLunchDuration'],['dinner_start_time','.teMealOverrideDinner'],['dinner_duration_minutes','.teMealOverrideDinnerDuration']])if(value[key]!=null)row.querySelector(selector).value=value[key];
       row.querySelector('.teMealOverrideRemove').onclick=()=>row.remove();overridesHost.append(row);
       return row;
-    }
+    };
     overrideButton.addEventListener('click',()=>addMealOverride());
     function departureWindow() {
       const [h,m]=el('teTransportDeparture').value.split(':').map(Number);
@@ -175,18 +198,23 @@
       el('teDepartureWindow').textContent=el('teFinalActivities').value==='no'?'The last day is reserved for departure.':cutoff<0?'Your buffers begin the previous day. Choose a later departure or review the available time.':`Last activity must end by ${String(Math.floor(cutoff/60)).padStart(2,'0')}:${String(cutoff%60).padStart(2,'0')}. Accommodation check-out is separate; include luggage collection time.`;
     }
     extra.addEventListener('input',departureWindow);
+    el('teFinalActivities').addEventListener('change',departureWindow);
     const checkoutPrompt=document.createElement('label');checkoutPrompt.id='teCheckoutGapPrompt';checkoutPrompt.hidden=true;checkoutPrompt.innerHTML='Your check-out leaves a long gap before the terminal arrival deadline. What would you prefer?<select id="teCheckoutGapChoice"><option value="">Choose an option</option><option value="activity">Add a suitable activity</option><option value="late_checkout">Request late check-out</option></select><span id="teCheckoutGapChoiceError" class="te-error" role="alert"></span>';
     el('teDepartureWindow').after(checkoutPrompt);
-    function updateCheckoutGapPrompt(){
+    updateCheckoutGapPrompt=function(){
       const start=el('tripStartDateInput').value,end=el('tripEndDateInput').value;
       const days=start&&end?Math.floor((Date.parse(end)-Date.parse(start))/86400000)+1:0;
       const [dh,dm]=el('teTransportDeparture').value.split(':').map(Number),checkout=minutes(el('hotelDepartureTime').value);
       const deadline=dh*60+dm-Number(el('teCheckinBuffer').value)-Number(el('teTerminalTravel').value);
       const show=days>1&&Number.isFinite(checkout)&&deadline-checkout>=180;
       checkoutPrompt.hidden=!show;el('teCheckoutGapChoice').required=show;
-    }
+    };
     ['tripStartDateInput','tripEndDateInput','hotelDepartureTime','teTransportDeparture','teCheckinBuffer','teTerminalTravel','teDepartureMode'].forEach(id=>el(id)?.addEventListener('input',updateCheckoutGapPrompt));
     updateCheckoutGapPrompt();
+    el('teCheckoutGapChoice').addEventListener('change',()=>{
+      if(el('teCheckoutGapChoice').value==='activity'){el('teFinalActivities').value='yes';departureWindow();}
+    });
+    el('teDepartureMode').addEventListener('change',updateCheckoutGapPrompt);
     const dateMin=()=>{el('tripStartDateInput').min=editingTripId && el('tripStartDateInput').value<indiaToday()?el('tripStartDateInput').value:indiaToday();el('tripEndDateInput').min=el('tripStartDateInput').value || indiaToday();};
     ['tripStartDateInput','tripEndDateInput'].forEach(id=>el(id)?.addEventListener('change',dateMin)); dateMin();
     form.addEventListener('invalid',event=>{const input=event.target;if(input.id)fieldError(input.id,input.validationMessage||'Check this value.');},true);
@@ -196,7 +224,6 @@
       const budget=Number(el('tripBudgetInput').value);
       if(!el('tripBudgetInput').value || !Number.isInteger(budget) || budget<1000 || budget>1000000) errors.tripBudgetInput='Enter a whole-rupee budget between ₹1,000 and ₹10,00,000.';
       if(!el('tripDestSelect').value) errors.tripCitySearchInput='Choose a recommendation or a search result.';
-      if(!['solo','couple','friends','family'].includes(el('teTripType').value))errors.teTripType='Choose solo, couple, friends or family.';
       for(const id of ['tripAdultsInput','tripChildrenInput','tripSeniorsInput']) {
         const value=Number(el(id).value);
         if(!el(id).value || !Number.isInteger(value)||value<(id==='tripAdultsInput'?1:0)||value>30)errors[id]='Enter a whole number within the allowed party size.';
@@ -208,12 +235,12 @@
       if(accommodationName.length>160)errors.teAccommodationName='Use 160 characters or fewer.';
       if(accommodationCost&&(!/^\d+$/.test(accommodationCost)||Number(accommodationCost)>1000000000))errors.teAccommodationCost='Enter a whole-rupee cost from ₹0 to ₹1,000,000,000.';
       const intercity=el('teIntercityCost')?.value.trim()||'';if(intercity&&(!/^\d+$/.test(intercity)||Number(intercity)>1000000000))errors.teIntercityCost='Enter a whole-rupee cost from ₹0 to ₹1,000,000,000.';
+      if(!['flight','train','bus','car'].includes(el('teJourneyMode')?.value))errors.teJourneyMode='Choose flight, train, intercity bus or private car.';
       if(!checkoutPrompt.hidden&&!el('teCheckoutGapChoice').value)errors.teCheckoutGapChoice='Choose an option for the final-day gap.';
       const overrides={};for(const row of overridesHost.querySelectorAll('.te-grid')){const day=row.querySelector('.teMealOverrideDay').value;if(!day){errors.teMealOverrides='Choose valid trip dates before adding day overrides.';break;}if(overrides[day]){errors.teMealOverrides='Use only one meal override per day.';break;}overrides[day]={};for(const [key,selector]of [['lunch_start_time','.teMealOverrideLunch'],['lunch_duration_minutes','.teMealOverrideLunchDuration'],['dinner_start_time','.teMealOverrideDinner'],['dinner_duration_minutes','.teMealOverrideDinnerDuration']]){const value=row.querySelector(selector).value;if(value)overrides[day][key]=key.includes('duration')?Number(value):value;}if(Object.values(overrides[day]).some(value=>typeof value==='number'&&(!Number.isInteger(value)||value<15||value>180)))errors.teMealOverrides='Meal duration must be from 15 to 180 minutes.';}
-      if(el('teTripType').value==='solo' && (readTripParty().adults!==1 || readTripParty().children || readTripParty().seniors))errors.teTripType='Choose a group trip type or select exactly one adult.';
-      if(el('teTripType').value==='family' && !can('explicit_trip_type') && !readTripParty().children && !readTripParty().seniors) errors.teTripType='Adult-only family trips await the trip-type update. Your selection has been kept.';
-      for(const id of ['tripStartDateInput','tripEndDateInput','tripBudgetInput','tripCitySearchInput','teTripType','tripAdultsInput']) fieldError(id,errors[id]);
+      for(const id of ['tripStartDateInput','tripEndDateInput','tripBudgetInput','tripCitySearchInput','tripAdultsInput']) fieldError(id,errors[id]);
       fieldError('teAccommodationName',errors.teAccommodationName);fieldError('teAccommodationCost',errors.teAccommodationCost);fieldError('teIntercityCost',errors.teIntercityCost);
+      fieldError('teJourneyMode',errors.teJourneyMode);
       fieldError('teCheckoutGapChoice',errors.teCheckoutGapChoice);
       const mealError=el('teMealOverrides');if(mealError)mealError.setAttribute('aria-invalid',errors.teMealOverrides?'true':'false');if(errors.teMealOverrides)el('teFormError').textContent=errors.teMealOverrides;
       if(can('schedule_preferences_v2')) {
@@ -236,7 +263,14 @@
     if(['POST','PATCH'].includes(String(init.method).toUpperCase()) && (/^\/api\/trips\/[^/]+$/.test(path)||path==='/api/places/plan-dynamic') && init.body) {
       let body;try{body=JSON.parse(init.body);}catch(_){}
       if(body && form) {
-        if(can('explicit_trip_type')) body.trip_type=el('teTripType').value;
+        if(String(init.method).toUpperCase()==='POST'){
+          const requestId=el('teCreationRequestId');
+          if(!requestId.value)requestId.value=crypto.randomUUID();
+          body.creation_request_id=requestId.value;
+          saveDraft();
+        }
+        if(can('explicit_trip_type')) {const companions=inferTripCompanions();body.companions=companions;body.trip_type=companions==='partner'?'couple':companions;}
+        body.trip_preferences={...body.trip_preferences,intercity_transport_mode:el('teJourneyMode').value};
         if(can('schedule_preferences_v2')) {
           const p=readExperience();
           const later=(time,minutes)=>{const [h,m]=time.split(':').map(Number);const total=h*60+m+minutes;return `${String(Math.floor(total/60)%24).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;};
@@ -284,8 +318,9 @@
     }catch(_){}
   }
   let dirty=false, routing=false, routeEpoch=0;
-  form?.addEventListener('input',()=>{dirty=true;saveDraft();});
-  form?.addEventListener('change',()=>{dirty=true;saveDraft();});
+  const formChanged=()=>{dirty=true;el('teCreationRequestId').value='';saveDraft();};
+  form?.addEventListener('input',formChanged);
+  form?.addEventListener('change',formChanged);
   window.addEventListener('beforeunload',event=>{if(dirty && (location.hash==='#/trips/new'||location.hash.endsWith('/edit'))){saveDraft();event.preventDefault();event.returnValue='';}});
   const planner=el('itineraryPlannerSection'), modal=el('tripFormModal');
   if(!planner || !modal) return;
@@ -397,10 +432,12 @@
     try {
       view.hidden=false;el('authView').classList.add('hidden');el('onboardingView').classList.add('hidden');el('dashboardView').classList.add('hidden');el('teTripList').hidden=true;planner.hidden=false;rawClose('tripFormModal');notice('');
       if(path==='/trips/new') {
+        setPostPlanOptions(false);
+        if(el('teDiscardFormDraft'))el('teDiscardFormDraft').hidden=true;
         planner.hidden=true;await loadCapabilities();if(!current())return;
         await oldToggle();if(!current())return;
         let saved=false;try{saved=!!sessionStorage.getItem(draftKey());}catch(_){}
-        if(saved)restoreDraft();else{el('tripDestSelect').value='';selectedDynamicLocation=null;el('tripNearbyPlacesArea')?.classList.add('hidden');el('tripBudgetInput').value='';budgetTouched=false;setTimeout(suggestProfileBudget,0);}
+        if(saved){restoreDraft();if(el('teDiscardFormDraft'))el('teDiscardFormDraft').hidden=false;}else{el('teCreationRequestId').value='';el('tripDestSelect').value='';selectedDynamicLocation=null;el('tripNearbyPlacesArea')?.classList.add('hidden');el('tripBudgetInput').value='';budgetTouched=false;setTimeout(suggestProfileBudget,0);}
         el('tripStartDateInput').min=indiaToday();el('tripEndDateInput').min=el('tripStartDateInput').value||indiaToday();
         modal.classList.remove('hidden');
         window.dispatchEvent(new CustomEvent('trip:creation-ready')); // E: explicit recommendation handoff.
@@ -425,7 +462,7 @@
         if(window.ShoppingExperience?.isOpen(id))window.ShoppingExperience.restore(id);
         else if(window.BudgetExperience?.isOpen(id))window.BudgetExperience.restore(id);
         else oldMode(effective.status==='completed'?'post':effective.status==='live'?'live':'pre');
-        if(match[2]){if(next.status!=='draft'){notice('Reopen a finalized trip before editing. Live and completed trips cannot be edited.');return;}await editSelectedTrip();await fillExperience(id);restoreDraft();}
+        if(match[2]){if(next.status!=='draft'){notice('Reopen a finalized trip before editing. Live and completed trips cannot be edited.');return;}await editSelectedTrip();await fillExperience(id);restoreDraft();setPostPlanOptions(true);}
       }
       if(current()&&!emptyTripsDialog){view.querySelector('h2,h3')?.setAttribute('tabindex','-1');view.querySelector('h2,h3')?.focus();}
     }catch(error){if(current())notice(error.message);}
@@ -446,11 +483,16 @@
     el('teAccommodationName').value=accommodation.property_name||'';
     el('teAccommodationCost').value=accommodation.expected_total_cost_inr??'';
     el('teIntercityCost').value=trip.trip_preferences?.intercity_cost_inr??'';
+    el('teJourneyMode').value=trip.trip_preferences?.intercity_transport_mode||'flight';
     el('teNightActivities').checked=trip.trip_preferences?.night_activities===true;
     overridesHost.replaceChildren();Object.entries(trip.trip_preferences?.meal_overrides||{}).forEach(([day,meals])=>addMealOverride({day,...meals}));
     el('teCheckoutGapChoice').value=trip.trip_preferences?.checkout_gap_choice||'';updateCheckoutGapPrompt();
     el('teShopping').checked=!!prefs.include_shopping;el('teFinalActivities').value=prefs.final_day_activities===false?'no':'yes';
     el('tripStartDateInput').min=trip.start_date<indiaToday()?trip.start_date:indiaToday();el('tripEndDateInput').min=el('tripStartDateInput').value;
+  }
+  function setPostPlanOptions(editing){
+    document.querySelectorAll('[data-te-post-plan]').forEach(field=>{field.hidden=!editing;});
+    if(!editing){el('teRestDuration').value='0';el('teShopping').checked=false;el('teShoppingDuration').value='90';el('teShoppingBudget').value='0';}
   }
   const oldLoadTrips=window.loadUserTrips;
   window.loadUserTrips=async(...args)=>{

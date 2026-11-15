@@ -1046,44 +1046,10 @@ async function syncUnifiedProfileCard(userId) {
       rulesList.innerHTML = "<p class='text-xs text-slate-400 italic'>Personal travel rules active.</p>";
     }
 
-    // Past Trips
-    loadPastTripsSummary(userId);
-
   } catch (err) {
     banner.classList.remove("hidden");
     summaryCard.classList.add("hidden");
   }
-}
-
-async function loadPastTripsSummary(userId) {
-  const tripsContainer = document.getElementById("dashPastTripsContainer");
-  if (!tripsContainer) return;
-  tripsContainer.innerHTML = "";
-
-  try {
-    const res = await fetch(`/api/profile/detailed/${userId}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.past_trips && data.past_trips.length > 0) {
-        state.precision.past_trips = data.past_trips;
-        data.past_trips.forEach(t => {
-          const row = document.createElement("div");
-          row.className = "p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs flex justify-between items-center";
-          row.innerHTML = `
-            <div>
-              <span class="font-bold text-slate-800">${t.destination}</span>
-              <span class="text-amber-500 font-bold ml-1">${"★".repeat(Math.round(t.rating))}</span>
-              <div class="text-[11px] text-slate-500">Highlight: ${t.favorite_activity || "General exploration"}</div>
-            </div>
-            ${t.skipped_or_disliked ? `<span class="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-medium">Disliked: ${t.skipped_or_disliked}</span>` : ""}
-          `;
-          tripsContainer.appendChild(row);
-        });
-        return;
-      }
-    }
-  } catch (e) {}
-  tripsContainer.innerHTML = "<span class='text-xs text-slate-400 italic'>No previous trips recorded yet</span>";
 }
 
 // ==========================================
@@ -2160,6 +2126,10 @@ const FEATURED_DESTINATION_COORDS = {
   darjeeling_gangtok_india: { name: "Darjeeling & Gangtok", city: "Darjeeling", state: "West Bengal & Sikkim", lat: 27.0410, lon: 88.2663 },
   meghalaya_shillong_india: { name: "Meghalaya (Shillong & Cherrapunji)", city: "Shillong", state: "Meghalaya", lat: 25.5788, lon: 91.8933 }
 };
+// Recommendation IDs and the older form IDs refer to the same destinations.
+for(const [canonical,legacy] of Object.entries({udaipur_india:'udaipur_mewar_india',jaipur_rajasthan_india:'jaipur_jodhpur_india',varanasi_kashi_india:'varanasi_india',ladakh_leh_india:'leh_ladakh_india',hampi_karnataka_india:'hampi_india',darjeeling_sikkim_india:'darjeeling_gangtok_india'})){
+  FEATURED_DESTINATION_COORDS[canonical]=FEATURED_DESTINATION_COORDS[legacy];
+}
 
 function clearTripCitySearch() {
   const input = document.getElementById("tripCitySearchInput");
@@ -2362,6 +2332,7 @@ async function fetchTripNearbyPlaces(lat, lon, radius) {
 }
 
 async function handleFeaturedDestinationChange(destId) {
+  activeTripCoords = null;
   if (!destId) return;
   if (destId.startsWith("geo_")) {
     if (selectedDynamicLocation) {
@@ -2376,9 +2347,12 @@ async function handleFeaturedDestinationChange(destId) {
 
   const meta = FEATURED_DESTINATION_COORDS[destId];
   if (meta) {
-    activeTripCoords = { ...meta };
+    activeTripCoords = { ...meta, destination_id:destId };
     updateDestinationSourceBanner(meta, "Curated Catalogue", false);
     await fetchTripNearbyPlaces(meta.lat, meta.lon, currentDynamicRadius);
+  } else {
+    document.getElementById('destinationSourceInfo')?.classList.add('hidden');
+    document.getElementById('tripNearbyPlacesArea')?.classList.add('hidden');
   }
   calculateTripMinimumBudget();
 }
@@ -3278,7 +3252,7 @@ async function handleTripCreateSubmit(e) {
     }
 
     // 1. Create Trip Record (Standard fixed catalog)
-    const curatedCoords = activeTripCoords || FEATURED_DESTINATION_COORDS[destId] || {};
+    const curatedCoords = FEATURED_DESTINATION_COORDS[destId] || (activeTripCoords?.destination_id===destId?activeTripCoords:null) || {};
 
     const tripRes = await fetch(`/api/trips/${state.currentUser.user_id}`, {
       method: "POST",
@@ -3912,13 +3886,23 @@ function readTripParty() {
     children:Math.max(0,Number(document.getElementById('tripChildrenInput').value)||0),
     seniors:Math.max(0,Number(document.getElementById('tripSeniorsInput').value)||0)};
 }
+function inferTripCompanions() {
+  const party=readTripParty(), total=party.adults+party.children+party.seniors;
+  const savedType=document.getElementById('teTripType')?.value;
+  const preferred=savedType&&savedType!=='solo'?savedType:String(state.currentProfile?.companions||'');
+  if(total===1)return 'solo';
+  if(party.children||party.seniors||preferred.includes('family'))return 'family';
+  if(preferred.includes('friend'))return 'friends';
+  return total===2?'partner':'friends';
+}
 function syncTripPartyFromCounts() {
   const party=readTripParty(), total=party.adults+party.children+party.seniors;
   document.getElementById('tripTravellersInput').value=total;
   document.getElementById('tripHasChildrenCheck').checked=party.children>0;
   document.getElementById('tripHasElderlyCheck').checked=party.seniors>0;
-  const selectedType=document.getElementById('teTripType')?.value;
-  const type=selectedType ? (selectedType==='couple'?'partner':selectedType) : (party.children || party.seniors ? 'family' : total===1 ? 'solo' : total===2 ? 'partner' : 'friends');
+  const type=inferTripCompanions();
+  const internalType=document.getElementById('teTripType');
+  if(internalType)internalType.value=type==='partner'?'couple':type;
   const radio=document.querySelector(`input[name="tripCompanionsRadio"][value="${type}"]`);
   if(radio) radio.checked=true;
   calculateTripMinimumBudget();

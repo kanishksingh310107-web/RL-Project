@@ -98,6 +98,13 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     if not trip_row:
         raise ValueError("Trip not found or unauthorized access")
     trip = dict(trip_row)
+    from app.providers.geo import resolve_trip_location
+    location=resolve_trip_location(destination_id=trip['destination_id'],destination_name=trip['destination_name'],
+        lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
+    if location.get('lat') is not None:
+        trip.update(destination_lat=location['lat'],destination_lon=location['lon'],resolved_location=location['resolved_location'])
+        cursor.execute('UPDATE trips SET destination_lat=?,destination_lon=?,resolved_location=? WHERE id=?',
+            (location['lat'],location['lon'],location['resolved_location'],trip_id))
 
     # 2. Check if itinerary already exists for this trip
     cursor.execute("SELECT id FROM itineraries WHERE trip_id = ?", (trip_id,))
@@ -143,12 +150,12 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             lat=trip.get('destination_lat'),lon=trip.get('destination_lon'),allow_live_geocode=False)
         curated_ids = {a['id'] for a in CURATED_ACTIVITIES}
         if centre.get('lat') is not None:
-            nearby = [dict(r) for r in cursor.execute('SELECT * FROM destination_activities') if r['id'] in curated_ids
+            nearby = [dict(r) for r in cursor.execute('SELECT * FROM destination_activities') if r['id'] in curated_ids and r['id'] not in {c['id'] for c in all_candidates}
                 and r['latitude'] is not None and r['longitude'] is not None
                 and haversine_distance_km(centre['lat'],centre['lon'],r['latitude'],r['longitude']) <= 40]
             direct = [dict(r) for r in CURATED_ACTIVITIES if r.get('id') not in {c.get('id') for c in all_candidates+nearby}
                 and r.get('latitude') is not None and r.get('longitude') is not None
-                and haversine_distance_km(centre['lat'],centre['lon'],r['latitude'],r['longitude']) <= 120]
+                and haversine_distance_km(centre['lat'],centre['lon'],r['latitude'],r['longitude']) <= 40]
             direct.sort(key=lambda r:haversine_distance_km(centre['lat'],centre['lon'],r['latitude'],r['longitude']))
             all_candidates = list({c['id']:c for c in all_candidates+nearby+direct[:max(0,int(trip['duration_days'])*2-len(all_candidates+nearby))]}.values())
 
@@ -318,7 +325,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
         # Multi-city catalogue destinations are planned around the chosen centre.
         # Long-distance excursions require a separate destination/trip.
         all_candidates = [c for c in all_candidates if c.get('latitude') is not None and c.get('longitude') is not None
-            and haversine_distance_km(location['lat'],location['lon'],c['latitude'],c['longitude']) <= 120]
+            and haversine_distance_km(location['lat'],location['lon'],c['latitude'],c['longitude']) <= 40]
     from app.activity_data import CURATED_ACTIVITIES
     for candidate in all_candidates:
         if (candidate.get('neighborhood') or '').startswith('Central '):
@@ -328,7 +335,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     prefs = trip.get('trip_preferences_json') or '{}'
     prefs = json.loads(prefs) if isinstance(prefs,str) else prefs
     anchor = prefs.get('stay_anchor')
-    from app.schedule_preferences import LEGACY_SCHEDULE_PREFS, schedule_window
+    from app.schedule_preferences import LEGACY_SCHEDULE_PREFS, schedule_window, minute_of_day
     from app.services.timed_itinerary import _custom_schedule
     planning_prefs = dict(LEGACY_SCHEDULE_PREFS)
     schedule_row = cursor.execute('SELECT * FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone()
@@ -347,17 +354,26 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
     # Schedule parameters based on pace
     pace = trip.get("travel_pace", "balanced")
     if pace == "relaxed":
-        slots = ["morning", "meal", "afternoon"]
+        slots = ["morning", "afternoon", "meal"]
     elif pace == "packed":
-        slots = ["morning", "morning_extra", "meal", "afternoon", "evening"]
+        slots = ["morning", "morning_extra", "afternoon", "evening", "meal"]
     else: # balanced
-        slots = ["morning", "meal", "afternoon", "evening"]
+        slots = ["morning", "afternoon", "evening", "meal"]
 
     used_activity_ids = set(trip_exclusions)
     total_itinerary_cost = 0.0
     start_dt = datetime.strptime(trip["start_date"], "%Y-%m-%d")
 
     day_models = []
+
+    def fits_opening_window(candidate):
+        if not (candidate.get('opening_time') and candidate.get('closing_time')):
+            return True
+        window = (minute_of_day(candidate['closing_time']) - minute_of_day(candidate['opening_time'])) % 1440 or 1440
+        return window >= int(candidate.get('duration_minutes') or 60)
+
+    invalid_window_count = sum(not fits_opening_window(candidate) for candidate in all_candidates)
+    all_candidates = [candidate for candidate in all_candidates if fits_opening_window(candidate)]
 
     for day_idx in range(1, trip["duration_days"] + 1):
         day_date = (start_dt + timedelta(days=day_idx - 1)).strftime("%Y-%m-%d")
@@ -368,17 +384,21 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
         preceding_act = None
         order_idx = 0
 
-        remaining = [c for c in all_candidates if c['id'] not in used_activity_ids and is_activity_safe_and_valid(c,user_profile,trip_exclusions)[0]]
+        remaining = [c for c in all_candidates if c['category']!='food_dining' and c['id'] not in used_activity_ids and is_activity_safe_and_valid(c,user_profile,trip_exclusions)[0]]
         days_left = sum(d>=day_idx for d in eligible_days)
         # Spread a small real catalogue over all available days instead of filling
         # the first two days and exhausting the pool. Never repeat attractions.
-        quota = min(len(slots), (len(remaining)+days_left-1)//days_left) if days_left and day_idx in eligible_days else 0
+        quota = min(len(slots)-1, (len(remaining)+days_left-1)//days_left) if days_left and day_idx in eligible_days else 0
+        today_start, today_end = schedule_window(planning_prefs,day_idx,trip['duration_days'])
+        if quota and day_idx==1 and today_start>=12*60:
+            full_days_left=sum(d>day_idx and schedule_window(planning_prefs,d,trip['duration_days'])[1]-schedule_window(planning_prefs,d,trip['duration_days'])[0]>=6*60 for d in eligible_days)
+            quota=min(quota,max(1,len(remaining)-2*full_days_left))
 
         for slot in slots:
-            if len(day_activities)>=quota:
-                break
             slot_name = "morning" if "morning" in slot else slot
             is_meal = (slot == "meal")
+            if not quota or (not is_meal and sum(a['category']!='food_dining' for a in day_activities)>=quota):
+                continue
 
             # One activity occurrence per catalogue place by default. If the
             # unused pool is exhausted, leave capacity open rather than repeat
@@ -401,10 +421,10 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                         valid_candidates.append(c)
 
             # If no candidate found in category, relax category constraint from pool
-            if not valid_candidates:
+            if not valid_candidates and not is_meal:
                 for c in candidates_pool:
                     is_safe, _ = is_activity_safe_and_valid(c, user_profile, trip_exclusions)
-                    if is_safe:
+                    if is_safe and c['category']!='food_dining':
                         valid_candidates.append(c)
 
             if not valid_candidates:
@@ -413,7 +433,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             for candidate in valid_candidates:
                 tentative=[dict(a,id=a['activity_id'],name=a['title']) for a in day_activities]+[candidate]
                 scheduled=_custom_schedule([],trip['duration_days'],pace,planning_prefs,{day_idx:tentative})[day_idx-1]
-                if any(s.get('activity_id')==candidate['id'] and s['slot_type'] in ('activity','shopping') for s in scheduled['slots']):
+                if any(s.get('activity_id')==candidate['id'] and s['slot_type'] in (('meal',) if is_meal else ('activity','shopping')) for s in scheduled['slots']):
                     feasible.append(candidate)
             valid_candidates=feasible
             if not valid_candidates:
@@ -613,7 +633,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
         "total_days": trip["duration_days"],
         "status": "active",
         "total_estimated_cost": total_itinerary_cost,
-        "summary_notes": f"Personalised for {trip['travellers_count']} traveller(s), with activities spread across your available days. Places stay within 40 km of your destination; separate cities require separate trips.",
+        "summary_notes": f"Personalised for {trip['travellers_count']} traveller(s), with activities spread across your available days. Places stay within 40 km of your destination; separate cities require separate trips." + (' Some options were omitted because their listed opening window is shorter than the required visit.' if invalid_window_count else ''),
         "days": day_models,
         "created_at": str(datetime.now()),
         "updated_at": str(datetime.now())

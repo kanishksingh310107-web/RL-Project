@@ -2754,6 +2754,44 @@ for _id, _dest, _name, _area, _lat, _lon in [
         tags=['curated','indicative_coordinates'],avoidance_triggers=[],data_source='curated',
         description='Curated local place. Confirm opening hours, entry fees and accessibility before visiting.'))
 
+# Local Manali alternatives: keep these in the main catalogue so the policy,
+# previews and timed scheduler all see the same real places. Coordinates and
+# durations are planning estimates; current access and fees need confirmation.
+for _id, _name, _area, _lat, _lon, _category, _duration, _intensity in [
+    ('manali_hadimba_temple', 'Hadimba Devi Temple and cedar grove', 'Dhungri', 32.2483, 77.1800, 'culture_history', 90, 'low'),
+    ('manali_manu_temple', 'Manu Temple in Old Manali', 'Old Manali', 32.2574, 77.1779, 'culture_history', 60, 'moderate'),
+    ('manali_vashisht_village', 'Vashisht village and temple', 'Vashisht', 32.2654, 77.1879, 'culture_history', 90, 'moderate'),
+    ('manali_jogini_waterfall', 'Jogini Waterfall walking trail', 'Vashisht', 32.2685, 77.1950, 'nature_outdoors', 150, 'high'),
+    ('manali_nehru_kund', 'Nehru Kund and valley views', 'Bahang', 32.2874, 77.1775, 'nature_outdoors', 60, 'low'),
+    ('manali_van_vihar', 'Van Vihar cedar park', 'Central Manali', 32.2400, 77.1887, 'nature_outdoors', 60, 'low'),
+]:
+    CURATED_ACTIVITIES.append(dict(id=_id, destination_id='manali_spiti_india', name=_name,
+        neighborhood=_area, latitude=_lat, longitude=_lon, category=_category,
+        duration_minutes=_duration, cost_tier='unknown', cost_amount=None,
+        physical_intensity=_intensity, crowd_level='unknown', opening_time=None, closing_time=None,
+        tags=['curated', 'indicative_coordinates'], avoidance_triggers=['strenuous_hikes'] if _intensity=='high' else [],
+        description='Suggested local visit. Duration and coordinates are estimates; confirm current access, opening hours and entry costs.',
+        data_source='https://himachaltourism.gov.in/destination/manali/'))
+
+# More distinct, nearby Udaipur visits for multi-day plans. These places are
+# listed by Rajasthan Tourism; visit lengths and coordinates are indicative.
+# Unknown hours and prices stay unknown rather than becoming verified claims.
+for _id, _name, _area, _lat, _lon, _category, _duration in [
+    ('udaipur_jagdish_temple', 'Jagdish Temple', 'Old City', 24.5797, 73.6839, 'culture_history', 60),
+    ('udaipur_fateh_sagar', 'Fateh Sagar lakeside', 'Fateh Sagar', 24.6014, 73.6742, 'nature_outdoors', 90),
+    ('udaipur_ahar_museum', 'Ahar Museum and heritage precinct', 'Ahar', 24.5870, 73.7205, 'culture_history', 90),
+    ('udaipur_shilpgram', 'Shilpgram arts and crafts village', 'Shilpgram', 24.6120, 73.6572, 'culture_history', 120),
+    ('udaipur_lok_kala_mandal', 'Bharatiya Lok Kala Mandal museum', 'Panchwati', 24.5957, 73.6959, 'culture_history', 90),
+    ('udaipur_gulab_bagh', 'Gulab Bagh garden walk', 'Gulab Bagh', 24.5716, 73.6945, 'nature_outdoors', 60),
+]:
+    CURATED_ACTIVITIES.append(dict(id=_id, destination_id='udaipur_india', name=_name,
+        neighborhood=_area, latitude=_lat, longitude=_lon, category=_category,
+        duration_minutes=_duration, cost_tier='unknown', cost_amount=None,
+        physical_intensity='low', crowd_level='unknown', opening_time=None, closing_time=None,
+        tags=['curated', 'indicative_coordinates'], avoidance_triggers=[],
+        description='Suggested local visit. Duration and coordinates are estimates; confirm current access, opening hours and entry costs.',
+        data_source='https://www.tourism.rajasthan.gov.in/udaipur.html'))
+
 for _activity in CURATED_ACTIVITIES:
     _activity['area'] = _activity['neighborhood']
     _dest = _activity['destination_id']
@@ -2778,6 +2816,7 @@ for _activity in CURATED_ACTIVITIES:
 def seed_curated_activities(conn):
     """Seed curated activities into destination_activities table."""
     import json
+    from app.core.assumptions import UNKNOWN_ENTRY_INR
     cursor = conn.cursor()
     columns = {r[1] for r in cursor.execute('PRAGMA table_info(destination_activities)')}
     for column in ('city','area'):
@@ -2802,7 +2841,7 @@ def seed_curated_activities(conn):
             a["longitude"],
             a["duration_minutes"],
             a["cost_tier"],
-            a["cost_amount"],
+            a["cost_amount"] if a["cost_amount"] is not None else UNKNOWN_ENTRY_INR,
             a["physical_intensity"],
             a["crowd_level"],
             a["opening_time"],

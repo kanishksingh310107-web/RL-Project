@@ -100,15 +100,11 @@
       <!-- Subtab Navigation -->
       <div class="flex border-b border-slate-200 mb-4 justify-between items-center">
         <div class="flex items-center gap-2">
-          ${!isCompleted ? `
-            <button id="btnCompleteTripHeader" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-2.5 py-1 rounded transition flex items-center gap-1">
-              <i class="fa-solid fa-flag-checkered text-slate-500"></i> Mark Trip Complete
-            </button>
-          ` : `
+          ${isCompleted ? `
             <span class="text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
               <i class="fa-solid fa-check"></i> Trip Completed
             </span>
-          `}
+          ` : ''}
         </div>
       </div>
 
@@ -116,20 +112,6 @@
       <div id="liveSubtabContent"></div>
     `;
 
-
-    const completeBtn = document.getElementById("btnCompleteTripHeader");
-    if (completeBtn) {
-      completeBtn.onclick = async () => {
-        if (!confirm("Are you sure you want to mark this trip as completed? This will finalize execution and unlock post-trip feedback.")) return;
-        try {
-          await ctx.api(`/api/live/${ctx.tripId}/complete`, { method: "POST", body: { user_id: ctx.userId } });
-          tripState.is_completed = 1;
-          switchWorkspaceMode('post');
-        } catch (e) {
-          alert("Error completing trip: " + e.message);
-        }
-      };
-    }
 
     const contentBox = document.getElementById("liveSubtabContent");
     if (activeSubtab === "during") {
@@ -481,26 +463,10 @@
           </div>
           <h3 class="font-bold text-base text-slate-800">Trip Currently In Progress</h3>
           <p class="text-xs text-slate-500 max-w-md mx-auto mt-1 mb-4">
-            Post-trip evaluation and Reinforcement Learning policy updates unlock once your journey is complete.
+            Finish each activity and day in your live itinerary. Post-trip feedback opens after the final day.
           </p>
-          <button id="btnMarkCompleteFromTab" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-4 py-2 rounded-xl transition inline-flex items-center gap-2 shadow-xs">
-            <i class="fa-solid fa-flag-checkered"></i> Mark Trip as Completed
-          </button>
         </div>
       `;
-      const btn = document.getElementById("btnMarkCompleteFromTab");
-      if (btn) {
-        btn.onclick = async () => {
-          if (!confirm("Mark this trip as completed?")) return;
-          try {
-            await ctx.api(`/api/live/${ctx.tripId}/complete`, { method: "POST", body: { user_id: ctx.userId } });
-            tripState.is_completed = 1;
-            renderPostTrip(box, ctx, mainContainer);
-          } catch (e) {
-            alert("Error: " + e.message);
-          }
-        };
-      }
       return;
     }
 
@@ -635,7 +601,7 @@
               <i class="fa-solid fa-star-half-stroke text-amber-500"></i> Individual Activity Evaluations
             </h4>
             <div class="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-              Reward Key: 5★ = +1.0 | 4★ = +0.5 | 3★ = 0 | 2★ = -0.5 | 1★ = -1.0
+              Your ratings help tailor future recommendations.
             </div>
           </div>
           <p class="text-xs text-slate-500 mb-3">Your ratings help us suggest places you may enjoy.</p>

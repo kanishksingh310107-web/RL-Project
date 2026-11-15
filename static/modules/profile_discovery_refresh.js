@@ -37,11 +37,14 @@
       };
       homeAware.__profileHomeAware=true;tripApi.isHomeDestination=homeAware;
     }
+  }, {once:true});
+  // Install card rendering before any initial recommendation request completes.
+  // Waiting for window.load can leave the first dashboard render unprocessed.
     const original = window.renderRecommendationCard;
     if (typeof original !== 'function') return;
     window.renderRecommendationCard = function (item, category) {
       const fallback='/static/images/destination-placeholder.svg';
-      let source=typeof item.image_url==='string'?item.image_url.trim():'';
+      let source=typeof item.image_url==='string'&&item.image_url.trim()?item.image_url.trim():fallback;
       try {
         const parsed=new URL(source,location.origin);
         if(!['https:','http:'].includes(parsed.protocol)||(location.protocol==='https:'&&parsed.protocol==='http:'))source='';
@@ -62,6 +65,11 @@
         image.loading = 'lazy'; image.decoding = 'async';
         image.onerror = () => { image.onerror = null; image.src = fallback; };
         image.src = safeItem.image_url;
+        if(typeof item.image_source_url==='string'&&item.image_source_url.startsWith('https://en.wikipedia.org/wiki/')){
+          const attribution=document.createElement('a');attribution.textContent='Photo source';attribution.href=item.image_source_url;
+          attribution.target='_blank';attribution.rel='noopener noreferrer';attribution.className='absolute bottom-2 right-2 text-xs rounded bg-white/90 px-2 py-1 text-slate-700';
+          image.parentElement.append(attribution);
+        }
       }
       const title = card.querySelector('.absolute.bottom-2\\.5 h4');
       const country = card.querySelector('.absolute.bottom-2\\.5 span');
@@ -69,7 +77,6 @@
       if (country) country.textContent = String(item.country || 'India');
       return card;
     };
-  }, {once:true});
   if (form) {
     form.addEventListener('input', event => {
       if (event.target === gender) { state.basicAnswers.gender = gender.value || null; setError('basicGender', ''); }

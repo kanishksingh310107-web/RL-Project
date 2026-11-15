@@ -1,6 +1,31 @@
 import pytest
 import json
+from datetime import date, timedelta
 from app.database import get_connection
+
+
+@pytest.mark.parametrize('mode', ['flight', 'train', 'bus', 'car'])
+def test_journey_mode_is_saved_separately_from_local_transport(client, deep_user, mode):
+    start = date.today() + timedelta(days=14)
+    response = client.post('/api/trips/' + deep_user, json={
+        'destination_id':'hampi_india', 'start_date':str(start),
+        'end_date':str(start + timedelta(days=2)), 'total_budget':30000,
+        'transit_pref':'cab_rental', 'trip_preferences':{'intercity_transport_mode':mode}})
+    assert response.status_code == 200, response.text
+    saved = client.get('/api/trips/detail/' + response.json()['id']).json()
+    assert saved['trip_preferences']['intercity_transport_mode'] == mode
+    assert saved['transit_pref'] == 'cab_rental'
+
+
+@pytest.mark.parametrize('mode', ['walking', 'metro', 'unknown', 1])
+def test_journey_mode_rejects_invalid_values(client, deep_user, mode):
+    start = date.today() + timedelta(days=14)
+    response = client.post('/api/trips/' + deep_user, json={
+        'destination_id':'hampi_india', 'start_date':str(start),
+        'end_date':str(start + timedelta(days=2)), 'total_budget':30000,
+        'trip_preferences':{'intercity_transport_mode':mode}})
+    assert response.status_code == 422, response.text
+    assert 'flight, train, intercity bus or private car' in response.json()['detail']
 
 def test_unified_trip_creation_and_persistence(client):
     # 1. Create a user

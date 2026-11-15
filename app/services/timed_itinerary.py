@@ -481,6 +481,88 @@ def _get_slot_templates_for_pace(pace: str) -> List[Dict[str, Any]]:
 # Core Timed Schedule Generator Logic
 # ---------------------------------------------------------------------------
 
+def finish_departure_timeline(slots, prefs, day_number):
+    """End new and previously saved timelines at the actual return departure."""
+    if not prefs.get('transport_departure_time'):
+        return slots
+    departure = minute_of_day(prefs['transport_departure_time'])
+    journey = int(prefs.get('terminal_journey_minutes', 0))
+    mode = prefs.get('departure_transport_mode')
+    buffer = int(prefs.get('terminal_arrival_buffer_minutes',120) if mode=='flight' else
+                 prefs.get('station_arrival_buffer_minutes',45) if mode=='train' else 30)
+    cutoff = departure - journey - buffer
+    result = []
+    for original in slots:
+        slot = dict(original)
+        if slot['slot_type']=='departure' or slot['title'] in ('Estimated travel to departure terminal','Terminal arrival buffer'):
+            continue
+        if slot['slot_type'] in ('unplanned','optional','free_time','rest'):
+            if prefs.get('final_day_activities') is False:
+                continue
+            begin = minute_of_day(slot['start_time'])
+            end = min(cutoff, begin + slot['duration_mins'])
+            if end <= begin:
+                continue
+            slot.update(end_time=f'{end//60%24:02d}:{end%60:02d}', duration_mins=end-begin)
+        result.append(slot)
+    def marker(kind, begin, duration, title):
+        return dict(day_number=day_number, order_index=0, slot_type=kind,
+            start_time=f'{begin//60%24:02d}:{begin%60:02d}', end_time=f'{(begin+duration)//60%24:02d}:{(begin+duration)%60:02d}',
+            duration_mins=duration, title=title, location='', estimated_cost=0.0, activity_id=None,
+            category=kind, description='')
+    if journey:
+        result.append(marker('transit',cutoff,journey,'Estimated travel to departure terminal'))
+    if buffer:
+        result.append(marker('buffer',departure-buffer,buffer,'Terminal arrival buffer'))
+    result.append(marker('departure',departure,0,{'flight':'Return flight departure','train':'Return train departure','bus':'Return bus departure'}.get(mode,'Return journey departure')))
+    result.sort(key=lambda slot:minute_of_day(slot['start_time']))
+    for index, slot in enumerate(result):
+        slot['order_index']=index
+    return result
+
+
+def _offer_shopping_gap(slots, start, end, prefs, day_number):
+    """Schedule a shopping block in an available gap."""
+    if end <= start or any(s['slot_type'] == 'shopping' for s in slots):
+        return slots
+    # Do not assume shops are open late. This is free time near an existing
+    # stop, not a venue recommendation with invented hours or travel times.
+    bound = min(end, minute_of_day(prefs.get('dinner_start_time', '19:00')))
+    def relative(slot):
+        at = minute_of_day(slot['start_time'])
+        return at + 1440 if at < start else at
+    occupied = sorted((max(start, relative(s)), min(bound, relative(s) + s['duration_mins']))
+        for s in slots if s['slot_type'] != 'unplanned' and relative(s) < bound
+        and relative(s) + s['duration_mins'] > start)
+    gaps, cursor = [], start
+    for begin, finish in occupied + [(bound, bound)]:
+        if begin - cursor >= 30:
+            gaps.append((cursor, begin))
+        cursor = max(cursor, finish)
+    if not gaps:
+        return slots
+    begin, finish = max(gaps, key=lambda gap: (gap[0] >= 12 * 60, gap[1] - gap[0]))
+    duration = min(finish - begin, max(15, int(prefs.get('shopping_duration_minutes') or 90)))
+    shopping_end = begin + duration
+    result = []
+    for slot in slots:
+        at = relative(slot)
+        until = at + slot['duration_mins']
+        if slot['slot_type'] != 'unplanned' or at >= shopping_end or until <= begin:
+            result.append(slot)
+            continue
+        for left, right in ((at, begin), (shopping_end, until)):
+            if right > left:
+                result.append(dict(slot, start_time=f'{left // 60 % 24:02d}:{left % 60:02d}',
+                    end_time=f'{right // 60 % 24:02d}:{right % 60:02d}', duration_mins=right-left))
+    result.append(dict(day_number=day_number, order_index=0,
+        slot_type='shopping', start_time=f'{begin // 60 % 24:02d}:{begin % 60:02d}',
+        end_time=f'{shopping_end // 60 % 24:02d}:{shopping_end % 60:02d}', duration_mins=duration,
+        title='Shopping time', location='', estimated_cost=0.0, activity_id=None,
+        category='shopping_local', description='Shopping near your stay or an existing stop. Check local shop hours. Purchases come from your shopping budget.'))
+    return result
+
+
 def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
     """Pack ranked places at their real durations into available windows."""
     result, used = [], set()
@@ -562,6 +644,40 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         dinner_duration = int(day_meals.get('dinner_duration_minutes', dinner_duration))
         dinner_end = dinner_start + dinner_duration
         restaurant_lunch = restaurant_dinner = False
+        lunch_added = dinner_added = False
+        meal_end = end
+        if day == total_days and prefs.get('transport_departure_time'):
+            mode = prefs.get('departure_transport_mode')
+            terminal_buffer = int(prefs.get('terminal_arrival_buffer_minutes', 120) if mode == 'flight' else prefs.get('station_arrival_buffer_minutes', 45) if mode == 'train' else 30)
+            meal_end = min(minute_of_day(prefs['bed_time']), minute_of_day(prefs['transport_departure_time']) - int(prefs.get('terminal_journey_minutes', 0)) - terminal_buffer)
+
+        def fit_meal(preferred, duration, after_cursor=False, opening=None, closing=None):
+            # A preferred meal start can move by one hour. Bookings, travel
+            # deadlines and the actual venue window remain hard boundaries.
+            lower = max(start, preferred - 60, cursor if after_cursor else start,
+                        opening if opening is not None else start)
+            upper = min(meal_end - duration, preferred + 60,
+                        closing - duration if closing is not None else meal_end - duration)
+            occupied = [(minute_of_day(s['start_time']), minute_of_day(s['start_time']) + s['duration_mins']) for s in slots]
+            occupied += [(bs, be) for bs, be, _ in free]
+            for candidate in sorted(range(lower, upper + 1), key=lambda at: (abs(at - preferred), at)):
+                if not any(candidate < be and candidate + duration > bs for bs, be in occupied):
+                    return candidate
+            return None
+
+        def append_meal(at, duration, title, preferred, activity=None):
+            nonlocal cursor, lunch_end, dinner_end
+            old_cursor = cursor
+            append('meal', at, duration, title, activity)
+            cursor = max(old_cursor, cursor)
+            if preferred == dinner_start:
+                dinner_end = at + duration
+            else:
+                lunch_end = at + duration
+            if at != preferred:
+                message = f"Meal moved from your preferred {preferred // 60 % 24:02d}:{preferred % 60:02d} to fit the day."
+                slots[-1]['description'] = (slots[-1]['description'] + ' ' + message).strip()
+
         rest_duration = {'none':0,'short':20,'standard':30,'long':60}.get(prefs.get('rest_preference','standard'),30)
         stay = prefs.get('stay_anchor') or {}
         previous = {'latitude':stay.get('lat'),'longitude':stay.get('lon'),'id':stay.get('stay_id')}
@@ -577,15 +693,19 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 notes.append(f"Repeated place {activity.get('name') or activity.get('title') or activity['id']} was left unscheduled.")
                 continue
             is_shopping = activity.get('category') in ('shopping_local','shopping')
-            if activity.get('category') in ('food_dining','restaurant','cafe','café'):
+            if activity.get('category') in ('food_dining','restaurant','cafe','café') and not activity.get('is_fixed_booking'):
                 dinner_venue = minute_of_day(activity.get('preferred_meal_time') or '19:00') >= 16*60
                 meal_start, meal_duration = (dinner_start,dinner_duration) if dinner_venue else (lunch_start,lunch_duration)
-                at = fit(max(15,int(activity.get('duration_minutes') or meal_duration)), earliest=meal_start,
-                         latest=meal_start + meal_duration)
+                visit_duration = max(15, int(activity.get('duration_minutes') or meal_duration))
+                opening = minute_of_day(activity['opening_time']) if activity.get('opening_time') else None
+                closing = minute_of_day(activity['closing_time']) if activity.get('closing_time') else None
+                if opening is not None and closing is not None and closing <= opening:
+                    closing += 1440
+                at = fit_meal(meal_start, visit_duration, opening=opening, closing=closing)
                 if at is None:
                     continue
-                append('meal',at,max(15,int(activity.get('duration_minutes') or meal_duration)),
-                       activity.get('name') or activity.get('title') or ('Dinner / local dining' if dinner_venue else 'Lunch / local dining'),activity)
+                append_meal(at, visit_duration,
+                       activity.get('name') or activity.get('title') or ('Dinner / local dining' if dinner_venue else 'Lunch / local dining'), meal_start, activity)
                 restaurant_dinner = restaurant_dinner or dinner_venue
                 restaurant_lunch = restaurant_lunch or not dinner_venue
                 used.add(activity['id'])
@@ -649,6 +769,23 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             elif scheduled:
                 travel = 20
             at = fit(duration + travel, (opening - travel) if opening is not None else None, closing)
+            if at is None and lunch_added and slots and slots[-1]['title'] == 'Lunch / local dining':
+                # Try an earlier lunch before discarding a visit that closes
+                # early. A preference must not strand an otherwise valid day.
+                old_meal = slots.pop()
+                old_cursor = cursor
+                cursor = max([start] + [minute_of_day(s['start_time']) + s['duration_mins'] for s in slots])
+                meal_at = fit_meal(lunch_start, lunch_duration, after_cursor=True,
+                                   closing=min(end, closing if closing is not None else end) - duration - travel)
+                if meal_at is not None:
+                    append_meal(meal_at, lunch_duration, 'Lunch / local dining', lunch_start)
+                    at = fit(duration + travel, (opening - travel) if opening is not None else None, closing)
+                    if at is None:
+                        slots.pop()
+                if at is None:
+                    slots.append(old_meal)
+                    cursor = old_cursor
+                    lunch_end = minute_of_day(old_meal['start_time']) + lunch_duration
             if at is None:
                 if is_pinned:
                     notes.append(f"Pinned must-visit {activity.get('title') or activity.get('name') or activity['id']} does not fit the selected day window and needs manual rescheduling.")
@@ -671,21 +808,30 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             scheduled += 1
             if scheduled < daily_limit:
                 if scheduled == 1 and not restaurant_lunch:
-                    at = fit(lunch_duration, earliest=lunch_start, latest=lunch_end)
+                    at = fit_meal(lunch_start, lunch_duration, after_cursor=True)
                     if at is not None:
-                        append('meal', at, lunch_duration, 'Lunch / local dining')
-                    else:
-                        notes.append('Lunch could not fit inside the selected midday window and was not moved to another time.')
+                        append_meal(at, lunch_duration, 'Lunch / local dining', lunch_start)
+                        lunch_added = True
                 elif rest_duration:
                     at = fit(rest_duration)
                     if at is not None:
                         append('rest', at, rest_duration, 'Rest break')
         if end - start >= 360 and not restaurant_dinner:
-            at = fit(dinner_duration, earliest=dinner_start, latest=dinner_end)
+            at = fit_meal(dinner_start, dinner_duration)
             if at is not None:
-                append('meal', at, dinner_duration, 'Dinner / local dining')
-            else:
-                notes.append('Dinner could not fit inside the selected evening window.')
+                append_meal(at, dinner_duration, 'Dinner / local dining', dinner_start)
+                dinner_added = True
+        # Meals are independent of sightseeing. A departure-only day can still
+        # have lunch between check-out and the terminal transfer.
+        for preferred,duration,title,already in [(lunch_start,lunch_duration,'Lunch / local dining',lunch_added or restaurant_lunch),
+                                         (dinner_start,dinner_duration,'Dinner / local dining',dinner_added or restaurant_dinner)]:
+            if already:
+                continue
+            at = fit_meal(preferred, duration)
+            if at is not None:
+                append_meal(at, duration, title, preferred)
+            elif start <= preferred < meal_end:
+                notes.append(f'{title.split(" / ")[0]} could not fit within one hour of your preferred time; adjust the day to make room.')
         if day == total_days and prefs.get('transport_departure_time'):
             journey = int(prefs.get('terminal_journey_minutes',0))
             buffer = (int(prefs.get('terminal_arrival_buffer_minutes',120))
@@ -725,14 +871,9 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         dropped = max(0, min(len(candidates), daily_limit) - scheduled)
         if dropped:
             notes.append(f'{dropped} lower-ranked activities were dropped because of accommodation and departure buffers, free time, opening hours or activity duration.')
-        if scheduled == 1:
-            optional_start = max(cursor, lunch_end)
-            optional_end = min(end, dinner_start)
-            if optional_end - optional_start >= 60:
-                append('optional',optional_start,optional_end-optional_start,'Optional second-half rest or shopping time')
-                notes.append('Only one activity fits this day; the second half is left optional for rest or shopping.')
-        if prefs.get('night_activities') and end - dinner_end >= 45:
-            append('optional',dinner_end,end-dinner_end,'Optional after-dinner activity time')
+        night_start = max([dinner_end] + [relative(s) + s['duration_mins'] for s in slots])
+        if prefs.get('night_activities') and end - night_start >= 45:
+            append('optional',night_start,end-night_start,'Optional after-dinner activity time')
         if not scheduled:
             if end<=start:
                 notes.append('Departure day: activities are disabled or no time remains before your terminal transfer.')
@@ -748,6 +889,17 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
                 if min(bs,end)-cursor_gap>=30:
                     append('unplanned',cursor_gap,min(bs,end)-cursor_gap,'Unplanned time — add an activity or explore near your stay')
                 cursor_gap=max(cursor_gap,be)
+        slots.sort(key=relative)
+        for index, slot in enumerate(slots):
+            slot['order_index'] = index
+        if day == total_days:
+            slots = finish_departure_timeline(slots,prefs,day)
+        slots = _offer_shopping_gap(slots, start, end, prefs, day)
+        if any(slot['title'] == 'Shopping time' for slot in slots):
+            notes.append('Shopping time has been added in an available gap.')
+        slots.sort(key=relative)
+        for index, slot in enumerate(slots):
+            slot['order_index'] = index
         result.append(dict(day_number=day, slots=slots, note=' '.join(dict.fromkeys(notes)) or None,
             arrival_marker=prefs['hotel_arrival_time'] if day == 1 else None,
             departure_marker=prefs['hotel_departure_time'] if day == total_days else None,

@@ -718,6 +718,15 @@ def resolve_trip_location(
     """
     label = resolved_location or destination_name or destination_id or ""
 
+    # A catalogue selection has a canonical centre. Stale browser coordinates
+    # must never turn an Udaipur selection into a Manali itinerary. Geocoded
+    # destinations retain their explicitly selected coordinates below.
+    dest_id=(destination_id or '').strip()
+    from app.data.india_destinations import DESTINATIONS_BY_ID
+    canonical=DESTINATIONS_BY_ID.get(dest_id) or CURATED_DESTINATION_COORDS.get(dest_id)
+    if canonical and canonical.get('lat') is not None and canonical.get('lon') is not None:
+        return {'lat':float(canonical['lat']),'lon':float(canonical['lon']),'resolved_location':destination_name or canonical.get('name') or label}
+
     # 1. Explicit valid coordinates stored on trip or passed by caller
     if lat is not None and lon is not None:
         try:

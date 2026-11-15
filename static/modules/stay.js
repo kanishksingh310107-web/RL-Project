@@ -13,7 +13,7 @@
   }
 
   TravelModules.register("stay", {
-    title: "Stay & Hotels",
+    title: "Stays & Accommodation",
     icon: "fa-hotel",
 
     render: function (container, ctx) {
@@ -37,7 +37,7 @@
                 <i class="fa-solid fa-hotel text-indigo-600"></i>
                 <span>Accommodation & Stay Anchor</span>
               </h3>
-              <p class="text-xs text-slate-500 mt-0.5">Pick an optimized neighborhood to minimize daily commute or link your booked hotel.</p>
+              <p class="text-xs text-slate-500 mt-0.5">Choose a convenient neighborhood or link your booked property.</p>
             </div>
             <div id="stayActiveBadge" class="hidden text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-2">
               <i class="fa-solid fa-circle-check text-indigo-600"></i>
@@ -58,7 +58,7 @@
             <button id="stayModeHotelFirstBtn" class="p-4 rounded-xl border-2 border-slate-200 bg-white text-left transition-all hover:border-slate-300 hover:bg-slate-50">
               <div class="flex items-center gap-2.5 text-slate-800 font-bold text-sm">
                 <i class="fa-solid fa-building-circle-check"></i>
-                <span>I Already Have a Hotel</span>
+                <span>I Already Have a Property</span>
               </div>
               <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">Enter your booked property to anchor your daily start and end points and preview commute efficiency.</p>
             </button>
@@ -81,15 +81,15 @@
               </div>
             </div>
 
-            <!-- Hotel Options in Selected Area -->
+            <!-- Accommodation options in selected area -->
             <div id="stayHotelsContainer" class="p-4 rounded-xl border border-slate-200 bg-white space-y-3 shadow-sm">
               <div class="flex items-center justify-between">
                 <div>
                   <h4 class="text-xs font-bold text-slate-800 flex items-center gap-2">
-                    <span id="staySelectedAreaTitle">Hotel Options</span>
+                    <span id="staySelectedAreaTitle">Accommodation options</span>
                     <span class="text-[11px] font-normal text-slate-500" id="stayBudgetBandText"></span>
                   </h4>
-                  <p class="text-[11px] text-slate-400 mt-0.5">Rates require external search; free hotel price APIs do not exist.</p>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Property prices require an external booking search and are not estimated here.</p>
                 </div>
               </div>
 
@@ -99,12 +99,12 @@
             </div>
           </div>
 
-          <!-- SECTION B: Hotel-First Input Form -->
+          <!-- SECTION B: Property-first input form -->
           <div id="stayHotelFirstSection" class="hidden p-5 rounded-xl border border-slate-200 bg-white space-y-4 shadow-sm">
-            <h4 class="text-sm font-bold text-slate-800">Anchor Your Booked Hotel</h4>
+            <h4 class="text-sm font-bold text-slate-800">Add Your Booked Property</h4>
             <div class="space-y-3">
               <div>
-                <label class="block text-xs font-semibold text-slate-700 mb-1">Hotel or Property Name</label>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Property Name</label>
                 <input id="stayInputHotelName" type="text" placeholder="e.g., The Imperial, Janpath" class="w-full text-xs p-2.5 rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-500" />
               </div>
               <button id="staySaveHotelFirstBtn" class="px-4 py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-2">
@@ -129,7 +129,7 @@
               <span>OpenStreetMap contributors</span>
             </div>
             <div class="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-500">
-              No live hotel prices shown &bull; Nightly budget band calculated from trip total
+              Live property prices are unavailable &bull; Nightly budget band is calculated from your trip budget
             </div>
           </div>
         </div>
@@ -200,13 +200,13 @@
       }
 
       async function loadHotels(areaName, lat, lon) {
-        container.querySelector("#staySelectedAreaTitle").textContent = `Hotels near ${areaName}`;
+        container.querySelector("#staySelectedAreaTitle").textContent = `Accommodation options near ${areaName}`;
         const list = container.querySelector("#stayHotelList");
         list.innerHTML = `<div class="p-6 text-center text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading accommodation options...</div>`;
 
         try {
           const res = await fetch(`/api/stay/${ctx.tripId}/options?area_name=${encodeURIComponent(areaName)}&lat=${lat}&lon=${lon}`);
-          if (!res.ok) throw new Error("Failed to load hotel options");
+          if (!res.ok) throw new Error("Failed to load accommodation options");
           const data = await res.json();
 
           container.querySelector("#stayBudgetBandText").textContent = `(Estimated Budget: ${formatINR(data.nightly_budget_estimate_inr)}/night)`;
@@ -244,7 +244,7 @@
             </div>
             <div class="flex items-center gap-2">
               <a href="${escapeHtml(h.external_search_url)}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 text-xs rounded border border-slate-300 text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1">
-                <span>Find hotels here</span>
+                <span>Find this property</span>
                 <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
               </a>
               <button class="staySelectBtn px-3 py-1 text-xs font-bold rounded bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
@@ -263,7 +263,7 @@
               if (res.ok) {
                 container.querySelector("#stayActiveBadge").classList.remove("hidden");
                 container.querySelector("#stayActiveName").textContent = `Anchored: ${h.name}`;
-                if (confirm(`Hotel "${h.name}" selected! Would you like to regenerate your itinerary right now anchored around this hotel?`)) {
+                if (confirm(`Property "${h.name}" selected! Would you like to regenerate your itinerary around this property now?`)) {
                   const replanRes = await fetch(`/api/stay/${ctx.tripId}/replan`, { method: "POST" });
                   if (replanRes.ok) {
                     alert(`Itinerary successfully regenerated around "${h.name}" as your daily starting and ending anchor!`);
@@ -289,7 +289,7 @@
       hfSubmitBtn.onclick = async () => {
         const nameInput = container.querySelector("#stayInputHotelName");
         if (!nameInput.value.trim()) {
-          alert("Please enter a hotel name.");
+          alert("Please enter a property name.");
           return;
         }
 
@@ -304,10 +304,10 @@
             const previewBox = container.querySelector("#stayPreviewBox");
             previewBox.classList.remove("hidden");
             container.querySelector("#stayPreviewText").innerHTML = `
-              <div><strong>Before hotel anchor:</strong> ~${data.preview.before_estimated_daily_commute_minutes} mins daily commute. <strong>After hotel anchor:</strong> ~${data.preview.after_estimated_daily_commute_minutes} mins.</div>
+              <div><strong>Before adding this property:</strong> ~${data.preview.before_estimated_daily_commute_minutes} mins daily commute. <strong>After adding it:</strong> ~${data.preview.after_estimated_daily_commute_minutes} mins.</div>
               <div class="mt-2 text-indigo-900 font-semibold">${escapeHtml(data.preview.message)}</div>
               <button id="stayHotelFirstReplanBtn" class="mt-3 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition flex items-center gap-1.5 shadow-xs">
-                <i class="fa-solid fa-arrows-rotate"></i> Re-generate Itinerary Around This Hotel
+                <i class="fa-solid fa-arrows-rotate"></i> Re-generate Itinerary Around This Property
               </button>
             `;
             const replanBtn = container.querySelector("#stayHotelFirstReplanBtn");
@@ -331,7 +331,7 @@
             container.querySelector("#stayActiveName").textContent = `Anchored: ${data.stay.name}`;
           }
         } catch (err) {
-          alert("Hotel-first preview error: " + err.message);
+          alert("Property preview error: " + err.message);
         }
       };
 

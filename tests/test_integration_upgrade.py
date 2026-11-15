@@ -37,6 +37,68 @@ def test_complete_planning_schema_and_caps(client,deep_user):
     assert all(b['time_range'].split(' – ')[1]<='15:00' for b in final)
 
 
+def test_compare_without_explicit_budget_uses_profile_budget(client,deep_user):
+    response=client.post('/api/discovery/compare',json={
+        'destination_ids':['udaipur_india','jaipur_rajasthan_india'],
+        'context':{'duration_days':3,'party_size':1,'trip_type':'solo','comfortable_budget_inr':None}})
+    assert response.status_code==200,response.text
+    result=response.json()
+    assert len(result['destinations'])==2
+    assert result['comparison_basis']['comfortable_budget_inr']==60000
+    assert all(d['estimated_total_cost_inr']>0 for d in result['destinations'])
+    with get_connection() as conn:
+        conn.execute('UPDATE user_profile SET daily_budget_inr=1000000 WHERE user_id=?',(deep_user,))
+    response=client.post('/api/discovery/compare',json={'destination_ids':['udaipur_india','jaipur_rajasthan_india'],
+        'context':{'duration_days':90,'party_size':30,'trip_type':'family'}})
+    assert response.status_code==422,response.text
+    assert response.json()['code']=='INVALID_COMPARISON_CONTEXT'
+
+
+def test_per_day_meal_preview_confirm_and_conflicting_booking(client,deep_user):
+    import json
+    from app.core.cost_model import activity_fee_inr
+    trip,view=planned(client,deep_user);base='/api/trip-actions/'+trip['id']
+    proposal={'operation':'meal_times','target_day':2,'preferences':{'lunch_start_time':'13:30','lunch_duration_minutes':45}}
+    preview=client.post(base+'/preview',json=proposal)
+    assert preview.status_code==200,preview.text
+    with get_connection() as conn:
+        before=json.loads(conn.execute('SELECT trip_preferences_json FROM trips WHERE id=?',(trip['id'],)).fetchone()[0])
+    assert not before.get('meal_overrides')
+    token=preview.json()['preview']['token']
+    assert client.post(base+'/confirm',json={'token':token}).status_code==200
+    with get_connection() as conn:
+        after=json.loads(conn.execute('SELECT trip_preferences_json FROM trips WHERE id=?',(trip['id'],)).fetchone()[0])
+    assert set(after['meal_overrides'])=={'2'}
+    updated=client.get(base+'/timed-view').json()
+    assert any(b['type']=='meal' and b['time_range']=='13:30 – 14:15' for b in updated['days'][1]['timeline'])
+    assert [b['time_range'] for b in view['days'][0]['timeline'] if b['type']=='meal']==[b['time_range'] for b in updated['days'][0]['timeline'] if b['type']=='meal']
+    first=next(b for b in updated['days'][1]['timeline'] if b['type']=='activity')
+    booking=client.post(base+'/preview',json={'operation':'fix_booking','target_activity_id':first['id'],
+        'booking_confirmed':True,'booking_start_time':'09:30','booking_end_time':'10:15','booking_cost_inr':25,'booking_label':'Paid ticket'})
+    assert booking.status_code==200,booking.text
+    assert client.post(base+'/confirm',json={'token':booking.json()['preview']['token']}).status_code==200
+    with get_connection() as conn:
+        booked=dict(conn.execute('SELECT * FROM itinerary_activities WHERE id=?',(first['id'],)).fetchone())
+    assert booked['is_fixed_booking']==1 and booked['cost_estimate']==25
+    assert activity_fee_inr(booked)==25
+    timeline=client.get(base+'/timed-view').json()['days'][1]['timeline']
+    fixed=next(b for b in timeline if b.get('id')==first['id'])
+    assert fixed['time_range']=='09:30 – 10:15' and fixed['cost_estimate']==25
+    conflict=client.post(base+'/preview',json={'operation':'meal_times','target_day':2,
+        'preferences':{'lunch_start_time':'09:45','lunch_duration_minutes':45}})
+    assert conflict.status_code==409,conflict.text
+    with get_connection() as conn:
+        assert json.loads(conn.execute('SELECT trip_preferences_json FROM trips WHERE id=?',(trip['id'],)).fetchone()[0])['meal_overrides']['2']['lunch_start_time']=='13:30'
+
+
+def test_meal_override_rejects_invalid_day_and_time(client,deep_user):
+    trip,_=planned(client,deep_user);base='/api/trip-actions/'+trip['id']+'/preview'
+    response=client.post(base,json={'operation':'meal_times','target_day':4,'preferences':{'lunch_start_time':'13:30'}})
+    assert response.status_code==404,response.text
+    response=client.post(base,json={'operation':'meal_times','target_day':2,'preferences':{'lunch_start_time':'25:99'}})
+    assert response.status_code==422,response.text
+
+
 def test_acceptance_changes_only_one_occurrence(client,deep_user):
     trip,view=planned(client,deep_user)
     blocks=[b for d in view['days'] for b in d['timeline'] if b['type']=='activity']

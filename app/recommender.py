@@ -6,6 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
 import re
+from pathlib import Path
 
 from app.data.india_destinations import DESTINATIONS_BY_ID
 
@@ -1153,6 +1154,14 @@ _india_original = [item for item in _india_rows if item.get('id') in _INDIA_EXIS
 _india_expanded = [item for item in _india_rows if item.get('id') not in _INDIA_EXISTING_IDS]
 DESTINATIONS[:] = [item for item in DESTINATIONS if item.get('country') != 'India'] + _india_original + _india_expanded[:max(0, 100-len(_india_original))]
 
+# Serve cached destination photographs locally, with their original source page.
+# Recommendation cards must not depend on a third-party image request succeeding.
+_destination_photos = json.loads((Path(__file__).parent / 'data' / 'destination_images.json').read_text(encoding='utf-8'))
+for _destination in DESTINATIONS:
+    _photo = _destination_photos.get(_destination['id'])
+    if _photo:
+        _destination.update(image_url=_photo['image_url'], image_source_url=_photo['source_url'])
+
 
 def score_destination_for_user(
     dest: Dict[str, Any],
@@ -1402,6 +1411,7 @@ def score_destination_for_user(
         "country": dest["country"],
         "tagline": dest["tagline"],
         "image_url": dest.get("image_url"),
+        "image_source_url": dest.get("image_source_url"),
         "duration": dest.get("duration", "4 - 7 days"),
         "match_score": final_score,
         "match_label": 'Strong preference fit' if not is_hard_conflict and final_score>=75 else 'Good preference fit' if not is_hard_conflict and final_score>=50 else 'Explore something different',

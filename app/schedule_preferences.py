@@ -179,6 +179,8 @@ def schedule_window(prefs, day, total_days, custom=True):
             arrival = _minute(prefs['destination_arrival_time']) + int(prefs.get('arrival_journey_minutes',45))
             start = max(start, arrival)
     if custom and day == total_days:
+        if prefs.get('checkout_gap_choice')=='activity':
+            start=max(start,_minute(prefs['hotel_departure_time']))
         if prefs.get('final_day_activities') is False:
             return start, start
         if prefs.get('transport_departure_time'):

@@ -225,14 +225,17 @@ def _timed_itinerary_data(trip_id: str,request: Request):
                     for day,slots in sorted(grouped.items())]}
             days_output = []
             for day in schedule['days']:
+                if day['day_number']==trip.get('duration_days'):
+                    from app.services.timed_itinerary import finish_departure_timeline
+                    day['slots']=finish_departure_timeline(day['slots'],trip.get('trip_preferences_json') or {},day['day_number'])
                 timeline = []
                 for slot in day['slots']:
                     original = next((a for a in activities if a['day_number']==day['day_number'] and a['activity_id']==slot['activity_id']),{})
                     timeline.append(dict(original, type=slot['slot_type'], id=original.get('id'), acceptance_status=original.get('status','proposed'), pinned=bool(original.get('is_pinned')), coordinates=[original.get('latitude'),original.get('longitude')] if original.get('latitude') is not None else None,
                         activity_id=slot['activity_id'], title=slot['title'], description=slot['description'],
                         provenance=slot.get('provenance'),
-                        time_range=slot['start_time']+' – '+slot['end_time'], duration_minutes=slot['duration_mins'],
-                        cost_estimate=slot['estimated_cost'], can_edit=slot['slot_type'] in ('activity','shopping'),
+                        time_range=slot['start_time'] if slot['slot_type']=='departure' else slot['start_time']+' – '+slot['end_time'], duration_minutes=None if slot['slot_type']=='departure' else slot['duration_mins'],
+                        cost_estimate=slot['estimated_cost'], can_edit=bool(original.get('id')) and slot['slot_type'] in ('activity','shopping'),
                         slot_type_label=slot['slot_type'].replace('_',' ').title(), badge_color='blue'))
                 days_output.append(dict(day_number=day['day_number'], timeline=timeline, note=day['note'],
                     arrival_marker=day['arrival_marker'],departure_marker=day['departure_marker'],
