@@ -149,6 +149,10 @@ def build_context_answers(base: Dict[str, Any], detailed: Dict[str, Any]) -> Dic
     """Maps stored Level 1/2 answers so show_if rules can use them."""
     ctx: Dict[str, Any] = {}
     raw = base.get("raw_answers") or base
+
+    gender = raw.get("gender") or base.get("gender")
+    if gender:
+        ctx["gender"] = gender
     
     # Companions
     comp = raw.get("b03_companions") or base.get("companions") or raw.get("q3")
@@ -627,6 +631,8 @@ def check_basic_missing(profile_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "level": "basic",
                 "question": label
             })
+        for field, label in (("gender", "Gender"), ("daily_budget_inr", "Usual budget per person per day (INR)")):
+            missing.append({"id": field, "field": field, "label": label, "level": "basic", "question": label})
         return missing
 
     raw = profile_dict.get("raw_answers") or profile_dict
@@ -660,6 +666,13 @@ def check_basic_missing(profile_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "level": "basic",
                 "question": f"{label} (minimum 2 required)"
             })
+
+    # These profile fields are stored beside the questionnaire answers.
+    for field, label in (("gender", "Gender"), ("daily_budget_inr", "Usual budget per person per day (INR)")):
+        value = profile_dict.get(field, raw.get(field))
+        valid = value in ("male", "female", "other") if field == "gender" else type(value) is int and 1 <= value <= 1_000_000
+        if not valid:
+            missing.append({"id": field, "field": field, "label": label, "level": "basic", "question": label})
 
     return missing
 
@@ -724,7 +737,9 @@ def missing_required(user_id: str) -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
         
-        cursor.execute("SELECT raw_answers_json, companions, budget_tier, preferred_climate, interests FROM traveller_profiles WHERE user_id = ?", (user_id,))
+        cursor.execute("""SELECT t.raw_answers_json,t.companions,t.budget_tier,t.preferred_climate,t.interests,
+            p.gender,p.daily_budget_inr FROM traveller_profiles t LEFT JOIN user_profile p ON p.user_id=t.user_id
+            WHERE t.user_id=?""", (user_id,))
         b_row = cursor.fetchone()
         base_dict = {}
         if b_row:
@@ -741,6 +756,8 @@ def missing_required(user_id: str) -> List[Dict[str, Any]]:
                     "preferred_climate": b_row[3],
                     "interests": json.loads(b_row[4]) if b_row[4] else []
                 }
+            base_dict["gender"] = b_row[5]
+            base_dict["daily_budget_inr"] = b_row[6]
         basic_missing = check_basic_missing(base_dict)
 
         cursor.execute("SELECT raw_answers_json FROM detailed_profiles WHERE user_id = ?", (user_id,))
@@ -808,8 +825,8 @@ def profile_status(user_id: str) -> Dict[str, Any]:
         context = build_context_answers(base_dict, {})
         prec_missing, prec_ans, prec_app = check_precision_missing(prec_answers, context)
 
-        total_questions = 12 + prec_app
-        answered_questions = (12 - len(basic_missing)) + prec_ans
+        total_questions = 14 + prec_app
+        answered_questions = (14 - len(basic_missing)) + prec_ans
         pct = round(100 * answered_questions / total_questions) if total_questions else 0
 
         has_deep = has_basic and has_precision and not prec_missing
@@ -828,7 +845,7 @@ def profile_status(user_id: str) -> Dict[str, Any]:
                 "basic": {
                     "complete": has_basic,
                     "missing_count": len(basic_missing),
-                    "total": 12
+                    "total": 14
                 },
                 "precision": {
                     "answered": prec_ans,

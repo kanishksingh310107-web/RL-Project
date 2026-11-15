@@ -332,6 +332,10 @@ def save_profile(user_id: str, profile: ShortProfileCreate, actor=Depends(curren
     from app.residence import validate_residence
     with get_connection() as conn:
         saved_home = conn.execute('SELECT * FROM user_profile WHERE user_id=?',(user_id,)).fetchone()
+    saved_gender = saved_home['gender'] if saved_home else None
+    saved_daily_budget = saved_home['daily_budget_inr'] if saved_home else None
+    effective_gender = profile.gender or saved_gender
+    effective_daily_budget = profile.daily_budget_inr if profile.daily_budget_inr is not None else saved_daily_budget
     home_input = profile.model_dump()
     if 'residence_country' not in profile.model_fields_set and saved_home and saved_home['residence_country']:
         for key in ('residence_country','residence_state','residence_city','preferred_currency'):
@@ -341,7 +345,7 @@ def save_profile(user_id: str, profile: ShortProfileCreate, actor=Depends(curren
         home = validate_residence(*(home_input[key] for key in ('residence_country','residence_state','residence_city','preferred_currency')))
     except ValueError as exc:
         raise HTTPException(422, {'detail':str(exc),'code':'INVALID_RESIDENCE','field':getattr(exc,'field','residence_country')})
-    profile_dict = dict(profile.model_dump(), **home)
+    profile_dict = dict(profile.model_dump(), **home, gender=effective_gender, daily_budget_inr=effective_daily_budget)
 
     import app.database as database
     is_test_env = getattr(database, "DB_PATH", None) and database.DB_PATH.name == "test.db"
@@ -398,15 +402,20 @@ def save_profile(user_id: str, profile: ShortProfileCreate, actor=Depends(curren
             state_vector_json,
             raw_json
         ))
-        conn.execute('''INSERT INTO user_profile(user_id,residence_country,residence_state,residence_city,preferred_currency)
-            VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET residence_country=excluded.residence_country,
+        conn.execute('''INSERT INTO user_profile(user_id,residence_country,residence_state,residence_city,preferred_currency,gender,daily_budget_inr)
+            VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET residence_country=excluded.residence_country,
             residence_state=excluded.residence_state,residence_city=excluded.residence_city,
-            preferred_currency=excluded.preferred_currency,profile_complete=0''',
-            (user_id,home['residence_country'],home['residence_state'],home['residence_city'],home['preferred_currency']))
+            preferred_currency=excluded.preferred_currency,
+            gender=COALESCE(excluded.gender,user_profile.gender),
+            daily_budget_inr=COALESCE(excluded.daily_budget_inr,user_profile.daily_budget_inr),profile_complete=0''',
+            (user_id,home['residence_country'],home['residence_state'],home['residence_city'],home['preferred_currency'],effective_gender,effective_daily_budget))
         conn.commit()
 
     return ProfileResponse(
         **home,
+        residence_country_name=__import__('app.residence',fromlist=['COUNTRIES']).COUNTRIES.get(home['residence_country'],{}).get('name'),
+        gender=effective_gender,
+        daily_budget_inr=effective_daily_budget,
         user_id=user_id,
         profile_type="short",
         interests=profile.interests or profile.place_interests or profile.travel_goals,
@@ -446,8 +455,10 @@ def get_profile(user_id: str, actor=Depends(current_user)):
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
         saved_home = conn.execute('SELECT * FROM user_profile WHERE user_id=?',(user_id,)).fetchone()
-        home = {key:saved_home[key] if saved_home else None for key in ('residence_country','residence_state','residence_city','preferred_currency')}
+        home = {key:saved_home[key] if saved_home else None for key in ('residence_country','residence_state','residence_city','preferred_currency','gender','daily_budget_inr')}
         home['preferred_currency'] = home['preferred_currency'] or 'INR'
+        from app.residence import COUNTRIES
+        home['residence_country_name'] = COUNTRIES.get(home.get('residence_country'),{}).get('name')
         
         interests = json.loads(row["interests"])
         state_vector = json.loads(row["stated_vector_json"])
@@ -488,6 +499,9 @@ def get_profile(user_id: str, actor=Depends(current_user)):
             interests=interests,
             travel_goals=raw_answers.get("travel_goals", []),
             place_interests=raw_answers.get("place_interests", []),
+            gender=home['gender'],
+            daily_budget_inr=home['daily_budget_inr'],
+            residence_country_name=home['residence_country_name'],
             age_group=raw_answers.get("age_group", "18_24"),
             travel_experience=raw_answers.get("travel_experience", row["planning_experience"]),
             companions=row["companions"],

@@ -16,7 +16,7 @@ _MONTHS = {name.lower(): index for index, name in enumerate((
 
 
 def _season_relevance(destination: Dict[str, Any], today: Optional[datetime] = None) -> int:
-    """Return 0 when out of season, 1 when season starts within 3 months, 2 in season."""
+    """Return current season or one beginning within the next two months."""
     today = today or datetime.now(ZoneInfo("Asia/Kolkata"))
     source = DESTINATIONS_BY_ID.get(destination.get("id"), {})
     months = {str(m).lower() for m in source.get("best_seasons", [])}
@@ -28,7 +28,7 @@ def _season_relevance(destination: Dict[str, Any], today: Optional[datetime] = N
     current = today.month
     if current in month_nums:
         return 2
-    if any(((m - current) % 12) in (1, 2, 3) for m in month_nums):
+    if any(((m - current) % 12) in (1, 2) for m in month_nums):
         return 1
     return 0
 
@@ -1471,6 +1471,8 @@ def get_categorized_recommendations(
     today = datetime.now(ZoneInfo("Asia/Kolkata"))
     seasonal_ranked = []
     for item in scored:
+        if item.get("country") != "India":
+            continue
         relevance = _season_relevance(item, today)
         if item.get("is_seasonal") and relevance:
             item["seasonal_relevance"] = relevance
@@ -1479,11 +1481,9 @@ def get_categorized_recommendations(
     seasonal_ranked.sort(key=lambda item: (item["seasonal_relevance"], item["match_score"]), reverse=True)
     seasonal_experiences = seasonal_ranked[:3]
 
-    # Curated trend signals are ranked by current seasonal relevance and match.
-    # This avoids treating every destination marked trending in the catalogue as
-    # equally timely all year.
-    trending_ranked = [item for item in scored if item.get("is_trending")]
-    trending_ranked.sort(key=lambda item: (_season_relevance(item, today), item["match_score"]), reverse=True)
+    # The legacy response key is retained for clients, but its content is a
+    # profile-matched second shelf, not an unsupported real-time trend claim.
+    trending_ranked = [item for item in scored_sorted if item["id"] not in recommended_ids]
     trending_trips = trending_ranked[:3]
 
     # Basis summary in plain language

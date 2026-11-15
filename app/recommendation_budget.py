@@ -71,6 +71,10 @@ def _profile(conn, user_id):
                 profile['raw_answers'] = json.loads(profile['raw_answers_json'])
             except (TypeError, ValueError):
                 profile['raw_answers'] = {}
+    # Keep profile data from user_profile authoritative for these A-owned fields.
+    home = conn.execute('SELECT residence_country,residence_state,residence_city,gender,daily_budget_inr FROM user_profile WHERE user_id=?', (user_id,)).fetchone()
+    if home:
+        profile.update({key: home[key] for key in ('residence_country','residence_state','residence_city','gender','daily_budget_inr')})
     return profile
 
 
@@ -654,12 +658,33 @@ def discovery_shelves(request: Request, comfortable_budget_inr: Optional[int] = 
         result['personalized_context'] = True
         result['sample_context'] = f"Using your trip context: {days} days, {payload.party_size} traveller(s), up to ₹{payload.comfortable_budget_inr:,} total. Costs are estimates."
     else:
-        # Clearly labelled example context; it is never presented as the
-        # signed-in user's budget or an assumed trip.
-        result = discover_suggestions(DiscoveryInput(duration_days=3, comfortable_budget_inr=50000,
-            party_size=1, trip_type='solo', origin=profile.get('residence_city')), request)
-        result['personalized_context'] = False
-        result['sample_context'] = 'Example only: estimates for a 3-day solo trip with a ₹50,000 total budget. Use “Help me choose” to enter your own dates, travellers and budget.'
+        daily = profile.get('daily_budget_inr')
+        companions = str(profile.get('companions') or '').casefold()
+        party_defaults = {'alone': (1,'solo'), 'solo': (1,'solo'), 'partner': (2,'couple'), 'couple': (2,'couple'),
+            'friends': (2,'friends'), 'family_kids': (3,'family'), 'family_children': (3,'family'), 'family_seniors': (3,'family')}
+        default_party, default_type = party_defaults.get(companions, (1,'solo'))
+        days = (end_date-start_date).days + 1 if start_date and end_date else (duration_days or 3)
+        party = party_size or default_party
+        trip_kind = trip_type or (default_type if party != 1 or default_type == 'solo' else 'friends')
+        if type(daily) is int and daily > 0:
+            derived_total = daily * days * party
+            result = discover_suggestions(DiscoveryInput(mode='help_choose', origin=origin or profile.get('residence_city'),
+                start_date=start_date, end_date=end_date, duration_days=None if start_date and end_date else days,
+                comfortable_budget_inr=derived_total, party_size=party, trip_type=trip_kind, mood=mood), request)
+            result['personalized_context'] = True
+            result['sample_context'] = (f"Suggested planning allowance: ₹{daily:,} per person/day × {party} traveller(s) × {days} days = "
+                f"₹{derived_total:,} for the party. Change dates, travellers or total budget in Help me choose; estimate and reserve assumptions are indicative.")
+            result['budget_formula'] = {'per_person_per_day_inr':daily,'party_size':party,'duration_days':days,'suggested_whole_party_total_inr':derived_total,'editable':True}
+        else:
+            # Build general profile recommendations without mislabelling any
+            # arbitrary cap as the signed-in user's personal budget.
+            result = discover_suggestions(DiscoveryInput(mode='help_choose', origin=origin or profile.get('residence_city'),
+                start_date=start_date, end_date=end_date, duration_days=None if start_date and end_date else days,
+                comfortable_budget_inr=1_000_000_000, party_size=party, trip_type=trip_kind, mood=mood), request)
+            result['groups']['within_your_budget'] = []
+            result['personalized_context'] = False
+            result['sample_context'] = 'Add your usual budget per person per day in your travel profile to see budget-matched suggestions. You can enter an editable whole-party budget in Help me choose.'
+            result['budget_prompt'] = {'required_for_budget_shelf':True,'profile_field':'daily_budget_inr','currency':'INR'}
     return result
 
 

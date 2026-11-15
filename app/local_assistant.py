@@ -10,7 +10,8 @@ async def answer_local(payload,request,actor):
     text=payload.message.casefold()
     result={'assistant_mode':'local','model_configured':False,'proposal':None,'preview':None,'confirmation_required':False,'trip_mutated':False,'confirmed_changes':[]}
     with get_connection() as conn:
-        profile=conn.execute('SELECT profile_complete FROM user_profile WHERE user_id=?',(actor,)).fetchone()
+        profile=conn.execute('SELECT profile_complete,daily_budget_inr FROM user_profile WHERE user_id=?',(actor,)).fetchone()
+        companion_row=conn.execute('SELECT companions FROM traveller_profiles WHERE user_id=?',(actor,)).fetchone()
         if not profile or not profile['profile_complete']:
             result['answer']='Start with your basic travel profile and residence, then add past trips or choose no travel history. Complete Deep Personalisation to unlock trip planning. You can return to the questionnaire from the main menu.'
             return result
@@ -23,13 +24,21 @@ async def answer_local(payload,request,actor):
     if any(word in text for word in ('profile','questionnaire','personalisation','personalization','login','sign in')):
         result['answer']='Complete your basic profile, travel-history choice and every applicable Deep Personalisation question before planning. Google sign-in uses the official account chooser; email and guest sign-in are also available.'
     elif not trip:
-        query=DiscoveryInput(duration_days=3,comfortable_budget_inr=50000,party_size=1,trip_type='solo')
+        daily=profile['daily_budget_inr'] if profile else None
+        companion=str(companion_row['companions'] if companion_row else 'alone').casefold()
+        party,trip_type={'alone':(1,'solo'),'solo':(1,'solo'),'partner':(2,'couple'),'friends':(2,'friends'),
+            'family_kids':(3,'family'),'family_children':(3,'family'),'family_seniors':(3,'family')}.get(companion,(1,'solo'))
+        if type(daily) is not int or daily<=0:
+            result['answer']='Add your usual budget per person per day to your basic travel profile to get budget-matched ideas. You can enter an editable whole-party budget in Help me choose.'
+            return result
+        total=daily*3*party
+        query=DiscoveryInput(duration_days=3,comfortable_budget_inr=total,party_size=party,trip_type=trip_type)
         suggestions=discover_suggestions(query,request)
         choices=suggestions['recommendations']
-        lines=['Here are ideas based on your saved preferences, using an indicative three-day solo trip up to INR 50,000. Use Help me choose to enter your actual party, dates and budget.']
+        lines=[f"Here are ideas based on your saved preferences and a suggested INR {daily:,} per person/day × {party} traveller(s) × 3 days = INR {total:,} party allowance. Estimates are indicative; enter a different total for each trip in Help me choose."]
         for place in choices:
             lines.append(place['name']+' — '+money(place['estimated_total_cost_inr'])+'. '+place['why_recommended'][0]+'. Trade-off: '+str(place['trade_off']))
-        if not choices:lines.append('No catalogue destination fits this sample budget. Open Help me choose and adjust your preferences or budget.')
+        if not choices:lines.append('No catalogue destination fits this estimated allowance. Open Help me choose to adjust your dates, travellers or whole-party budget.')
         result['answer']='\n\n'.join(lines)
     elif any(word in text for word in ('budget','expense','spend','spent','cost','cheaper','money','₹')):
         budget=context['budget']

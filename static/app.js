@@ -23,6 +23,9 @@ const state = {
   // Basic Profile State (starts with none pre-selected, no assumptions)
   basicAnswers: {
     residence_country: null, residence_state: null, residence_city: null, preferred_currency: null,
+    // A: profile-discovery-refresh basic fields
+    gender: null, daily_budget_inr: null,
+    // end A: profile-discovery-refresh basic fields
     age_group: null,
     travel_experience: null,
     companions: null,
@@ -448,6 +451,9 @@ function resetAnswers() {
   window.UserCurrency?.clear();
   state.basicAnswers = {
     residence_country: null, residence_state: null, residence_city: null, preferred_currency: null,
+    // A: profile-discovery-refresh basic fields
+    gender: null, daily_budget_inr: null,
+    // end A: profile-discovery-refresh basic fields
     age_group: null,
     travel_experience: null,
     companions: null,
@@ -768,6 +774,10 @@ async function handleProfileSubmit(e) {
   if (submit) submit.disabled=true;
   const payload = {
     ...home,
+    // A: profile-discovery-refresh basic fields
+    gender: state.basicAnswers.gender,
+    daily_budget_inr: Number(state.basicAnswers.daily_budget_inr),
+    // end A: profile-discovery-refresh basic fields
     age_group: state.basicAnswers.age_group,
     travel_experience: state.basicAnswers.travel_experience,
     companions: state.basicAnswers.companions,
@@ -795,7 +805,12 @@ async function handleProfileSubmit(e) {
     });
     const data = await res.json();
     if (!res.ok) {
-      const error=new Error(formatApiError(data,"Save failed"));error.field=data.field;throw error;
+      // A: convert profile validation responses into field-local messages.
+      const issue=Array.isArray(data.detail)?data.detail[0]:null;
+      const path=Array.isArray(issue?.loc)?issue.loc.filter(part=>!['body','query','path'].includes(part)):[];
+      const field=data.field||(path.length?String(path[path.length-1]):null);
+      const error=new Error(typeof data.detail==='string'?data.detail:issue?.msg?String(issue.msg).replace(/^Value error,\s*/,''):formatApiError(data,"Save failed"));error.field=field;throw error;
+      // end A: profile validation responses
     }
 
     state.currentUser.has_profile = true;
@@ -806,7 +821,11 @@ async function handleProfileSubmit(e) {
     renderDashboard(data);
     showView("dashboard");
   } catch (err) {
-    const fields={residence_country:'residenceCountry',residence_state:'residenceState',residence_city:'residenceCity',preferred_currency:'preferredCurrency'};
+    const fields={residence_country:'residenceCountry',residence_state:'residenceState',residence_city:'residenceCity',preferred_currency:'preferredCurrency',
+      // A: profile-discovery-refresh server field errors stay beside their inputs.
+      gender:'basicGender',daily_budget_inr:'basicDailyBudget'
+      // end A: profile-discovery-refresh server field errors
+    };
     const target=fields[err.field];
     if(target){
       goToStep(1);
@@ -830,6 +849,10 @@ function editProfile() {
       residence_state: p.residence_state || raw.residence_state || null,
       residence_city: p.residence_city || raw.residence_city || null,
       preferred_currency: p.preferred_currency || raw.preferred_currency || null,
+      // A: profile-discovery-refresh basic fields
+      gender: p.gender || raw.gender || null,
+      daily_budget_inr: p.daily_budget_inr || raw.daily_budget_inr || null,
+      // end A: profile-discovery-refresh basic fields
       age_group: p.age_group || raw.age_group || null,
       travel_experience: p.travel_experience || raw.travel_experience || null,
       companions: p.companions || raw.companions || null,
@@ -3009,7 +3032,13 @@ async function searchHotelsForOptionA(radiusMeters = 12000) {
   const destSelect = document.getElementById("tripDestSelect");
   const destId = destSelect ? destSelect.value : "";
   const destName = destSelect && destSelect.options[destSelect.selectedIndex] ? destSelect.options[destSelect.selectedIndex].text : "";
-  const budget = parseFloat(document.getElementById("tripBudgetInput")?.value) || 25000;
+  const budget = Number(document.getElementById("tripBudgetInput")?.value);
+  if (!Number.isSafeInteger(budget) || budget < 1000) {
+    const error = document.getElementById('staySearchError');
+    if (error) { error.textContent = 'Enter this trip’s whole-party budget before searching for stays.'; error.classList.remove('hidden'); }
+    return;
+  }
+  const stayError=document.getElementById('staySearchError');if(stayError){stayError.textContent='';stayError.classList.add('hidden');}
   
   let days = 4;
   const startDate = document.getElementById("tripStartDateInput")?.value;
