@@ -1020,7 +1020,7 @@ def generate_timed_schedule(
                     "start_time": start_t,
                     "end_time": end_t,
                     "duration_mins": dur,
-                    "title": "Rest time / evening accommodation break",
+                    "title": "Rest Time / evening accommodation break",
                     "location": "Accommodation",
                     "estimated_cost": 0.0,
                     "activity_id": None,

@@ -46,6 +46,7 @@ def test_merged_dashboard_history_and_modal_against_real_apis(client,demo_user):
             expect(page.locator('#personalProfileSummaryCard')).to_be_hidden()
             expect(page.locator('#dashboardOverview')).to_have_attribute('data-panels','1')
             assert len(page.locator('#dashboardOverview').evaluate("e=>getComputedStyle(e).gridTemplateColumns.split(' ')") )==1
+            page.wait_for_selector('#exRecommendationShelves .ex-destination-card',timeout=20000)
             expect(page.locator('#exRecommendationShelves .ex-destination-card').first).to_be_visible()
             expect(page.locator('#exSavedPlaces')).to_be_hidden()
             page.locator('#exRecommendationShelves .ex-destination-card').first.get_by_role('button',name='Save for later',exact=True).click()
@@ -65,7 +66,7 @@ def test_merged_dashboard_history_and_modal_against_real_apis(client,demo_user):
             page.locator('#headerTripActions a[href="#/trips"]').click()
             expect(page.locator('#teTripList')).to_contain_text('Pune')
             expect(page.locator('#personalProfileModal')).to_be_hidden()
-            page.locator('#headerTripActions a[href="#/"]').click()
+            page.locator('#tripExperienceView .te-workspace-nav a[href="#/"]').click()
             expect(page.locator('#dashboardView')).to_be_visible()
             page.locator('#headerPlanTripBtn').click()
             modal=page.locator('#personalProfileModal')

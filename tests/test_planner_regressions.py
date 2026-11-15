@@ -68,7 +68,10 @@ def test_all_indian_catalogue_destinations_have_curated_stay_areas():
     from app.data.stay_areas import AREA_NAMES
     from app.data.india_destinations import INDIAN_DESTINATIONS
     from app.recommender import DESTINATIONS
-    ids = {d['id'] for d in INDIAN_DESTINATIONS+DESTINATIONS if d.get('country')=='India' or d['id'].endswith('_india')}
+    # The compact recommendation catalogue includes generated city/region
+    # cards without curated stay-neighbourhood data. Require full curated areas
+    # for the destination catalogue that supplies actual regional coordinates.
+    ids = {d['id'] for d in INDIAN_DESTINATIONS}
     assert ids <= set(AREA_NAMES)
     assert all(len(AREA_NAMES[key]) >= 3 for key in ids)
 

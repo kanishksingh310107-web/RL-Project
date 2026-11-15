@@ -18,16 +18,16 @@ def c_trip(client):
     assert auth.status_code==200,auth.text
     demo_user=auth.json()['user_id']
     client.headers['Authorization']='Bearer '+auth.json()['token']
-    profile=client.post('/api/profile/'+demo_user,json={'travel_goals':['culture'],
+    profile=client.post('/api/profile/'+demo_user,json={'travel_goals':['culture','nature'],
         'residence_country':'IN','residence_state':'Tamil Nadu','residence_city':'Tirunelveli',
-        'place_interests':['historic'],'preferred_climate':'cool','budget_tier':'mid_range','companions':'partner'})
+        'gender':'other','daily_budget_inr':3000,'place_interests':['historic','mountains'],'preferred_climate':'cool','budget_tier':'mid_range','companions':'partner'})
     assert profile.status_code==200,profile.text
     tid,iid=uuid.uuid4().hex,uuid.uuid4().hex
     with get_connection() as conn:
         conn.execute('''INSERT INTO trips(id,user_id,destination_id,destination_name,start_date,end_date,duration_days,total_budget)
             VALUES(?,?,'kyoto_japan','Kyoto','2026-11-26','2026-11-27',2,26000)''',(tid,demo_user))
         conn.execute("INSERT INTO itineraries(id,trip_id,user_id,title,total_days,status) VALUES(?,?,?,'C test itinerary',2,'active')",(iid,tid,demo_user))
-        for sid,day,order,aid in [('c-first',1,0,'kyoto_fushimi_inari'),('c-food',1,1,'kyoto_gion_tea_ceremony'),('c-last',2,0,'kyoto_fushimi_inari')]:
+        for sid,day,order,aid in [('c-first',1,0,'kyoto_fushimi_inari'),('c-food',1,1,'kyoto_gion_tea_ceremony'),('c-last',2,0,'kyoto_kinkakuji')]:
             activity=conn.execute('SELECT * FROM destination_activities WHERE id=?',(aid,)).fetchone()
             conn.execute('''INSERT INTO itinerary_activities(id,itinerary_id,day_number,time_slot,activity_id,title,category,
                 neighborhood,latitude,longitude,duration_minutes,cost_estimate,order_index)
@@ -192,6 +192,11 @@ def test_c_unknown_ids_and_ambiguous_catalogue_ids(client,c_trip):
     call(client,c_trip,'/activities/not-in-this-trip/end',expected=404)
     call(client,c_trip,'/days/9/start',expected=404)
     call(client,c_trip,'/days/0/end',{'dispositions':{}},expected=404)
+    with get_connection() as conn:
+        conn.execute('''INSERT INTO itinerary_activities(id,itinerary_id,day_number,time_slot,activity_id,title,category,
+            duration_minutes,cost_estimate,order_index) VALUES('c-duplicate',?,2,'morning','kyoto_fushimi_inari',
+            'Duplicate shrine visit','culture_history',90,500,1)''',(c_trip['itinerary_id'],))
+    start(client,c_trip)
     call(client,c_trip,'/activities/kyoto_fushimi_inari/start',expected=422)
 
 
@@ -274,6 +279,8 @@ def test_c_decision_downstream_preview_and_failure(client,c_trip,monkeypatch,act
 def test_c_keep_does_not_call_replan_change_remove_uses_existing_endpoint(client,c_trip,monkeypatch):
     downstream=AsyncMock(return_value={})
     monkeypatch.setattr(live,'c_call_existing',downstream)
+    with get_connection() as conn:
+        conn.execute("UPDATE itinerary_activities SET activity_id='kyoto_fushimi_inari' WHERE id='c-last'")
     start(client,c_trip)
     end_review(client,c_trip,'keep')
     assert downstream.await_count==0

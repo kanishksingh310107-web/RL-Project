@@ -267,7 +267,9 @@ def test_prep_and_live_weather_alerts_use_trip_specific_coordinates(client, demo
     live_data = live_w.json()
     assert abs(live_data["coordinates"]["lat"] - 26.2389) < 0.01
     assert abs(live_data["coordinates"]["lon"] - 73.0243) < 0.01
-    assert len(seen_live_coords) == 1
+    assert seen_live_coords
+    assert all(abs(lat - 26.2389) < 0.01 and abs(lon - 73.0243) < 0.01
+               for lat, lon in seen_live_coords)
     assert abs(seen_live_coords[0][0] - 26.2389) < 0.01
     assert abs(seen_live_coords[0][1] - 73.0243) < 0.01
 

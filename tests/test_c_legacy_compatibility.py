@@ -20,6 +20,7 @@ def demo_user(client):
     client.headers['Authorization']='Bearer '+response.json()['token']
     profile=client.post('/api/profile/'+user,json={'travel_goals':['nature','culture'],
         'residence_country':'IN','residence_state':'Tamil Nadu','residence_city':'Tirunelveli',
+        'gender':'other','daily_budget_inr':3000,
         'place_interests':['mountains','historic'],'preferred_climate':'cool','budget_tier':'mid_range','companions':'partner'})
     assert profile.status_code==200,profile.text
     # This fixture exercises C's legacy assertions, independently of A's

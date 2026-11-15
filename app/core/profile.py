@@ -36,6 +36,12 @@ GOAL_TO_CANONICAL: Dict[str, str] = {
     "quality_time": "relaxation",
     "socializing": "food_dining",
     "work_study": "culture_history",
+    "heritage_history": "culture_history",
+    "nature_wildlife": "nature_outdoors",
+    "adventure_trekking": "adventure",
+    "relaxation_wellness": "relaxation",
+    "culinary_food_trails": "food_dining",
+    "photography_scenic": "scenic",
 }
 
 PLACE_INTEREST_TO_CANONICAL: Dict[str, str] = {
@@ -51,6 +57,11 @@ PLACE_INTEREST_TO_CANONICAL: Dict[str, str] = {
     "nightlife_music": "food_dining",
     "villages_communities": "culture_history",
     "architecture_photo": "scenic",
+    "himalayan_mountains": "nature_outdoors",
+    "royal_forts_palaces": "culture_history",
+    "holy_temple_ghats": "culture_history",
+    "lush_backwaters_plantations": "nature_outdoors",
+    "dense_jungles": "nature_outdoors",
 }
 
 

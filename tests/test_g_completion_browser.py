@@ -39,7 +39,8 @@ def test_five_day_ui_shopping_and_free_assistant(client,deep_user,monkeypatch):
             for day in range(1,6):
                 editor.locator('.te-day-nav [data-day="'+str(day)+'"]').click()
                 expect(editor.locator('.te-stop[data-occurrence]:not([data-occurrence=""])')).not_to_have_count(0)
-            expect(page.get_by_role('button',name='Finalize itinerary',exact=True)).to_be_visible()
+            # Finalization stays unavailable until required stay details are entered.
+            expect(editor).to_contain_text('Accommodation details needed before finalizing.')
             page.evaluate('window.scrollTo(0,0)')
             page.screenshot(path=str(Path.cwd()/'completion-desktop.png'),full_page=True)
             editor.get_by_role('button',name='Balance all days',exact=True).click()

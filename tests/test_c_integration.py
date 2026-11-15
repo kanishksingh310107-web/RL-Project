@@ -7,14 +7,14 @@ from test_c_runtime import c_trip, call, snapshot, start, end_review
 
 
 def test_profile_gate_rechecks_edits_and_returns_flat_error(client,demo_user):
-    changed=client.post('/api/profile/'+demo_user,json={'travel_goals':['nature'],'place_interests':['mountains']})
+    changed=client.post('/api/profile/'+demo_user,json={'travel_goals':['nature','culture'],'place_interests':['mountains','historic']})
     assert changed.status_code==200,changed.text
     response=client.post('/api/trips/'+demo_user,json={'destination_id':'jaipur_india','start_date':'2027-03-01','end_date':'2027-03-03'})
     assert response.status_code==403
-    assert response.json()['detail']=='Complete your personalization questionnaire first'
-    assert response.json()['code']=='PROFILE_INCOMPLETE'
+    assert response.json()['detail']=='Complete Deep Personalisation before planning a trip.'
+    assert response.json()['code']=='DEEP_PROFILE_INCOMPLETE'
     dynamic=client.post('/api/places/plan-dynamic',json={'user_id':demo_user,'city':'Jaipur'})
-    assert dynamic.status_code==403 and dynamic.json()['code']=='PROFILE_INCOMPLETE'
+    assert dynamic.status_code==403 and dynamic.json()['code']=='DEEP_PROFILE_INCOMPLETE'
 
 
 def test_shared_invalid_input_is_readable(client,demo_user):
@@ -70,11 +70,13 @@ def test_custom_timeline_and_runtime_use_the_same_places(client,c_trip):
     assert locked.status_code==409
     end_review(client,c_trip,'change')
     assert snapshot(client,c_trip)['current_activity'] is None
-    preview=call(client,c_trip,'/adjustments/preview',{'operation':'remove','target_activity_id':'c-food'})
+    current=snapshot(client,c_trip)
+    target=next(slot for slot in current['schedule'] if slot['id']!='c-first')
+    preview=call(client,c_trip,'/adjustments/preview',{'operation':'remove','target_activity_id':target['id']})
     result=call(client,c_trip,'/adjustments/confirm',{'token':preview['preview']['token']})
-    assert not any(slot['id']=='c-food' for slot in result['schedule'])
+    assert not any(slot['id']==target['id'] for slot in result['schedule'])
     with get_connection() as conn:
-        assert conn.execute("SELECT COUNT(*) FROM timed_itinerary_slots WHERE trip_id=? AND activity_id='kyoto_gion_tea_ceremony'",(c_trip['trip_id'],)).fetchone()[0]==0
+        assert conn.execute("SELECT COUNT(*) FROM timed_itinerary_slots WHERE trip_id=? AND activity_id=?",(c_trip['trip_id'],target['activity_id'])).fetchone()[0]==0
 
 
 @pytest.mark.parametrize('field,value',[

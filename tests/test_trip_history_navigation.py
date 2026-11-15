@@ -167,6 +167,7 @@ def test_my_trips_displays_manual_history_without_questionnaire_or_planning(hist
     assert page.locator('#teTripList a[href^="#/trips/"]').count() == 0
     assert not any(method != 'GET' for method,_ in calls)
     page.reload(wait_until='domcontentloaded')
+    page.wait_for_timeout(150)
     page.evaluate("state.currentUser={user_id:'history-owner',display_name:'History owner'};state.currentProfile={residence_country:'IN'};state.profileStatus={complete:false};showView('dashboard');TripExperience.route();")
     expect(page.locator('#teTripList')).to_contain_text('Pune <img')
 

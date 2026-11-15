@@ -46,10 +46,14 @@
     if(box.parentNode!==lifecycleOrigin.parent||box.nextSibling!==next)lifecycleOrigin.parent.insertBefore(box,next);
   }
   function placeLifecycle(snapshot){
-    const box=document.getElementById('cTripLifecycle');if(!box)return;rememberLifecycleOrigin(box);
-    if(!['draft','finalized'].includes(snapshot?.status)){restoreLifecycle(box);return;}
+    let box=document.getElementById('cTripLifecycle');
+    if(!['draft','finalized'].includes(snapshot?.status)){if(box)restoreLifecycle(box);return box;}
     const editor=document.getElementById('workspaceEditorContainer'),card=editor?.querySelector('.te-card');
-    if(card&&box.parentElement!==card)card.append(box);
+    // The editor replaces its card contents on every refresh. Recreate the
+    // lifecycle footer after that replacement so finalize/start never vanishes.
+    if(!box&&card){box=document.createElement('div');box.id='cTripLifecycle';box.className='rounded-xl border border-slate-200 bg-white p-3 text-xs';}
+    if(box){rememberLifecycleOrigin(box);if(card&&box.parentElement!==card)card.append(box);}
+    return box;
   }
   function addItineraryReturnTab(){
     if(itineraryReturnTab?.isConnected)return itineraryReturnTab;
@@ -70,7 +74,7 @@
       snapshot=latest;
     }
     state.snapshot=snapshot;
-    const box=document.getElementById('cTripLifecycle');
+    const box=placeLifecycle(snapshot);
     if(!box) return;
     rememberLifecycleOrigin(box);
     const action=snapshot.status==='draft'?'Finalize itinerary':snapshot.status==='finalized'?'Start trip':null;
@@ -95,7 +99,7 @@
         await loadTripItinerary(ctx.tripId);
       });
     });
-    placeLifecycle(snapshot);addItineraryReturnTab();
+    addItineraryReturnTab();
     if(itineraryReturnTab)itineraryReturnTab.hidden=snapshot.status!=='live';
     applyLocks(snapshot);
   }
@@ -343,10 +347,10 @@
     const title=document.getElementById('itinDestinationTitle');
     if(title) new MutationObserver(()=>loadLifecycle()).observe(title,{childList:true});
     const editor=document.getElementById('workspaceEditorContainer');
-    if(editor) new MutationObserver(()=>{if(state.snapshot){applyLocks(state.snapshot);placeLifecycle(state.snapshot);}}).observe(editor,{childList:true});
+    if(editor) new MutationObserver(()=>{if(state.snapshot){applyLocks(state.snapshot);lifecycle(getWorkspaceContext(),state.snapshot);}}).observe(editor,{childList:true});
     addItineraryReturnTab();
     window.addEventListener('trip:runtime',event=>{addItineraryReturnTab();if(itineraryReturnTab&&event.detail?.tripId===getWorkspaceContext()?.tripId)itineraryReturnTab.hidden=event.detail.snapshot?.status!=='live';});
-    window.addEventListener('trip:timeline-rendered',event=>{if(state.snapshot&&event.detail?.tripId===getWorkspaceContext()?.tripId)placeLifecycle(state.snapshot);});
+    window.addEventListener('trip:timeline-rendered',event=>{if(state.snapshot&&event.detail?.tripId===getWorkspaceContext()?.tripId)lifecycle(getWorkspaceContext(),state.snapshot);});
     document.getElementById('userTripsSelect')?.addEventListener('change',()=>loadLifecycle());
     loadLifecycle();
   }

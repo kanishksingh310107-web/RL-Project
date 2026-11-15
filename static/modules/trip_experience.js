@@ -2,6 +2,8 @@
 (() => {
   'use strict';
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const minutes = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(value || '')
+    ? Number(value.slice(0,2))*60+Number(value.slice(3,5)) : NaN;
   const indiaToday = (date = new Date()) => {
     const parts=new Intl.DateTimeFormat('en', {timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
     const part=key=>parts.find(p=>p.type===key).value;

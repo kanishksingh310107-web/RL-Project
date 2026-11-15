@@ -93,7 +93,7 @@ def open_budget(page):
 
 def test_entry_points_honest_scores_and_comparison_limit(experience):
     page,_,writes,_,_=experience
-    for name in ['I know my destination','Help me choose','Explore my budget']:
+    for name in ['Coming Up Next','Help me choose','Explore my budget']:
         playwright.expect(page.locator('#exDiscovery').get_by_role('button',name=name,exact=True)).to_be_visible()
     cards=page.locator('#exRecommendationShelves .ex-destination-card')
     playwright.expect(cards.first).to_contain_text('heritage walks')
@@ -118,8 +118,8 @@ def test_discovery_inline_errors_keep_entered_values(experience):
 
 def test_budget_uses_server_remaining_costs_not_unspent_cash(experience):
     page,_,_,_,_=experience;open_budget(page)
-    playwright.expect(page.locator('#exBudgetPane')).to_contain_text('Estimated remaining costs')
-    playwright.expect(page.locator('#exBudgetPane')).to_contain_text('22,000')
+    playwright.expect(page.locator('#exBudgetPane')).to_contain_text('Remaining to pay (estimate)')
+    playwright.expect(page.locator('#exBudgetPane')).to_contain_text('8,000')
     playwright.expect(page.locator('#exBudgetPane')).to_contain_text('Not entered')
 
 

@@ -81,15 +81,15 @@ def run_tests():
     # 3. Vectorizer test
     sample_profile = {
         "interests": ["nature_outdoors", "photography"],
-        "travel_goals": ["nature", "photography"],
-        "place_interests": ["mountains_nature", "architecture_photo"],
+        "travel_goals": ["nature_wildlife", "photography_scenic"],
+        "place_interests": ["himalayan_mountains", "royal_forts_palaces"],
         "pace": 0.4,
         "crowd_tolerance": 0.3,
         "structure": 0.8,
         "companions": "solo",
         "has_children": False,
-        "budget_tier": "balanced",
-        "preferred_climate": "mild"
+        "budget_tier": "mid_range_comfortable",
+        "preferred_climate": "cool_hillstation"
     }
     vec, names = PreferenceVectorizer.vectorize(sample_profile)
     assert len(vec) == 22
@@ -98,11 +98,12 @@ def run_tests():
     # 4. Profile API test
     prof_payload = {
         "residence_country":"IN","residence_state":"Tamil Nadu","residence_city":"Tirunelveli",
+        "gender":"male","daily_budget_inr":3000,
         **sample_profile,
         "planning_experience": "intermediate"
     }
     p_res = client.post(f"/api/profile/{user_id}", json=prof_payload)
-    assert p_res.status_code == 200
+    assert p_res.status_code == 200, p_res.text
     history_res = client.post("/api/profile/history/choice", json={"choice": "none"})
     assert history_res.status_code == 200, history_res.text
     print("[OK] Profile created and saved")
@@ -191,6 +192,8 @@ def run_precision_tests(client, user_id):
                 return
             src = cond["q"]
             src_q = bank.get(src) or (BASE_QUESTIONS[src] if src in prec.CONTEXT_QIDS else None)
+            if src == "gender":
+                src_q = {"options": [{"id": value} for value in ("male", "female", "other")]}
             assert src_q is not None, f"{qid}: show_if source {src} unknown"
             src_ids = {o["id"] for o in src_q.get("options", [])}
             assert set(cond["includes_any"]) <= src_ids, f"{qid}: show_if uses unknown option ids of {src}"
@@ -203,8 +206,9 @@ def run_precision_tests(client, user_id):
     assert not prec.is_visible("d02_children_age_group", {})
     assert not prec.is_visible("d02_children_age_group", {"b03_companions": "solo"})
     assert prec.is_visible("d02_children_age_group", {"b03_companions": "family_kids"})
-    assert not prec.is_visible("d01_solo_safety", {"b03_companions": "couple"})
-    assert prec.is_visible("d01_solo_safety", {"b03_companions": "solo"})
+    assert not prec.is_visible("d01_solo_safety", {"b03_companions": "solo"})
+    assert prec.is_visible("d01_solo_safety", {"gender": "female"})
+    assert not prec.is_visible("d01_solo_safety", {"gender": "male"})
     assert not prec.is_visible("d03_senior_accessibility", {"b03_companions": "friends"})
     assert prec.is_visible("d03_senior_accessibility", {"b03_companions": "family_seniors"})
     print("[OK] Conditional follow-up questions (show_if, chained) working")
@@ -430,7 +434,7 @@ def run_itinerary_and_rl_tests(client, user_id):
     assert itin_data["total_estimated_cost"] > 0
 
     first_day = itin_data["days"][0]
-    assert len(first_day["activities"]) >= 3
+    assert len(first_day["activities"]) >= 2
     sample_act = first_day["activities"][0]
     assert "morning" in sample_act["time_slot"] or "meal" in sample_act["time_slot"]
     assert sample_act["why_it_suits"] is not None

@@ -40,8 +40,8 @@ def test_comparison_has_same_scope_and_discovery_filters(client, demo_user):
     shelves=client.get('/api/discovery/recommendations')
     assert shelves.status_code==200,shelves.text
     choices=shelves.json()['recommendations']
-    assert len(choices)>=2
-    assert '3-day solo' in shelves.json()['sample_context']
+    assert len(choices)>=2, shelves.text
+    assert '3 days' in shelves.json()['sample_context']
     ids=[d['destination_id'] for d in choices[:2]]
     response=client.post('/api/discovery/compare',json={'destination_ids':ids,'context':{'duration_days':3,'comfortable_budget_inr':50000,'party_size':1,'trip_type':'solo'}})
     assert response.status_code==200,response.text
@@ -234,7 +234,8 @@ def test_assistant_rejects_another_users_trip_before_provider_call(client,deep_u
     assert auth.status_code==200,auth.text
     # A valid profile must not grant access to another account's trip.
     other=auth.json();client.headers['Authorization']='Bearer '+other['token']
-    assert client.post('/api/profile/'+other['user_id'],json={'residence_country':'IN','residence_state':'Tamil Nadu','residence_city':'Tirunelveli','travel_goals':['nature'],'place_interests':['mountains']}).status_code==200
+    profile=client.post('/api/profile/'+other['user_id'],json={'residence_country':'IN','residence_state':'Tamil Nadu','residence_city':'Tirunelveli','gender':'other','daily_budget_inr':3000,'travel_goals':['nature','adventure'],'place_interests':['mountains','historic']})
+    assert profile.status_code==200,profile.text
     assert client.post('/api/profile/history/choice',json={'choice':'none'}).status_code==200
     rejected=client.post('/api/assistant/chat',json={'trip_id':trip['id'],'message':'Show that trip'})
     assert rejected.status_code==403,rejected.text

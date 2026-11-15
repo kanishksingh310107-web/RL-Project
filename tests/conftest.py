@@ -58,6 +58,7 @@ def demo_user(client):
     client.headers['Authorization'] = 'Bearer ' + r.json()['token']
     p = client.post(f"/api/profile/{uid}", json={
         "residence_country":"IN","residence_state":"Tamil Nadu","residence_city":"Tirunelveli",
+        "gender":"other","daily_budget_inr":20000,
         "travel_goals": ["nature", "culture"], "place_interests": ["mountains", "historic"],
         "preferred_climate": "cool", "budget_tier": "mid_range", "companions": "partner"})
     assert p.status_code == 200, p.text
@@ -75,6 +76,7 @@ def onboard_user(client):
         client.headers['Authorization'] = 'Bearer ' + auth['token']
         profile = client.post('/api/profile/' + user_id, json={
             'residence_country':'IN','residence_state':'Tamil Nadu','residence_city':'Tirunelveli',
+            'gender':'other','daily_budget_inr':3000,
             'travel_goals': ['nature', 'culture'], 'place_interests': ['mountains', 'historic']})
         assert profile.status_code == 200, profile.text
         history = client.post('/api/profile/history/choice', json={'choice': 'none'})

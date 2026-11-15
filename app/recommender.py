@@ -1121,6 +1121,16 @@ for _place in _INDIA_DESTINATION_NAMES:
         _tags, _climate, _style = ['spiritual', 'culture', 'history'], ['warm', 'mild'], 'cultural'
     else:
         _tags, _climate, _style = ['culture', 'history', 'food', 'photography'], ['mild', 'warm'], 'balanced'
+    # Give the broad India catalogue a usable month signal for seasonal shelves.
+    # These are destination-level planning windows, not venue opening claims.
+    if _style == 'nature' and 'mountains' in _tags:
+        _seasons = ['April', 'May', 'June', 'September', 'October']
+    elif 'beaches' in _tags:
+        _seasons = ['November', 'December', 'January', 'February', 'March']
+    elif 'wildlife' in _tags:
+        _seasons = ['November', 'December', 'January', 'February', 'March', 'April']
+    else:
+        _seasons = ['October', 'November', 'December', 'January', 'February', 'March']
     DESTINATIONS.append({
         'id': _slug, 'name': _place, 'country': 'India',
         'tagline': f"Explore {_place} and its surrounding region.",
@@ -1129,7 +1139,7 @@ for _place in _INDIA_DESTINATION_NAMES:
         'estimated_cost': 'Indicative; confirm current travel and stay costs',
         'preferred_climate': _climate,
         'suitable_companions': ['alone', 'partner', 'friends', 'family'],
-        'best_seasons': [], 'is_trending': False, 'is_seasonal': False,
+        'best_seasons': _seasons, 'is_trending': False, 'is_seasonal': False,
         'available_experiences': [f"Explore established visitor areas around {_place}"],
         'travel_style_and_atmosphere': f"A varied city and regional visit in {_place}.",
         'practical_considerations': 'Check current transport, local conditions and venue hours before booking.',

@@ -151,7 +151,7 @@ def test_phase_locks_and_post_type_prefill(ui):
     page.evaluate("TripExperience.route()")
     playwright.expect(page.locator("#wsTabBtn-live")).to_be_disabled()
     playwright.expect(page.locator("#wsTabBtn-post")).to_be_enabled()
-    playwright.expect(page.locator('#workspacePostContainer select[name="trip_type"]')).to_have_value("family")
+    playwright.expect(page.locator('#workspacePostContainer select[name="trip_type"]')).to_have_count(0)
     page.evaluate("switchWorkspaceMode('live')")
     playwright.expect(page.locator("#workspaceLiveTrip")).to_be_hidden()
 

@@ -65,14 +65,29 @@ class ShortProfileCreate(BaseModel):
             if field in ('travel_goals','place_interests','dietary'):
                 if not isinstance(value, list) or len(value) > 30 or any(not isinstance(item,str) or not item.strip() or len(item)>60 for item in value):
                     raise ValueError(f'{field.replace("_"," ").title()} must be a list of short, non-empty choices.')
-                aliases = {'travel_goals':{'nature':'nature_wildlife','culture':'heritage_history','adventure':'adventure_trekking'},
-                    'place_interests':{'mountains':'himalayan_mountains','historic':'royal_forts_palaces','beaches':'beaches_coastal'}}.get(field,{})
+                aliases = {
+                    'travel_goals': {'nature':'nature_wildlife','culture':'heritage_history','adventure':'adventure_trekking'},
+                    'place_interests': {'mountains':'himalayan_mountains','historic':'royal_forts_palaces','beaches':'beaches_coastal'},
+                    'dietary': {'vegetarian':'pure_veg','vegetarian_only':'pure_veg','vegan_only':'vegan'},
+                }.get(field,{})
+                value = [aliases.get(item, item) for item in value]
+                setattr(self, field, value)
                 if options and any(item not in options and item not in aliases for item in value):
                     raise ValueError(f'Choose valid options for {field.replace("_"," ").title()}.')
                 if field in ('travel_goals','place_interests') and len(set(value)) < 2:
                     raise ValueError(f'Choose at least two {field.replace("_"," ")}.')
-            elif not isinstance(value,str) or not value.strip() or len(value)>80 or (options and value not in options):
-                raise ValueError(f'Choose a valid {field.replace("_"," ")}.')
+            else:
+                if not isinstance(value,str) or not value.strip() or len(value)>80:
+                    raise ValueError(f'Choose a valid {field.replace("_"," ")}.')
+                aliases = {
+                    'companions': {'partner':'partner_couple','couple':'partner_couple','alone':'solo'},
+                    'preferred_climate': {'cold':'cold_himalayan','cool':'cool_hillstation','mild':'moderate_pleasant','warm':'warm_tropical'},
+                    'budget_tier': {'budget':'budget_backpacker','mid_range':'mid_range_comfortable','balanced':'mid_range_comfortable','luxury':'premium_luxury'},
+                }.get(field,{})
+                value = aliases.get(value, value)
+                setattr(self, field, value)
+                if options and value not in options:
+                    raise ValueError(f'Choose a valid {field.replace("_"," ")}.')
         for field in ('pace','crowd_tolerance','structure'):
             value=getattr(self,field)
             if not isinstance(value,(int,float)) or isinstance(value,bool) or not 0 <= value <= 1:
@@ -468,7 +483,6 @@ class TripCreate(BaseModel):
                 value = getattr(self, key, None)
                 if value is not None:
                     self.trip_preferences[key] = value
-        from datetime import date
         try:
             start_date = date.fromisoformat(self.start_date)
             end_date = date.fromisoformat(self.end_date)

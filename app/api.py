@@ -499,9 +499,6 @@ def get_profile(user_id: str, actor=Depends(current_user)):
             interests=interests,
             travel_goals=raw_answers.get("travel_goals", []),
             place_interests=raw_answers.get("place_interests", []),
-            gender=home['gender'],
-            daily_budget_inr=home['daily_budget_inr'],
-            residence_country_name=home['residence_country_name'],
             age_group=raw_answers.get("age_group", "18_24"),
             travel_experience=raw_answers.get("travel_experience", row["planning_experience"]),
             companions=row["companions"],
@@ -1797,6 +1794,13 @@ def edit_trip(trip_id: str, payload: Dict[str, Any], request: Request, user_id: 
              int(updated.has_children),int(updated.has_elderly),updated.total_budget,updated.travel_pace,
              updated.transit_pref,updated.accommodation_tier,updated.departure_location,
              json.dumps(updated.trip_preferences),trip_id))
+        # Keep a user-entered budget allocation aligned with edits to the trip's
+        # total budget, so the expenses view does not continue showing its old
+        # ledger baseline after a successful trip edit.
+        budget_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_budget_allocations'").fetchone()
+        if budget_table and payload.get('total_budget') is not None:
+            conn.execute('''UPDATE trip_budget_allocations SET total_budget_inr=?,updated_at=CURRENT_TIMESTAMP
+                WHERE trip_id=? AND user_id=?''', (int(round(updated.total_budget)),trip_id,user_id))
         prefs_exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='trip_schedule_prefs'").fetchone()
         stored_prefs = conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone() if prefs_exists else None
         if payload.get('schedule_prefs') is not None or stored_prefs:

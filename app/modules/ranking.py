@@ -51,6 +51,21 @@ GOAL_MAPPING: Dict[str, str] = {
     "hidden_gems": "nature",
     "nightlife": "nightlife",
     "scenic_landscapes": "nature",
+    # Current basic-profile option identifiers.
+    "nature_wildlife": "nature",
+    "adventure_trekking": "adventure",
+    "heritage_history": "history",
+    "relaxation_wellness": "wellness",
+    "culinary_food_trails": "food",
+    "photography_scenic": "photography",
+    "himalayan_mountains": "mountains",
+    "beaches_coastal": "beaches",
+    "royal_forts_palaces": "history",
+    "holy_temple_ghats": "culture",
+    "lush_backwaters_plantations": "nature",
+    "dense_jungles": "nature",
+    "nature_outdoors": "nature",
+    "culture_history": "culture",
 }
 
 # Month names to integers 1..12

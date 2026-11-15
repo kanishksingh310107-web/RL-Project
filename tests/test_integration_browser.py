@@ -13,6 +13,9 @@ def test_browser_against_real_trip_apis(client,deep_user):
     from playwright.sync_api import sync_playwright, expect
     from main import app
     trip,_=planned(client,deep_user)
+    stay=client.patch(f"/api/trips/{trip['id']}?user_id={deep_user}",json={
+        'trip_preferences':{'accommodation':{'property_type':'budget','property_name':'Browser test stay','expected_total_cost_inr':12000}}})
+    assert stay.status_code==200,stay.text
     token=client.headers['Authorization'].split(' ',1)[1]
     with socket.socket() as sock:
         sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
@@ -39,9 +42,9 @@ def test_browser_against_real_trip_apis(client,deep_user):
             first.locator('[data-edit=pin]').click()
             expect(page.get_by_role('dialog')).to_be_visible()
             page.get_by_role('button',name='Confirm change',exact=True).click()
-            expect(page.locator('#workspaceEditorContainer')).to_contain_text('Fixed booking / pinned')
+            expect(page.locator('#workspaceEditorContainer')).to_contain_text('Pinned')
             page.locator('[data-undo]').click()
-            expect(page.locator('#workspaceEditorContainer')).not_to_contain_text('Fixed booking / pinned')
+            expect(page.locator('#workspaceEditorContainer')).not_to_contain_text('Pinned')
             page.locator('[data-expenses]').click()
             expense=page.get_by_role('dialog')
             expense.locator('[name=description]').fill('Lunch expense')
@@ -99,7 +102,7 @@ def test_browser_against_real_trip_apis(client,deep_user):
             post.locator('[name=would_revisit]').select_option('yes')
             post.locator('[name=liked]').fill('Heritage walks')
             post.locator('[name=disliked]').fill('Busy roads')
-            expect(post.locator('[name=trip_type]')).to_have_value('family')
+            expect(post.locator('[name=trip_type]')).to_have_count(0)
             post.get_by_role('button',name='Submit and close out trip').click()
             expect(page.locator('#workspacePostContainer')).to_contain_text('feedback saved')
             expect(page.locator('#wsTabBtn-live')).to_be_disabled()

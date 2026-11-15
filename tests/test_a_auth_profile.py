@@ -72,6 +72,7 @@ def test_no_history_choice_completes_required_basic_gate(client):
     headers = {"Authorization": f"Bearer {user['token']}"}
     profile = client.post(f"/api/profile/{user['user_id']}", headers=headers, json={
         "residence_country": "IN", "residence_state": "Tamil Nadu", "residence_city": "Tirunelveli",
+        "gender":"other","daily_budget_inr":3000,
         "travel_goals": ["nature", "culture"], "place_interests": ["mountains", "historic"],
         "preferred_climate": "cool", "budget_tier": "mid_range", "companions": "partner",
     })
@@ -104,7 +105,7 @@ def test_history_validation_and_profile_gate(client):
         conn.execute("""INSERT INTO traveller_profiles(user_id,interests,pace,crowd_tolerance,structure,companions,has_children,budget_tier,preferred_climate,planning_experience,raw_answers_json)
           VALUES(?,?,?,?,?,?,?,?,?,?,?)""", (user["user_id"], "[]", .5, .5, .5, "solo", 0, "balanced", "mild", "intermediate", '{"age_group":"18_24","travel_experience":"occasional","companions":"solo","planning_approach":"plan_essentials","travel_goals":["nature","culture"],"place_interests":["mountains","history"],"experience_preference":"balanced_mix","dietary":["none"],"preferred_climate":"mild","budget_tier":"balanced","assistance_autonomy":"shortlist_explain"}'))
     with get_connection() as conn:
-        conn.execute("UPDATE user_profile SET residence_country='IN',residence_state='Tamil Nadu',residence_city='Tirunelveli',preferred_currency='INR' WHERE user_id=?",(user['user_id'],))
+        conn.execute("UPDATE user_profile SET residence_country='IN',residence_state='Tamil Nadu',residence_city='Tirunelveli',preferred_currency='INR',gender='other',daily_budget_inr=3000 WHERE user_id=?",(user['user_id'],))
     client.post("/api/profile/history/choice", headers=headers, json={"choice": "provided"})
     assert client.get("/api/profile/status", headers=headers).json() == {"profile_complete": True}
     try:

@@ -19,19 +19,21 @@ def test_unified_trip_creation_and_persistence(client):
         "residence_country":"IN","residence_state":"Tamil Nadu","residence_city":"Tirunelveli",
         "age_group": "25_34",
         "travel_experience": "occasional",
-        "companions": "family",
-        "planning_approach": "balanced",
-        "travel_goals": ["culture", "relaxation"],
-        "place_interests": ["historical_sites", "nature_spots"],
-        "experience_preference": "balanced",
+        "gender": "other",
+        "daily_budget_inr": 3000,
+        "companions": "family_kids",
+        "planning_approach": "plan_essentials",
+        "travel_goals": ["heritage_history", "relaxation_wellness"],
+        "place_interests": ["royal_forts_palaces", "himalayan_mountains"],
+        "experience_preference": "balanced_2_3",
         "dietary": ["vegetarian"],
-        "preferred_climate": "moderate",
+        "preferred_climate": "moderate_pleasant",
         "budget_tier": "mid_range",
-        "assistance_autonomy": "balanced",
+        "assistance_autonomy": "shortlist_with_explanations",
         "interests": ["heritage", "sightseeing"]
     }
     p_resp = client.post(f"/api/profile/{user_id}", json=profile_payload)
-    assert p_resp.status_code == 200
+    assert p_resp.status_code == 200, p_resp.text
     history = client.post('/api/profile/history/choice', json={'choice': 'none'})
     assert history.status_code == 200, history.text
     from conftest import complete_deep_profile

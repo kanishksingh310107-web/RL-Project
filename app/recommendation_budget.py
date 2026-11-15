@@ -332,7 +332,13 @@ def _allocation_summary(conn, trip, expenses):
     actual_allocated['local_transport'] += transport_remaining
 
     reserve_line = allocations.get('emergency_reserve', {})
-    if reserve_line and reserve_line.get('basis') != 'automatic':
+    if released:
+        # Releasing the reserve makes it available for ordinary trip costs;
+        # keep the configured amount for reference, but exclude it from the
+        # protected forecast and buffer calculation.
+        reserve = 0
+        remaining['emergency_reserve'] = 0
+    elif reserve_line and reserve_line.get('basis') != 'automatic':
         reserve = planned.get('emergency_reserve', 0)
     else:
         from app.core.assumptions import CONTINGENCY_RATE
