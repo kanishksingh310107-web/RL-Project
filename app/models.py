@@ -1,5 +1,5 @@
 # Data models for auth and traveller profile
-from pydantic import BaseModel, Field, model_validator, field_validator
+from pydantic import BaseModel, Field, model_validator, field_validator, StrictInt
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
 
@@ -38,6 +38,48 @@ class ShortProfileCreate(BaseModel):
     residence_state: Optional[str] = Field(default=None,max_length=100)
     residence_city: Optional[str] = Field(default=None,max_length=100)
     preferred_currency: Optional[str] = Field(default=None,max_length=3)
+    gender: Optional[Literal['male','female','other']] = None
+    daily_budget_inr: Optional[StrictInt] = Field(default=None,gt=0,le=1000000)
+
+    @field_validator('daily_budget_inr', mode='before')
+    @classmethod
+    def validate_daily_budget(cls,value):
+        if value is None:
+            return value
+        if isinstance(value,bool) or not isinstance(value,int):
+            raise ValueError('Enter a positive whole-rupee amount between ₹1 and ₹10,00,000.')
+        return value
+
+    @model_validator(mode='after')
+    def validate_basic_selections(self):
+        from app.questionnaire import QUESTIONS
+        mappings = {'age_group':'q1','travel_experience':'q2','companions':'q3','planning_approach':'q4',
+            'travel_goals':'q5','place_interests':'q14','experience_preference':'q17','dietary':'q20',
+            'preferred_climate':'q26','budget_tier':'q32','assistance_autonomy':'q41'}
+        supplied = self.model_fields_set
+        for field, qid in mappings.items():
+            if field not in supplied:
+                continue
+            value = getattr(self, field)
+            options = {str(item.get('id')) for item in QUESTIONS.get(qid, {}).get('options', [])}
+            if field in ('travel_goals','place_interests','dietary'):
+                if not isinstance(value, list) or len(value) > 30 or any(not isinstance(item,str) or not item.strip() or len(item)>60 for item in value):
+                    raise ValueError(f'{field.replace("_"," ").title()} must be a list of short, non-empty choices.')
+                aliases = {'travel_goals':{'nature':'nature_wildlife','culture':'heritage_history','adventure':'adventure_trekking'},
+                    'place_interests':{'mountains':'himalayan_mountains','historic':'royal_forts_palaces','beaches':'beaches_coastal'}}.get(field,{})
+                if options and any(item not in options and item not in aliases for item in value):
+                    raise ValueError(f'Choose valid options for {field.replace("_"," ").title()}.')
+                if field in ('travel_goals','place_interests') and len(set(value)) < 2:
+                    raise ValueError(f'Choose at least two {field.replace("_"," ")}.')
+            elif not isinstance(value,str) or not value.strip() or len(value)>80 or (options and value not in options):
+                raise ValueError(f'Choose a valid {field.replace("_"," ")}.')
+        for field in ('pace','crowd_tolerance','structure'):
+            value=getattr(self,field)
+            if not isinstance(value,(int,float)) or isinstance(value,bool) or not 0 <= value <= 1:
+                raise ValueError(f'{field.replace("_"," ").title()} must be from 0 to 1.')
+        if self.gender is not None and self.gender not in ('male','female','other'):
+            raise ValueError('Choose male, female or other.')
+        return self
 
     @field_validator('residence_country','residence_state','residence_city','preferred_currency',mode='before')
     @classmethod
@@ -78,6 +120,9 @@ class ProfileResponse(BaseModel):
     residence_state: Optional[str] = None
     residence_city: Optional[str] = None
     preferred_currency: str = 'INR'
+    residence_country_name: Optional[str] = None
+    gender: Optional[Literal['male','female','other']] = None
+    daily_budget_inr: Optional[int] = None
     user_id: str
     profile_type: str
     interests: List[str]

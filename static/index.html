@@ -215,6 +215,15 @@
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="basicCompanionsGrid"></div>
           </div>
 
+          <!-- A: profile-discovery-refresh basic gender field -->
+          <label class="block text-xs font-bold text-slate-800">Gender
+            <select id="basicGender" required class="block mt-1 w-full border rounded-lg p-2 bg-white">
+              <option value="">Choose an option</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
+            </select>
+            <span id="basicGenderError" role="alert" class="block text-xs text-rose-700 mt-1"></span>
+          </label>
+          <!-- end A: profile-discovery-refresh basic gender field -->
+
           <!-- Planning Approach -->
           <div>
             <label class="block text-xs font-bold text-slate-800 mb-2">What is your usual approach to planning a trip?</label>
@@ -293,6 +302,14 @@
             <label class="block text-xs font-bold text-slate-800 mb-2">How would you describe your typical travel budget?</label>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5" id="basicBudgetGrid"></div>
           </div>
+
+          <!-- A: profile-discovery-refresh per-person daily INR budget -->
+          <label class="block text-xs font-bold text-slate-800">Usual budget per person per day (INR)
+            <input id="basicDailyBudget" name="daily_budget_inr" type="number" inputmode="numeric" min="1" max="1000000" step="1" required maxlength="7" placeholder="e.g. 3500" class="block mt-1 w-full border rounded-lg p-2 bg-white">
+            <span class="block text-xs font-normal text-slate-500 mt-1">This is a suggestion for planning. You can set a different total budget for every trip.</span>
+            <span id="basicDailyBudgetError" role="alert" class="block text-xs text-rose-700 mt-1"></span>
+          </label>
+          <!-- end A: profile-discovery-refresh per-person daily INR budget -->
 
           <!-- Assistance Autonomy -->
           <div>
@@ -1235,7 +1252,7 @@
                 </label>
                 <span id="sliderAllowanceLabel" class="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">₹0</span>
               </div>
-              <input type="range" id="tripBudgetSlider" min="5000" max="60000" step="500" value="25000" oninput="onBudgetSliderChange(this.value)" class="w-full accent-emerald-600 cursor-pointer">
+              <input type="range" id="tripBudgetSlider" min="1000" max="1000000" step="1000" value="1000" oninput="onBudgetSliderChange(this.value)" class="w-full accent-emerald-600 cursor-pointer">
               <div class="flex justify-between text-[10px] text-slate-400">
                 <span id="sliderMinLabel">Min: ₹0</span>
                 <span id="sliderStatusLabel" class="font-medium text-slate-600">Drag right to increase travel comfort</span>
@@ -1251,7 +1268,10 @@
                 <span>Selected Budget (₹ INR)</span>
                 <span id="budgetTierBadge" class="text-[10px] font-bold text-emerald-600">Comfortable</span>
               </label>
-              <input type="number" id="tripBudgetInput" min="1000" max="1000000" step="1" value="25000" oninput="onBudgetNumberInputChange(this.value)" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-slate-800">
+              <input type="number" id="tripBudgetInput" min="1000" max="1000000" step="1" value="" placeholder="Enter whole-party trip budget" oninput="onBudgetNumberInputChange(this.value)" class="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white font-bold text-slate-800">
+              <!-- A: profile-discovery-refresh budget guidance -->
+              <p class="mt-1 text-[11px] text-slate-500">Whole-party budget for this trip. Your profile’s per-person daily budget is only a suggested starting point.</p>
+              <!-- end A: profile-discovery-refresh budget guidance -->
               <p id="tripBudgetCurrencyPreview" class="text-[11px] text-slate-500 mt-1" role="status"></p>
             </div>
             <div>
@@ -1334,6 +1354,9 @@
             <div id="optionAHotelLoading" class="hidden text-center py-3 text-slate-500 text-[11px]">
               <i class="fa-solid fa-spinner fa-spin mr-1 text-indigo-600"></i> Querying accommodations (actual properties without fabricated rates)...
             </div>
+            <!-- A: profile-discovery-refresh inline stay search validation -->
+            <p id="staySearchError" class="hidden text-rose-700 text-[11px]" role="alert"></p>
+            <!-- end A: profile-discovery-refresh inline stay search validation -->
             <div id="optionAHotelResults" class="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               <!-- Dynamically populated -->
             </div>
@@ -1475,6 +1498,9 @@
   <script src="/static/modules/profile.js"></script>
   <script src="/static/modules/residence.js"></script>
   <script src="/static/modules/google_login.js"></script>
+  <!-- A: profile-discovery-refresh -->
+  <script src="/static/modules/profile_discovery_refresh.js"></script>
+  <!-- end A: profile-discovery-refresh -->
   <!-- end A: profile/history UI modules -->
   <!-- B: schedule preferences module -->
   <script src="/static/modules/schedule_prefs.js"></script>

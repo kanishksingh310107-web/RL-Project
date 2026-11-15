@@ -285,7 +285,7 @@ def _refresh_complete(conn, user_id: str) -> bool:
         profile = dict(prof) if prof else {}
         home = conn.execute('SELECT * FROM user_profile WHERE user_id=?',(user_id,)).fetchone()
         if home:
-            profile.update({key:home[key] for key in ('residence_country','residence_state','residence_city','preferred_currency')})
+            profile.update({key:home[key] for key in ('residence_country','residence_state','residence_city','preferred_currency','gender','daily_budget_inr')})
         if prof and prof["raw_answers_json"]:
             raw = json.loads(prof["raw_answers_json"])
             profile["raw_answers"] = raw

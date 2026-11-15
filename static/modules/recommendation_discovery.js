@@ -13,20 +13,26 @@
   const entry=U.el('section',null,'ex-discovery');entry.id='exDiscovery';
   entry.append(U.el('h2','Where will you go next?'),U.el('p','Discover places that fit you, compare your choices, then turn a favourite into a trip.','ex-muted'));
   const actions=U.el('div',null,'ex-entry-actions');
-  actions.append(U.button('I know my destination',()=>window.toggleTripFormModal(),'ex-primary'),U.button('Help me choose',()=>openDiscovery()),U.button('Explore my budget',()=>window.BudgetExperience?.openOptions()));entry.append(actions);
+  const comingUp=U.button('Coming Up Next',()=>{
+    const target=[...shelves.querySelectorAll('section')].find(section=>section.querySelector('h3')?.textContent.toLowerCase().includes('seasonal'))||mainColumn.querySelector('#seasonalGrid');
+    if(target){target.scrollIntoView({behavior:'smooth',block:'start'});target.classList.add('ex-coming-up-focus');setTimeout(()=>target.classList.remove('ex-coming-up-focus'),1800);}
+    else openDiscovery();
+  },'ex-primary');
+  actions.append(comingUp,U.button('Help me choose',()=>openDiscovery()),U.button('Explore my budget',()=>window.BudgetExperience?.openOptions()));entry.append(actions);
   const shelves=U.el('div');shelves.id='exRecommendationShelves';const selection=U.el('aside',null,'ex-comparison-bar');selection.id='exComparisonBar';selection.hidden=true;entry.append(shelves,selection);mainColumn.prepend(entry);
-  const moreDestinations=U.el('details',null,'ex-more-destinations');moreDestinations.append(U.el('summary','More destinations & seasonal ideas'));mainColumn.append(moreDestinations);moreDestinations.append(root);
+  const moreDestinations=U.el('details',null,'ex-more-destinations');moreDestinations.open=true;moreDestinations.append(U.el('summary','More destinations & seasonal ideas'));mainColumn.append(moreDestinations);moreDestinations.append(root);
+  moreDestinations.addEventListener('toggle',()=>{if(!moreDestinations.open)moreDestinations.open=true;});
   const notice=U.status(entry);
   const savedState=U.el('div',null,'ex-saved-state');savedState.hidden=true;savedState.setAttribute('role','status');savedState.setAttribute('aria-live','polite');entry.append(savedState);
   const isHome=item=>window.TripExperience?.isHomeDestination(item);
   const canonicalId=item=>item.destination_id||item.id;
   const name=item=>item.name||item.destination_name||'Destination';
   const headingText=value=>({
-    'within your budget':shelfUsesPersonalContext?'Within your budget':'Sample trips under ₹50,000',
+    'within your budget':'Within your budget',
     'recommended for you':'Recommended for you',
     'selected for your profile':'Selected for your profile',
-    'trending destinations':'Trending destinations',
-    'seasonal & upcoming experiences':'Seasonal & upcoming experiences'
+    'trending destinations':'Popular in our destination guide',
+    'seasonal & upcoming experiences':'Seasonal ideas for the coming months'
   })[String(value||'').trim().toLocaleLowerCase()]||String(value||'').trim().replace(/^\p{L}/u,letter=>letter.toLocaleUpperCase());
   const texts=value=>Array.isArray(value)?value.map(v=>typeof v==='string'?v:v.message||v.text||'').filter(Boolean):typeof value==='string'?[value]:[];
   const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation||item.because_you_said||item.why_it_suits).map(value=>A.text(value).replace(/\s*\(Q\d+\)/gi,'').replace(/_/g,' '));
@@ -71,6 +77,10 @@
   const rawCard=window.renderRecommendationCard;
   if(typeof rawCard==='function')window.renderRecommendationCard=function(item,category){
     const card=rawCard(item,category);register(item);
+    if(category==='trending'){
+      const badge=[...card.querySelectorAll('span')].find(node=>node.textContent.trim()==='Trending now');
+      if(badge)badge.textContent='Popular in our destination guide';
+    }
     const explanation=U.el('div',null,'ex-card-explanation');
     if(!item.because_you_said&&!item.why_it_suits)U.lines(explanation,'Why this place?',reasons(item).slice(0,2));
     const downside=item.tradeoff||item.trade_off||item.drawback;if(downside)explanation.append(U.el('p','Trade-off: '+A.text(downside),'ex-muted'));
@@ -79,7 +89,13 @@
     feedbackControls(item,target,{});card.append(target);return card;
   };
   function card(item,context={},savedOnly=false) {
-    register(item);const box=U.el('article',null,'ex-destination-card');box.append(U.el('h3',name(item)));
+    register(item);const box=U.el('article',null,'ex-destination-card');
+    const photo=U.el('img');photo.className='ex-destination-photo';photo.alt='Photo of '+name(item);photo.loading='lazy';photo.decoding='async';
+    const fallback='/static/images/destination-placeholder.svg';
+    let imageUrl=typeof item.image_url==='string'?item.image_url.trim():'';
+    try{const parsed=new URL(imageUrl,location.origin);if(!['https:','http:'].includes(parsed.protocol)||(parsed.protocol==='http:'&&location.protocol==='https:'))imageUrl='';else imageUrl=parsed.href;}catch(_){imageUrl='';}
+    photo.src=imageUrl||fallback;photo.onerror=()=>{photo.onerror=null;photo.src=fallback;};
+    box.append(photo,U.el('h3',name(item)));
     if(!savedOnly){
     box.append(U.el('strong',window.TripExperience.matchLabel(item)));
     U.lines(box,'Why this fits',reasons(item));
@@ -129,9 +145,14 @@
     U.field(f,'start_date','Departure date',{type:'date',min:U.today(),value:discoveryContext.start_date||'',required:true});U.field(f,'end_date','Return date',{type:'date',min:U.today(),value:discoveryContext.end_date||'',required:true});
     U.field(f,'duration_days','Duration (days)',{type:'number',min:1,max:90,value:discoveryContext.duration_days||3});
     const dateMode=()=>{for(const name of ['start_date','end_date']){f.elements[name].disabled=dates.value!=='dates';f.elements[name].closest('label').hidden=dates.value!=='dates';}f.elements.duration_days.disabled=dates.value!=='flexible';f.elements.duration_days.closest('label').hidden=dates.value!=='flexible';};dates.onchange=dateMode;dateMode();
-    U.field(f,'total_budget','Comfortable total budget (whole INR)',{type:'number',min:1000,value:discoveryContext.total_budget||25000,help:'Include stay, food, travel, activities and shopping. This is for the whole party.',required:true});
-    U.field(f,'trip_type','Trip type',{options:[['solo','Solo'],['couple','Couple'],['friends','Friends'],['family','Family — adults, with or without children']],value:discoveryContext.trip_type||'solo'});
-    for(const [key,title,value] of [['adults','Adults',1],['children','Children',0],['seniors','Seniors',0]])U.field(f,key,title,{type:'number',min:key==='adults'?1:0,max:30,value:discoveryContext[key]??value,required:true});
+    const companion=String(profile.companions||'').toLowerCase();const defaultParty=({alone:1,solo:1,partner:2,friends:2,family_kids:3,family_children:3,family_seniors:3})[companion]||1;
+    const defaultTripType=({alone:'solo',solo:'solo',partner:'couple',friends:'friends',family_kids:'family',family_children:'family',family_seniors:'family'})[companion]||'solo';
+    const suggestedParty=Number(discoveryContext.party_size)||Number(discoveryContext.adults||0)+Number(discoveryContext.children||0)+Number(discoveryContext.seniors||0)||defaultParty;
+    const suggestedDays=discoveryContext.start_date&&discoveryContext.end_date?Math.max(1,Math.round((Date.parse(discoveryContext.end_date+'T00:00:00Z')-Date.parse(discoveryContext.start_date+'T00:00:00Z'))/86400000)+1):Number(discoveryContext.duration_days)||3;
+    const profileSuggestedBudget=Number.isInteger(Number(profile.daily_budget_inr))?Math.min(1000000,Number(profile.daily_budget_inr)*suggestedDays*suggestedParty):'';
+    U.field(f,'total_budget','Comfortable total budget (whole INR)',{type:'number',min:1000,max:1000000,value:discoveryContext.total_budget||profileSuggestedBudget||'',help:profileSuggestedBudget?`Suggested from ₹${Number(profile.daily_budget_inr).toLocaleString('en-IN')} per person/day × ${suggestedParty} traveller(s) × ${suggestedDays} days. Edit this whole-party amount for this trip.`:'Enter a whole-party budget for this trip. Add a daily budget in your profile to prefill this next time.',required:true});
+    U.field(f,'trip_type','Trip type',{options:[['solo','Solo'],['couple','Couple'],['friends','Friends'],['family','Family — adults, with or without children']],value:discoveryContext.trip_type||defaultTripType});
+    for(const [key,title,value] of [['adults','Adults',defaultParty],['children','Children',0],['seniors','Seniors',0]])U.field(f,key,title,{type:'number',min:key==='adults'?1:0,max:30,value:discoveryContext[key]??value,required:true});
     U.field(f,'mood','What kind of trip feels right?',{options:[['mixed','A mix'],['relaxing','Relaxing'],['adventure','Adventure'],['nature','Nature'],['food','Food'],['culture','Culture']],value:discoveryContext.mood||'mixed'});
     U.field(f,'max_travel_hours','Maximum travel time (hours, optional)',{type:'number',min:0.1,max:24,value:discoveryContext.max_travel_hours||''});
     U.field(f,'transport','Preferred transport',{options:[['any','Any'],['train','Train'],['flight','Flight'],['road','Road']],value:discoveryContext.transport||'any'});
@@ -165,7 +186,7 @@
     const d=U.dialog('Use this recommendation in your planner?','The destination will be selected. Your existing form values stay unless you explicitly choose to replace them.');
     d.content.append(U.el('h3',name(item)));U.lines(d.content,'Suggested planning details',[context.origin?'From '+context.origin:'',context.start_date?context.start_date+' – '+context.end_date:context.duration_days?context.duration_days+' days · exact dates undecided':'',context.total_budget?'Whole-party budget '+A.money(context.total_budget):'',context.trip_type?'Trip type: '+context.trip_type:''].filter(Boolean));
     const label=U.el('label');const replace=U.el('input');replace.type='checkbox';label.append(replace,document.createTextNode(' Replace existing dates, party and budget with these suggested values'));d.content.append(label);
-    const apply=U.button('Confirm and open planner',()=>{handoff={owner:A.uid(),item,context,replace:replace.checked};d.box.close();if(location.hash==='#/trips/new')window.TripExperience.route();else location.hash='/trips/new';},'ex-primary');d.actions.prepend(apply);
+    const apply=U.button('Confirm and open planner',()=>{window.dispatchEvent(new Event('trip:recommendation-handoff-start'));handoff={owner:A.uid(),item,context,replace:replace.checked};d.box.close();if(location.hash==='#/trips/new')window.TripExperience.route();else location.hash='/trips/new';},'ex-primary');d.actions.prepend(apply);
   }
   window.addEventListener('trip:creation-ready',async()=>{
     if(!handoff||handoff.owner!==A.uid())return;const choice=handoff;handoff=null;
@@ -177,7 +198,7 @@
     const v=choice.context,map={origin:'tripDepartureInput',start_date:'tripStartDateInput',end_date:'tripEndDateInput',total_budget:'tripBudgetInput',trip_type:'teTripType',adults:'tripAdultsInput',children:'tripChildrenInput',seniors:'tripSeniorsInput'};
     for(const [key,field] of Object.entries(map)){const input=document.getElementById(field);if(input&&v[key]!==undefined&&(choice.replace||!input.value))input.value=v[key];}
     if(choice.replace)window.syncTripPartyFromCounts?.();document.getElementById('tripCreateForm').dispatchEvent(new Event('input',{bubbles:true}));
-    const note=U.el('p',choice.replace?'Suggested dates, party and budget were transferred. Review every field before creating your trip.':'Destination selected. Existing dates, party and budget were kept.','ex-note');document.getElementById('teFormError')?.before(note);select.dispatchEvent(new Event('change',{bubbles:true}));
+    const note=U.el('p',choice.replace?'Suggested dates, party and budget were transferred. Review every field before creating your trip.':'Destination selected. Existing dates, party and budget were kept.','ex-note');document.getElementById('teFormError')?.before(note);select.dispatchEvent(new Event('change',{bubbles:true}));window.dispatchEvent(new Event('trip:recommendation-prefill-applied'));
   });
   async function loadShelves() {
     checkOwner();if(!A.uid())return;
@@ -210,8 +231,10 @@
       const response=shelvesResult.value;
       shelfUsesPersonalContext=response.personalized_context===true;
       if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
+      shelves.append(U.el('p','Trip costs are indicative estimates with a contingency allowance; lodging and travel prices are not confirmed quotes.','ex-muted'));
+      if((response.groups||[]).some(group=>String(group.title||'').toLowerCase().includes('seasonal')))shelves.append(U.el('p','Seasonal windows come from the destination guide; confirm festival dates and local conditions before booking.','ex-muted'));
       const groups=Array.isArray(response.groups)?response.groups:[];
-      const shown=new Set();for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>{const id=canonicalId(item);if(isHome(item)||shown.has(id))return false;shown.add(id);return true;});if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',headingText(A.text(group.title))));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
+      const shown=new Set();for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>{const id=canonicalId(item);if(isHome(item)||shown.has(id))return false;shown.add(id);return true;});if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',headingText(A.text(group.title))));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,discoveryContext));section.append(grid);shelves.append(section);}
     }else if(A.can('discovery')){
       moreDestinations.open=true;U.unavailable(shelves,shelvesResult.reason?.message||'Recommendations could not be loaded. Please retry.',loadShelves);
     }else moreDestinations.open=true;

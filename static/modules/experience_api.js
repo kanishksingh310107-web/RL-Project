@@ -7,8 +7,11 @@
   const clientCategory=c=>c==='intercity_travel'?'intercity_transport':c;
   const previews=new Map(),assistantPreviews=new Map(),conversations=new Map();
   function discoveryBody(v={}) {
-    const party=v.party||v;
-    return {origin:v.origin||null,...(v.date_mode==='dates'?{start_date:v.start_date,end_date:v.end_date}:{duration_days:Number(v.duration_days||3)}),comfortable_budget_inr:Number(v.total_budget||50000),party_size:Number(party.adults||1)+Number(party.children||0)+Number(party.seniors||0),trip_type:v.trip_type||'solo',mood:v.mood==='mixed'?null:v.mood,transport:v.transport==='any'?null:v.transport==='road'?'driving':v.transport||null,...(v.max_travel_hours!=null&&v.max_travel_hours!==''?{max_travel_minutes:Math.round(Number(v.max_travel_hours)*60)}:{}),walking_limit_km:v.walking_limit_km==null||v.walking_limit_km===''?null:Number(v.walking_limit_km),accessibility:v.accessibility?[v.accessibility]:[]};
+    const party=v.party||v;const exact=Boolean(v.start_date&&v.end_date)&&(v.date_mode==='dates'||!v.date_mode);
+    const rawAccessibility=v.accessibility;
+    const accessibility=Array.isArray(rawAccessibility)?rawAccessibility.filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim()):typeof rawAccessibility==='string'&&rawAccessibility.trim()?[rawAccessibility.trim()]:[];
+    const count=Number(v.party_size)||Number(party.adults||0)+Number(party.children||0)+Number(party.seniors||0)||1;
+    return {origin:typeof v.origin==='string'&&v.origin.trim()?v.origin.trim():null,...(exact?{start_date:v.start_date,end_date:v.end_date}:{duration_days:Number(v.duration_days||3)}),comfortable_budget_inr:v.total_budget==null||v.total_budget===''?null:Number(v.total_budget),party_size:count,trip_type:v.trip_type||'solo',mood:v.mood==='mixed'?null:v.mood,transport:v.transport==='any'?null:v.transport==='road'?'driving':v.transport||null,...(v.max_travel_hours!=null&&v.max_travel_hours!==''?{max_travel_minutes:Math.round(Number(v.max_travel_hours)*60)}:{}),walking_limit_km:v.walking_limit_km==null||v.walking_limit_km===''?null:Number(v.walking_limit_km),accessibility};
   }
   function destination(d) {
     return {...d,travel_time_label:d.travel_time_label||(d.estimated_travel_minutes!=null?'About '+Math.floor(d.estimated_travel_minutes/60)+'h '+(d.estimated_travel_minutes%60)+'m · indicative; route unverified':undefined),estimated_total_inr:d.estimated_total_inr??d.estimated_total_cost_inr,tradeoff:d.tradeoff||d.trade_off,estimate_note:d.estimate_note||(d.estimate_limitations||[]).join(' '),is_shortlisted:d.is_shortlisted??d.saved,comparison_basis:typeof d.comparison_basis==='string'?d.comparison_basis:`${d.duration_days||3} days · same party and cost scope`,sample_itinerary:Array.isArray(d.sample_itinerary)&&d.sample_itinerary[0]?.name?[{day_number:1,activities:d.sample_itinerary.map(a=>a.name)}]:d.sample_itinerary};
@@ -43,7 +46,7 @@
     } else if(values.date_mode==='flexible') {
       if(!integer(values.duration_days,1,90))e.duration_days='Choose 1–90 days. Exact dates can be decided later.';
     } else e.date_mode='Choose exact dates or a flexible duration.';
-    if(!integer(values.total_budget,1000))e.total_budget='Enter a whole-rupee total budget of at least ₹1,000.';
+    if(!integer(values.total_budget,1000,1000000))e.total_budget='Enter a whole-rupee total budget from ₹1,000 to ₹10,00,000.';
     if(!['solo','couple','friends','family'].includes(values.trip_type))e.trip_type='Choose a valid trip type.';
     let size=0;
     for(const key of ['adults','children','seniors']){if(!integer(values[key],key==='adults'?1:0,30))e[key]='Enter a whole number from '+(key==='adults'?1:0)+' to 30.';size+=Number(values[key]);}
@@ -80,7 +83,13 @@
       let data={};
       if(response.status!==204){try{data=await response.json();}catch(_){throw new Error('The server response could not be read. Your entries are kept. Please retry.');}}
       if(data===null||typeof data!=='object')throw new Error('The server returned an unreadable response. Your entries are kept; please retry.');
-      if(!response.ok){const error=new Error(text(typeof data.detail==='string'?data.detail:'This action could not be completed. Please retry.'));error.field=data.field;error.code=data.code;error.status=response.status;throw error;}
+      if(!response.ok){
+        const issue=Array.isArray(data.detail)?data.detail[0]:null;
+        const path=Array.isArray(issue?.loc)?issue.loc.filter(part=>!['body','query','path'].includes(part)):[];
+        const field=data.field||(path.length?String(path[path.length-1]):null);
+        const message=typeof data.detail==='string'?data.detail:issue?.msg?String(issue.msg).replace(/^Value error,\s*/,''):'This action could not be completed. Please retry.';
+        const error=new Error(text(message));error.field=field;error.code=data.code;error.status=response.status;throw error;
+      }
       return data;
     }catch(error){if(error.name==='AbortError')throw new Error('The request timed out. Your entries are kept; please retry.');if(error instanceof TypeError)throw new Error('Connection failed. Your entries are kept; please retry.');throw error;}finally{clearTimeout(timer);}
   }
@@ -102,7 +111,7 @@
   const API={
     capabilities,can,request,contextKey,nonce,uid,user,tripId,workspaceTrip,esc,text,amount,money,integer,isoDate,discoveryErrors,expenseErrors,normalizeSummary,categories,
     async discover(body){requireFeature('discovery');const r=await request('/api/discovery/suggestions',{method:'POST',body:discoveryBody(body)});return {...r,recommendations:r.recommendations.map(destination),assumptions:r.limitations};},
-    async shelves(context={}){let path='/api/discovery/recommendations';if(context.total_budget!=null){const params=new URLSearchParams();for(const [key,value]of Object.entries(discoveryBody(context)))if(value!==null&&value!==undefined)params.set(key,String(value));path+='?'+params.toString();}const r=await request(path);return {...r,groups:Array.isArray(r.groups)?r.groups:Object.entries(r.groups||{}).map(([key,entries])=>({title:key.replace(/_/g,' '),destinations:entries.map(destination)}))};},
+    async shelves(context={}){let path='/api/discovery/recommendations';if(context.total_budget!=null||context.duration_days!=null||context.start_date||context.end_date||context.party){const params=new URLSearchParams();for(const [key,value]of Object.entries(discoveryBody(context)))if(value!==null&&value!==undefined)params.set(key,String(value));path+='?'+params.toString();}const r=await request(path);return {...r,groups:Array.isArray(r.groups)?r.groups:Object.entries(r.groups||{}).map(([key,entries])=>({title:key.replace(/_/g,' '),destinations:entries.map(destination)}))};},
     async savedPlaces(){const r=await request('/api/discovery/saved');return {...r,destinations:(r.destinations||[]).map(destination)};},
     async feedback(body){requireFeature('discovery');return request('/api/discovery/feedback',{method:'POST',body:{destination_id:body.destination_id,action:body.action,reason:({too_expensive:'cost',too_far:'distance',too_crowded:'crowding',wrong_activity_type:'unsuitable_activities',not_interested:'other'})[body.reason]||body.reason||null}});},
     async compare(ids,context={}){requireFeature('discovery');if(ids.length<2||ids.length>3||new Set(ids).size!==ids.length)throw new Error('Select two or three different destinations.');const r=await request('/api/discovery/compare',{method:'POST',body:{destination_ids:ids,context:discoveryBody(context)}});return {...r,destinations:r.destinations.map(destination)};},

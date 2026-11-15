@@ -875,9 +875,9 @@
       "type": "single",
       "required": false,
       "show_if": {
-        "q": "b03_companions",
+        "q": "gender",
         "includes_any": [
-          "solo"
+          "female"
         ]
       },
       "refines": "party.composition",
