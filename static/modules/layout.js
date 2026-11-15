@@ -5,6 +5,7 @@
   const headerActions = byId('headerTripActions');
   const main = document.querySelector('main');
   const dashboard = byId('dashboardView');
+  const tripView = byId('tripExperienceView');
   if (!headerActions || !main || !dashboard) return;
 
   const overview = document.createElement('div');
@@ -118,6 +119,14 @@
     main.dataset.screen = !byId('authView').classList.contains('hidden') ? 'auth'
       : !byId('onboardingView').classList.contains('hidden') ? 'onboarding' : 'app';
     const path = location.hash.slice(1) || '/';
+    let page = main.dataset.screen;
+    if (page === 'app') {
+      if (!tripView || tripView.hidden) page = 'discover';
+      else if (path === '/trips') page = 'trips';
+      else if (path === '/trips/new' || path.endsWith('/edit')) page = 'plan';
+      else page = 'trip';
+    }
+    document.body.dataset.page = page;
     for (const link of headerActions.querySelectorAll('a')) {
       if (link.hash === '#/' && path === '/' || link.hash === '#/trips' && path.startsWith('/trips') && path !== '/trips/new') link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
@@ -151,6 +160,7 @@
   }
   const observer = new MutationObserver(sync);
   for (const id of ['authView', 'onboardingView', 'dashboardView']) observer.observe(byId(id), {attributes: true, attributeFilter: ['class', 'hidden']});
+  if (tripView) observer.observe(tripView, {attributes: true, attributeFilter: ['hidden']});
   observer.observe(dashboard, {subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'hidden']});
   window.addEventListener('hashchange', sync);
   window.DashboardLayout = {refresh: sync};

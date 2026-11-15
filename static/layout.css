@@ -129,3 +129,194 @@ body:has(#headerTripActions:not([hidden])) .te-workspace-nav a:not(:first-child)
   .te-form-page > div { padding: 18px; }
 }
 @media print { body > header,.app-header-actions { display: none!important; }.app-main { padding: 0; } }
+
+/* Travel guide palette: mist, sandstone, deep ink, lake blue and clay. */
+:root {
+  --app-paper: #EDF3F4;
+  --app-surface: #FFFDFA;
+  --app-sand: #F0E9DC;
+  --app-ink: #192E3A;
+  --app-muted: #52636C;
+  --app-accent: #24566D;
+  --app-accent-hover: #1A4256;
+  --app-accent-tint: #E1EEF2;
+  --app-accent-line: #B9CED7;
+  --app-focus: #32718B;
+  --app-clay: #A14B36;
+  --app-clay-hover: #833B2A;
+  --app-line: #DBDDD8;
+}
+body.bg-slate-50 { background: var(--app-paper); color: var(--app-ink); }
+body > header { background: var(--app-surface); border-bottom: 1px solid var(--app-line); }
+.app-nav-link { color: var(--app-muted); }
+.app-nav-link:hover,.app-nav-link[aria-current] { background: var(--app-accent-tint); color: var(--app-accent); }
+.app-plan-button { border-color: var(--app-accent); background: var(--app-accent); box-shadow: 0 3px 8px rgb(36 86 109 / .14); }
+.app-plan-button:hover:not(:disabled) { background: var(--app-accent-hover); }
+
+/* Map the existing accent utilities to lake blue. */
+.bg-indigo-500,.bg-indigo-600,.bg-indigo-700 { background-color: var(--app-accent)!important; }
+[class~="hover:bg-indigo-700"]:hover,[class~="hover:bg-indigo-800"]:hover { background-color: var(--app-accent-hover)!important; }
+.text-indigo-500,.text-indigo-600,.text-indigo-700,.text-indigo-800,.text-indigo-900 { color: var(--app-accent)!important; }
+.border-indigo-200,.border-indigo-300 { border-color: var(--app-accent-line)!important; }
+.bg-indigo-50,[class~="hover:bg-indigo-50"]:hover { background-color: var(--app-accent-tint)!important; }
+[class~="focus:ring-indigo-500"]:focus,[class~="focus:ring-emerald-500"]:focus { --tw-ring-color: var(--app-focus)!important; }
+
+/* Shared surfaces and the profile callout. */
+#authView,#dashBasicProfileCard,#personalProfileSummaryCard,#recommendationsSection,#itineraryPlannerSection,.ex-discovery,.ex-saved-places {
+  background: var(--app-surface);
+  border-color: var(--app-line);
+  box-shadow: 0 3px 12px rgb(25 46 58 / .06);
+}
+#personalProfileBanner { background: var(--app-sand); border-color: var(--app-line); color: var(--app-ink); }
+#personalProfileBanner p { color: var(--app-muted); }
+#personalProfileBanner .bg-amber-400:not(button) { background: #E8D7C8; color: #733926!important; }
+#personalProfileBanner button { background: var(--app-clay); color: white!important; }
+#personalProfileBanner button:hover { background: var(--app-clay-hover); }
+#authView .bg-slate-100 { background-color: var(--app-sand); }
+body .bg-slate-50 { background-color: var(--app-sand); }
+#dashboardView .border-slate-100,.border-slate-200 { border-color: var(--app-line)!important; }
+.text-slate-900,.text-slate-800,.text-slate-700 { color: var(--app-ink)!important; }
+.text-slate-600,.text-slate-500 { color: var(--app-muted)!important; }
+
+/* Component styles used by auth, discovery and the travel assistant. */
+.ex-primary,.ex-entry-actions .ex-primary,.ex-assistant-launcher {
+  background-color: var(--app-accent);
+  border-color: var(--app-accent);
+}
+.ex-primary:hover:not(:disabled),.ex-entry-actions .ex-primary:hover:not(:disabled),.ex-assistant-launcher:hover {
+  background-color: var(--app-accent-hover);
+}
+.ex-assistant-launcher { box-shadow: 0 4px 16px rgb(36 86 109 / .18); }
+.ex-dialog a,.ex-stop-details a { color: var(--app-accent); }
+.ex-entry-actions,.ex-destination-card,.te-card,.ex-budget,.ex-shopping { border-color: var(--app-line); }
+.ex-saved-places h2 { color: var(--app-ink); }
+#authView input:focus-visible,#authView button:focus-visible,
+.ex-dialog :focus-visible,.ex-discovery :focus-visible,.ex-budget :focus-visible,.ex-assistant-launcher:focus-visible {
+  outline-color: var(--app-focus);
+}
+.selectable-card.selected {
+  border-color: var(--app-focus)!important;
+  background-color: var(--app-accent-tint)!important;
+  color: var(--app-accent)!important;
+  box-shadow: 0 4px 12px -2px rgb(36 86 109 / .15);
+}
+
+/* Each screen takes its colors from the photo behind it. */
+@media screen {
+  body[data-page] {
+    isolation: isolate;
+    --photo-position: center 60%;
+    --panel-opacity: 87%;
+    --app-panel: color-mix(in srgb, var(--app-surface) var(--panel-opacity), transparent);
+    --app-accent-hover: color-mix(in srgb, var(--app-accent) 80%, #141A20);
+    --app-accent-tint: color-mix(in srgb, var(--app-accent) 10%, var(--app-surface));
+    --app-accent-line: color-mix(in srgb, var(--app-accent) 32%, var(--app-surface));
+    --app-focus: var(--app-accent);
+    --app-line: color-mix(in srgb, var(--app-accent) 22%, var(--app-surface));
+  }
+
+  body[data-page="auth"] {
+    --page-photo: url("./images/hawa-mahal-kiran-kr.jpg");
+    --app-paper: #F0DFCE;
+    --app-surface: #FFF4E7;
+    --app-sand: #F4DFCA;
+    --app-ink: #35241F;
+    --app-muted: #5D483C;
+    --app-accent: #863F2C;
+    --panel-opacity: 84%;
+  }
+
+  body[data-page="onboarding"] {
+    --page-photo: url("./images/tea-hills-artosuraj.jpg");
+    --photo-position: center 68%;
+    --app-paper: #E7ECE1;
+    --app-surface: #F6F9F1;
+    --app-sand: #E4ECDD;
+    --app-ink: #26362B;
+    --app-muted: #46594B;
+    --app-accent: #365740;
+    --panel-opacity: 90%;
+  }
+
+  body[data-page="discover"] {
+    --page-photo: url("./images/udaipur-digitalbuggu.jpg");
+    --photo-position: center 62%;
+  }
+
+  body[data-page="trips"] {
+    --page-photo: url("./images/hill-town-debraj-roy.jpg");
+    --app-paper: #EBE7EC;
+    --app-surface: #FAF5F7;
+    --app-sand: #EDE2E8;
+    --app-ink: #312A39;
+    --app-muted: #594B5B;
+    --app-accent: #654865;
+  }
+
+  body[data-page="plan"] {
+    --page-photo: url("./images/gadisar-pushpak-maheshwari.jpg");
+    --photo-position: center 70%;
+    --app-paper: #F3E9D6;
+    --app-surface: #FFF7E8;
+    --app-sand: #F2E4CA;
+    --app-ink: #392C1D;
+    --app-muted: #5D503A;
+    --app-accent: #775017;
+    --panel-opacity: 90%;
+  }
+
+  body[data-page="trip"] {
+    --page-photo: url("./images/mountain-lake-sam-clickx.jpg");
+    --photo-position: center 66%;
+    --app-paper: #E6EBEF;
+    --app-surface: #F4F7FA;
+    --app-sand: #E2E9F0;
+    --app-ink: #253443;
+    --app-muted: #47586A;
+    --app-accent: #3E5377;
+    --panel-opacity: 90%;
+  }
+
+  body[data-page]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: var(--page-photo) var(--photo-position) / cover no-repeat;
+  }
+
+  body[data-page] > header,
+  #authView,#onboardingView,#dashBasicProfileCard,#personalProfileSummaryCard,
+  #personalProfileBanner,#recommendationsSection,#itineraryPlannerSection,.ex-discovery,
+  #tripFormModal.te-form-page > div,#teTripList > .te-card,
+  .te-workspace-nav,#teRouteNotice {
+    background: var(--app-panel);
+    border-color: var(--app-line);
+    backdrop-filter: blur(10px);
+  }
+
+  body[data-page] .app-main > footer {
+    max-width: 46rem;
+    margin-inline: auto;
+    padding: .75rem 1rem;
+    border: 0;
+    color: #fff!important;
+    text-shadow: 0 1px 2px #17232b, 0 0 5px #17232b, 0 0 10px #17232b;
+  }
+
+  .te-workspace-nav,#teRouteNotice { padding: .5rem .75rem; border-radius: 10px; }
+  .te-workspace-nav a { color: var(--app-accent); }
+  .te-primary,.te-day-nav button[aria-current="true"] {
+    background-color: var(--app-accent);
+    border-color: var(--app-accent);
+  }
+  .te-card,.te-card input:not([type="checkbox"]),.te-card select,.te-card textarea,
+  .te-stop-content { color: var(--app-ink); }
+  .te-card p,.te-stop-content p { color: var(--app-muted); }
+  .te-card,.te-toolbar,.te-day-nav { background-color: var(--app-surface); }
+  .te-stop-content { border-left-color: var(--app-accent-line); }
+  #onboardingView [class~="bg-indigo-50/40"] { background-color: var(--app-accent-tint); }
+  #authView .text-slate-400,#onboardingView .text-slate-400 { color: var(--app-muted); }
+  .app-main :focus-visible { outline-color: var(--app-focus); }
+}
