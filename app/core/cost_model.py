@@ -103,7 +103,43 @@ def estimate_cost(trip, activities=None, minimum=False):
             continue  # meals are already accounted for in the daily food allowance
         tickets += activity_fee_inr(activity)
     ticket_people = party['adults'] + party['children'] * CHILD_ENTRY_FACTOR + party['seniors'] * SENIOR_ENTRY_FACTOR
-    components = {'intercity_transit': intercity, 'local_transit': local_daily * days * people,
+    # If the itinerary and a stay/destination anchor have coordinates, estimate
+    # local transport from the actual day-by-day legs. Keep the existing daily
+    # allowance as a disclosed fallback when route data is incomplete.
+    route_local_total = None
+    routed = [a for a in activities or [] if a.get('category') != 'food_dining' and a.get('status') != 'rejected']
+    anchor_lat = trip.get('stay_lat') if trip.get('stay_lat') is not None else dest.get('lat')
+    anchor_lon = trip.get('stay_lon') if trip.get('stay_lon') is not None else dest.get('lon')
+    if routed and anchor_lat is not None and anchor_lon is not None and all(a.get('latitude') is not None and a.get('longitude') is not None for a in routed):
+        from app.providers.geo import haversine_distance_km
+        from app.core.assumptions import LOCAL_LEG_RATE_INR, LOCAL_LEG_BASE_INR
+        local_mode = {'public_transit': 'bus_metro', 'train': 'bus_metro', 'bus': 'bus_metro',
+                      'taxi': 'cab', 'cab': 'cab', 'walking': 'walk', 'walk': 'walk',
+                      'rental_car': 'rental_car', 'scooter': 'scooter', 'auto': 'auto'}.get(selected_mode, 'cab')
+        route_local_total = 0
+        for day in range(1, days + 1):
+            day_activities = sorted((a for a in routed if int(a.get('day_number') or 0) == day),
+                                    key=lambda a: (int(a.get('order_index') or 0), str(a.get('id') or '')))
+            previous = (anchor_lat, anchor_lon)
+            for activity in day_activities:
+                current = (activity['latitude'], activity['longitude'])
+                distance = haversine_distance_km(previous[0], previous[1], current[0], current[1]) * CIRCUITY_FACTOR
+                fare = distance * LOCAL_LEG_RATE_INR[local_mode]
+                if local_mode in ('auto', 'cab'):
+                    fare += LOCAL_LEG_BASE_INR
+                if local_mode == 'bus_metro':
+                    fare *= people
+                route_local_total += whole_inr(fare)
+                previous = current
+            if day_activities:
+                distance = haversine_distance_km(previous[0], previous[1], anchor_lat, anchor_lon) * CIRCUITY_FACTOR
+                fare = distance * LOCAL_LEG_RATE_INR[local_mode]
+                if local_mode in ('auto', 'cab'):
+                    fare += LOCAL_LEG_BASE_INR
+                if local_mode == 'bus_metro':
+                    fare *= people
+                route_local_total += whole_inr(fare)
+    components = {'intercity_transit': intercity, 'local_transit': route_local_total if route_local_total is not None else local_daily * days * people,
                   'accommodation': nights * rooms * STAY_RATES_INR[tier][0 if minimum else 1],
                   'food': food * days * people, 'activities': tickets * ticket_people,
                   'shopping': (SHOPPING_INR * (.25 if minimum else 1) * people) if prefs.get('include_shopping', trip.get('include_shopping', False)) else 0,
@@ -123,6 +159,7 @@ def estimate_cost(trip, activities=None, minimum=False):
                 'intercity_mode': mode, 'intercity_inr_per_km': rate, 'intercity_one_way_floor': floor,
                 'departure_coordinates_known': distance_known, 'distance_note': 'Road distance estimated from coordinates' if distance_known else 'Unknown departure/destination coordinates: fare floor only; confirm intercity fare',
                 'food_style': food_style, 'food_daily_inr': food, 'local_daily_inr': local_daily,
+                'local_transit_basis': 'estimated itinerary legs from the stay location' if route_local_total is not None and trip.get('stay_lat') is not None else 'estimated itinerary legs from the destination centre' if route_local_total is not None else 'daily allowance; route coordinates unavailable',
                 'child_entry_factor': CHILD_ENTRY_FACTOR, 'senior_entry_factor': SENIOR_ENTRY_FACTOR,
                 'legacy_catalogue_usd_to_inr': LEGACY_USD_TO_INR, 'contingency_rate': CONTINGENCY_RATE}}
 

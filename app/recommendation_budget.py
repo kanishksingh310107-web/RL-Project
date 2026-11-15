@@ -278,23 +278,23 @@ def _allocation_summary(conn, trip, expenses):
     trip_id = trip['id']
     saved = conn.execute('SELECT * FROM trip_budget_allocations WHERE trip_id=? AND user_id=?',
                          (trip_id, trip['user_id'])).fetchone()
+    total = int((saved['total_budget_inr'] if saved else trip.get('total_budget')) or 0)
     if saved:
         allocations = json.loads(saved['allocations_json'])
-        total = int(trip.get('total_budget') or 0)
         source = 'user_allocated'
     else:
         estimate = _cost_summary(trip)
         names = {'accommodation': 'accommodation', 'food': 'food', 'intercity_travel': 'intercity_transit',
-                 'local_transport': 'local_transit', 'activities': 'activities', 'shopping': 'shopping', 'other': 'necessary_extras'}
+                 'local_transport': 'local_transit', 'activities': 'activities', 'other': 'necessary_extras'}
         allocations = {key: {'planned_inr': int(round(estimate['cost_breakdown'][value]['per_party'])), 'basis': 'estimate'}
                        for key, value in names.items()}
-        total = int(trip.get('total_budget') or 0)
-        allocations['emergency_reserve'] = {'planned_inr': 0, 'basis': 'not_allocated'}
+        allocations['shopping'] = {'planned_inr': 0, 'basis': 'residual_allowance', 'status': 'estimated'}
+        allocations['emergency_reserve'] = {'planned_inr': 0, 'basis': 'automatic'}
         source = 'estimated'
     actual_by = {key: 0 for key in EXPENSE_CATEGORIES}
     finals = set()
     linked_actual = {}
-    unlinked_actual = {key:0 for key in EXPENSE_CATEGORIES}
+    unlinked_actual = {key: 0 for key in EXPENSE_CATEGORIES}
     for expense in expenses:
         category = expense['category']
         actual_by[category] = actual_by.get(category, 0) + int(expense['amount_inr'])
@@ -303,63 +303,99 @@ def _allocation_summary(conn, trip, expenses):
             linked_actual[planned_key] = linked_actual.get(planned_key, 0) + int(expense['amount_inr'])
         else:
             unlinked_actual[category] = unlinked_actual.get(category, 0) + int(expense['amount_inr'])
-        if expense.get('is_final_for_planned_cost') and expense.get('planned_cost_key'):
-            finals.add(expense['planned_cost_key'])
+        if expense.get('is_final_for_planned_cost') and planned_key:
+            finals.add(planned_key)
     released = bool(allocations.pop('_reserve_released', False))
-    planned = {key: int(line.get('planned_inr', 0)) for key, line in allocations.items()}
+    planned = {key: int(line.get('planned_inr', 0)) for key, line in allocations.items() if isinstance(line, dict)}
     remaining = {}
-    actual_allocated = {key:linked_actual.get(key,0) for key in CATEGORIES}
-    for expense_key,value in unlinked_actual.items():
+    actual_allocated = {key: linked_actual.get(key, 0) for key in CATEGORIES}
+    for expense_key, value in unlinked_actual.items():
         if expense_key != 'transport':
             key = 'accommodation' if expense_key == 'stay' else expense_key
-            actual_allocated[key] = actual_allocated.get(key,0) + value
+            actual_allocated[key] = actual_allocated.get(key, 0) + value
     transport_remaining = unlinked_actual.get('transport', 0)
     for key, amount in planned.items():
         expense_key = {'accommodation': 'stay', 'local_transport': 'transport', 'intercity_travel': 'transport'}.get(key, key)
         used = linked_actual.get(key, 0)
         if key in ('local_transport', 'intercity_travel'):
-            unlinked = min(max(0,amount-used), transport_remaining)
+            unlinked = min(max(0, amount-used), transport_remaining)
             transport_remaining -= unlinked
             used += unlinked
             actual_allocated[key] += unlinked
         else:
             used += unlinked_actual.get(expense_key, 0)
-        remaining[key] = 0 if key in finals else max(0, amount - used)
+        remaining[key] = 0 if key in finals or key == 'shopping' else max(0, amount-used)
     actual_allocated['local_transport'] += transport_remaining
-    reserve = planned.get('emergency_reserve', 0)
-    remaining_normal = sum(value for key, value in remaining.items() if key != 'emergency_reserve')
-    has_expenses = bool(expenses)
+
+    reserve_line = allocations.get('emergency_reserve', {})
+    if reserve_line and reserve_line.get('basis') != 'automatic':
+        reserve = planned.get('emergency_reserve', 0)
+    else:
+        from app.core.assumptions import CONTINGENCY_RATE
+        uncertain = sum(remaining.get(key, 0) for key in ('food', 'local_transport', 'activities')
+                        if allocations.get(key, {}).get('status') != 'booked')
+        reserve = int(math.ceil(uncertain * CONTINGENCY_RATE))
+        planned['emergency_reserve'] = reserve
+        remaining['emergency_reserve'] = 0
+
     actual_total = sum(actual_by.values())
+    remaining_normal = sum(value for key, value in remaining.items()
+                           if key not in ('emergency_reserve', 'shopping'))
     forecast = actual_total + remaining_normal
+    shopping_spent = actual_by.get('shopping', 0)
+    non_shopping_forecast = max(0, forecast-shopping_spent)
+    residual_shopping = max(0, total-reserve-non_shopping_forecast-shopping_spent)
+    explicit_shopping_cap = 'shopping' in allocations and allocations['shopping'].get('basis') != 'residual_allowance'
+    shopping_cap = planned.get('shopping', 0) if explicit_shopping_cap else residual_shopping+shopping_spent
+    shopping_allowance = max(0, shopping_cap)
+    shopping_remaining = min(max(0, shopping_allowance-shopping_spent), residual_shopping)
+    required_with_reserve = forecast + reserve
+    warnings = []
+    warnings.append('Airport and station transfers are included only when added to the trip; actual fares can differ from these estimates.')
+    budget_categories = CATEGORIES - {'emergency_reserve'}
+    if set(planned) - {'emergency_reserve'} != budget_categories:
+        warnings.append('Some category estimates have not been entered; the forecast is incomplete.')
+    if shopping_spent > shopping_cap:
+        warnings.append('Shopping spending is above its allowance.')
+    if not saved:
+        warnings.append('Transport and other category amounts are indicative estimates, not live quotes.')
     return {
         'currency': 'INR', 'source': source, 'total_budget_inr': total,
         'planned_category_totals_inr': planned, 'actual_by_category_inr': actual_by,
-        'actual_total_inr': actual_total if has_expenses else None,
-        'actual_spending_status': 'recorded' if has_expenses else 'not_recorded',
+        'actual_total_inr': actual_total if expenses else None,
+        'actual_spending_status': 'recorded' if expenses else 'not_recorded',
         'estimated_remaining_costs_inr': remaining_normal,
+        'remaining_to_pay_inr': remaining_normal,
         'estimated_remaining_by_category_inr': {k: v for k, v in remaining.items() if k != 'emergency_reserve'},
         'forecast_final_cost_inr': forecast,
-        'available_buffer_inr': total - forecast - (0 if released else reserve),
-        'over_budget_inr': max(0, forecast - total),
+        'forecast_with_reserve_inr': required_with_reserve,
+        'available_buffer_inr': max(0, total-required_with_reserve),
+        'over_budget_inr': max(0, required_with_reserve-total),
+        'budget_shortfall_inr': max(0, required_with_reserve-total),
         'emergency_reserve_inr': reserve, 'emergency_reserve_released': released,
         'can_spend_reserve_for_normal_activities': released,
-        'planned_total_inr': sum(v for k,v in planned.items() if k != 'emergency_reserve'),
-        'version': saved['updated_at']+':'+str(total) if saved else 'unsaved',
+        'shopping_allowance_inr': shopping_allowance,
+        'shopping_spent_inr': shopping_spent,
+        'shopping_remaining_inr': shopping_remaining,
+        'non_shopping_forecast_inr': non_shopping_forecast,
+        'planned_total_inr': sum(v for k, v in planned.items() if k != 'emergency_reserve'),
+        'version': saved['updated_at']+':'+str(int(trip.get('total_budget') or 0)) if saved else 'unsaved',
         'travellers_count': trip['travellers_count'],
         'start_date': trip['start_date'], 'end_date': trip['end_date'],
         'allocations': [dict(category=key, planned_inr=planned.get(key),
-            amount_inr=allocations.get(key,{}).get('unit_amount_inr',planned.get(key)),
-            basis=allocations.get(key,{}).get('basis','total') if allocations.get(key,{}).get('basis') in ('total','per_person_day','per_room_night') else 'total',
-            status=allocations.get(key,{}).get('status','estimated'),
-            actual_inr=actual_allocated.get(key) if has_expenses else None,
-            estimated_remaining_inr=remaining.get(key),
-            basis_label=('Per room / night' if allocations.get(key,{}).get('basis')=='per_room_night' else 'Per person / day' if allocations.get(key,{}).get('basis')=='per_person_day' else 'Whole-party total')) for key in sorted(CATEGORIES)],
-        'planned_items': [dict(id=key,label=key.replace('_',' ').title(),estimated_remaining_inr=value) for key,value in remaining.items() if key!='emergency_reserve'],
-        'rooms': next((line.get('rooms') for line in allocations.values() if line.get('rooms')), None),
-        'warnings': ['Some category estimates have not been entered; the forecast is incomplete.'] if set(planned) != CATEGORIES else [],
-        'forecast_complete': set(planned) == CATEGORIES,
+            amount_inr=allocations.get(key, {}).get('unit_amount_inr', planned.get(key)),
+            basis=allocations.get(key, {}).get('basis') if allocations.get(key, {}).get('basis') in ('total', 'per_person_day', 'per_room_night') else 'total',
+            status=allocations.get(key, {}).get('status', 'estimated'),
+            actual_inr=actual_allocated.get(key) if expenses else None,
+            estimated_remaining_inr=(shopping_remaining if key == 'shopping' else remaining.get(key)),
+            basis_label=('Per room / night' if allocations.get(key, {}).get('basis') == 'per_room_night' else 'Per person / day' if allocations.get(key, {}).get('basis') == 'per_person_day' else 'Available allowance' if key == 'shopping' else 'Whole-party total')) for key in sorted(CATEGORIES)],
+        'planned_items': [dict(id=key, label=key.replace('_', ' ').title(),
+            estimated_remaining_inr=(shopping_remaining if key == 'shopping' else value))
+            for key, value in remaining.items() if key != 'emergency_reserve'],
+        'rooms': next((line.get('rooms') for line in allocations.values() if isinstance(line, dict) and line.get('rooms')), None),
+        'warnings': warnings,
+        'forecast_complete': set(planned) - {'emergency_reserve'} == budget_categories,
     }
-
 
 def budget_summary(conn, trip):
     expenses = [dict(r) for r in conn.execute('SELECT * FROM trip_expenses WHERE trip_id=? AND user_id=? ORDER BY spent_on,id',
@@ -594,14 +630,36 @@ def discovery_feedback(payload: DiscoveryFeedback, request: Request):
 
 
 @router.get('/api/discovery/recommendations')
-def discovery_shelves(request: Request):
+def discovery_shelves(request: Request, comfortable_budget_inr: Optional[int] = None,
+                      duration_days: Optional[int] = None, party_size: Optional[int] = None,
+                      trip_type: Optional[Literal['solo', 'couple', 'friends', 'family']] = None,
+                      origin: Optional[str] = None, start_date: Optional[date] = None,
+                      end_date: Optional[date] = None, mood: Optional[str] = None):
     actor = _actor(request)
     with get_connection() as conn:
         profile = _profile(conn, actor)
-    # A clearly labelled sample context, never an assumed commitment or saved trip.
-    result = discover_suggestions(DiscoveryInput(duration_days=3, comfortable_budget_inr=50000,
-        party_size=1, trip_type='solo', origin=profile.get('residence_city')), request)
-    result['sample_context'] = 'Indicative 3-day solo trip, up to INR 50,000; enter your own dates, party and budget to refine.'
+    if comfortable_budget_inr is not None:
+        try:
+            payload = DiscoveryInput(mode='help_choose', origin=origin or profile.get('residence_city'),
+                start_date=start_date, end_date=end_date, duration_days=duration_days,
+                comfortable_budget_inr=comfortable_budget_inr, party_size=party_size or 1,
+                trip_type=trip_type or 'solo', mood=mood)
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            field = str(first.get('loc', ('trip_context',))[-1])
+            message = str(first.get('msg', 'Check the trip dates, duration, party size and budget.')).removeprefix('Value error, ')
+            fail(422, message, 'INVALID_TRIP_CONTEXT', field)
+        result = discover_suggestions(payload, request)
+        days = payload.duration_days or ((payload.end_date-payload.start_date).days+1)
+        result['personalized_context'] = True
+        result['sample_context'] = f"Using your trip context: {days} days, {payload.party_size} traveller(s), up to ₹{payload.comfortable_budget_inr:,} total. Costs are estimates."
+    else:
+        # Clearly labelled example context; it is never presented as the
+        # signed-in user's budget or an assumed trip.
+        result = discover_suggestions(DiscoveryInput(duration_days=3, comfortable_budget_inr=50000,
+            party_size=1, trip_type='solo', origin=profile.get('residence_city')), request)
+        result['personalized_context'] = False
+        result['sample_context'] = 'Example only: estimates for a 3-day solo trip with a ₹50,000 total budget. Use “Help me choose” to enter your own dates, travellers and budget.'
     return result
 
 
@@ -672,6 +730,16 @@ def set_budget(trip_id: str, payload: BudgetAllocationInput, request: Request):
             'rooms': (line.rooms or rooms) if line.basis == 'per_room_night' else None,
             'nights': nights if line.basis == 'per_room_night' else None, 'status':line.status}
     total = payload.total_budget_inr if payload.total_budget_inr is not None else int(trip.get('total_budget') or 0)
+    if 'emergency_reserve' not in normalized:
+        from app.core.assumptions import CONTINGENCY_RATE
+        uncertain = sum(line['planned_inr'] for key, line in normalized.items()
+                        if key in ('food', 'local_transport', 'activities') and line.get('status') != 'booked')
+        normalized['emergency_reserve'] = {'planned_inr': int(math.ceil(uncertain * CONTINGENCY_RATE)),
+                                           'basis': 'automatic', 'status': 'estimated'}
+    if 'shopping' not in normalized:
+        used = sum(line['planned_inr'] for key, line in normalized.items() if key != 'emergency_reserve')
+        normalized['shopping'] = {'planned_inr': max(0, total-used-normalized['emergency_reserve']['planned_inr']),
+                                  'basis': 'residual_allowance', 'status': 'estimated'}
     planned = sum(item['planned_inr'] for key, item in normalized.items() if key != 'emergency_reserve')
     reserve = normalized.get('emergency_reserve', {}).get('planned_inr', 0)
     if planned + reserve > total:

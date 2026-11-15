@@ -4,7 +4,7 @@
   const A=window.ExperienceAPI,U=window.ExperienceUI;
   if(!A||!U||typeof document==='undefined')return;
   const display=document.getElementById('itineraryDisplayContainer');if(!display)return;
-  const label=key=>({accommodation:'Accommodation',food:'Food',intercity_transport:'Travel to / from destination',local_transport:'Local transport',activities:'Activities',shopping:'Shopping',emergency_reserve:'Emergency reserve',other:'Other'})[key]||key;
+  const label=key=>({accommodation:'Stay',food:'Food',intercity_transport:'Travel to / from destination',local_transport:'Local transport',activities:'Activities / itinerary',shopping:'Shopping or extra spending',emergency_reserve:'Contingency reserve',other:'Other essentials'})[key]||key;
   const panel=U.el('section',null,'ex-budget');panel.id='exBudgetPane';panel.hidden=true;panel.setAttribute('aria-labelledby','exBudgetTitle');
   const compact=U.el('aside',null,'ex-budget-compact');compact.id='exBudgetCompact';compact.hidden=true;
   document.getElementById('cTripLifecycle')?.after(compact);display.append(panel);
@@ -27,7 +27,7 @@
   };
   function compactSummary(s) {
     compact.replaceChildren();compact.hidden=false;const heading=U.el('strong','Budget at a glance');compact.append(heading);
-    for(const [title,key] of [['Total budget','total_budget'],['Spent so far','actual_spending'],['Estimated costs still to come','estimated_remaining_costs'],['Forecast final cost','forecast_final_cost'],['Available buffer','available_buffer']]) {
+    for(const [title,key] of [['Total budget','total_budget'],['Spent so far','actual_spending'],['Expected remaining costs','estimated_remaining_costs'],['Forecast including reserve','forecast_with_reserve'],['Reserve','emergency_reserve'],['Shopping allowance left','shopping_remaining']]) {
       const cell=U.el('span');cell.append(U.el('small',title),U.el('b',key==='actual_spending'&&s[key]===null?'Not entered':A.money(s[key])));compact.append(cell);
     }
     compact.append(U.button('Open budget',()=>window.switchWorkspaceMode('budget')));
@@ -47,7 +47,7 @@
     }catch(error){if(current(key)&&ticket===epoch){panel.replaceChildren(U.el('h2','Budget & expenses'),U.el('p',error.message,'ex-error'),U.button('Retry',load));}}
     finally{if(ticket===epoch)panel.removeAttribute('aria-busy');}
   }
-  function heading(){const h=U.el('h2','Budget & expenses');h.id='exBudgetTitle';panel.append(h);panel.append(U.el('p','Manual recordkeeping only. Bookings, food orders, shopping payments and bill settlements happen outside this app.','ex-muted'));}
+  function heading(){const h=U.el('h2','Budget & expenses');h.id='exBudgetTitle';panel.append(h);panel.append(U.el('p','Enter the full agreed cost for booked stay and travel. Record deposits and payments separately. Estimates update as the itinerary changes; actual payments replace the matching estimate.','ex-muted'));}
   function renderLegacy(data,trip,key) {
     if(!Array.isArray(data.expenses))throw new Error('The expense list could not be read. Please retry.');
     panel.replaceChildren();heading();const totals=data.planned_vs_actual||{};ledger=data.expenses;
@@ -60,10 +60,10 @@
   function render(trip,key) {
     panel.replaceChildren();heading();
     const metrics=U.el('dl',null,'ex-metrics');
-    const fields=[['Total budget','total_budget'],['Planned cost','planned_cost'],['Spent so far','actual_spending'],['Estimated remaining costs','estimated_remaining_costs'],['Forecast final cost','forecast_final_cost'],['Available buffer','available_buffer']];
-    for(const [name,field] of fields){const cell=U.el('div');cell.append(U.el('dt',summary.forecast_complete===false&&field==='forecast_final_cost'?'Known-cost forecast (incomplete)':summary.forecast_complete===false&&field==='available_buffer'?'Balance before missing estimates':name),U.el('dd',field==='actual_spending'&&!ledger.length&&(summary.actual_spending===null||summary.actual_spending===0&&!summary.expenses_complete)?'Not entered':A.money(summary[field])));metrics.append(cell);}panel.append(metrics);
+    const fields=[['Maximum total budget','total_budget'],['Paid so far','actual_spending'],['Remaining to pay (estimate)','remaining_to_pay'],['Expected trip cost','forecast_final_cost'],['Expected cost with reserve','forecast_with_reserve'],['Contingency reserve','emergency_reserve'],['Available for shopping / extras','shopping_remaining']];
+    for(const [name,field] of fields){const cell=U.el('div');cell.append(U.el('dt',summary.forecast_complete===false&&field==='forecast_with_reserve'?'Known-cost forecast (incomplete)':name),U.el('dd',field==='actual_spending'&&!ledger.length&&(summary.actual_spending===null||summary.actual_spending===0&&!summary.expenses_complete)?'Not entered':A.money(summary[field])));metrics.append(cell);}panel.append(metrics);
     if(summary.over_budget>0)panel.append(U.el('p','Forecast exceeds your budget by '+A.money(summary.over_budget),'ex-warning'));
-    panel.append(U.el('p','Forecast = recorded spending + estimated remaining costs. The emergency reserve stays protected unless you explicitly release it. Unrecorded expenses are not assumed to be zero.','ex-muted'));
+    panel.append(U.el('p','Booked prices count toward trip cost even when prepaid. “Remaining to pay” is separate: it equals expected trip cost minus payments already recorded. Unused shopping allowance is not assumed to be spent. Estimates are not live quotes.','ex-muted'));
     const actions=U.el('div',null,'ex-actions');const notice=U.status(panel);
     const allocate=U.button('Edit allocations',()=>allocations(trip,key));
     const snapshot=window.TripExperience.getSnapshot(trip);
@@ -85,7 +85,7 @@
     const draw=()=>{
       const divisor=units.value==='person'&&Number.isInteger(people)&&people>0?people:1;
       const table=U.el('table',null,'ex-table');const cap=U.el('caption',units.value==='person'?'Category totals divided equally per traveller':'Whole-party category totals');table.append(cap);
-      const head=U.el('tr');for(const text of ['Category','Planned','Spent','Estimated remaining','Basis'])head.append(U.el('th',text));table.append(head);
+      const head=U.el('tr');for(const text of ['Category','Budget / allowance','Paid so far','Still expected / available','Basis'])head.append(U.el('th',text));table.append(head);
       for(const category of A.categories) {
         const rowData=summary.allocations.find(a=>a.category===category)||{};
         const row=U.el('tr');row.append(U.el('th',label(category)));
@@ -139,13 +139,13 @@
     f.addEventListener('input',()=>{f.dataset.dirty='true';});d.box.addEventListener('cancel',event=>{if(inFlight)event.preventDefault();});return d;
   }
   function allocations(trip,key) {
-    const d=U.dialog('Plan your budget','Reserve stay, food and transport before choosing activities. Emergency money is protected. Amounts are allowances, not bookings.');const f=U.form('allocations');d.content.append(f);
+    const d=U.dialog('Plan your budget','Enter one whole-trip limit, then review the costs for activities, stay, food and transport. The reserve covers uncertain costs; shopping is the leftover allowance. Amounts are not bookings.');const f=U.form('allocations');d.content.append(f);
     U.field(f,'total_budget_inr','Total trip budget (INR)',{type:'number',min:1000,value:summary.total_budget,required:true});
     const rows=[];
     for(const category of A.categories){const saved=summary.allocations.find(a=>a.category===category)||{};const group=U.el('fieldset');group.append(U.el('legend',label(category)));f.append(group);const rowForm=U.form('allocation-'+category);
       // Fields belong to the outer form; each row is a fieldset, never a nested form.
       rowForm.dataset.formId='allocation-'+category;
-      const amount=U.field(rowForm,category+'_amount','Amount / allowance (INR)',{type:'number',min:0,value:saved.amount_inr??(!saved.basis||saved.basis==='total'?saved.planned_inr:'')??'',help:'Leave blank when unknown; zero means no allowance.'});
+      const amount=U.field(rowForm,category+'_amount',category==='shopping'?'Maximum shopping / extra allowance (INR)':'Amount / allowance (INR)',{type:'number',min:0,value:saved.amount_inr??(!saved.basis||saved.basis==='total'?saved.planned_inr:'')??'',help:category==='shopping'?'The app calculates what remains after other costs and the reserve; this value is a cap. Unspent allowance stays unspent.':category==='emergency_reserve'?'A suggested reserve is included for uncertain food, local transport and unbooked activity costs.':category==='accommodation'||category==='intercity_transport'?'For a booked item, enter its full agreed price and mark it booked; record deposits separately as expenses.':'Leave blank when unknown; zero means no allowance.'});
       const basis=U.field(rowForm,category+'_basis','Basis',{options:category==='food'?[['total','Whole-party total'],['per_person_day','Per person / day']]:category==='accommodation'?[['total','Whole stay total'],['per_room_night','Per room / night']]:[['total','Whole-party total']],value:saved.basis||'total'});
       const state=U.field(rowForm,category+'_state','Amount status',{options:[['estimated','Estimated'],['booked','Booked / agreed cost']],value:saved.status||'estimated'});
       while(rowForm.firstChild)group.append(rowForm.firstChild);rows.push({category,amount,basis,state});

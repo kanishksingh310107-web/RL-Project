@@ -5,7 +5,7 @@
   if(!A||!U||typeof document==='undefined')return;
   const root=document.getElementById('recommendationsSection');if(!root)return;
   const items=new Map(),compared=new Map();let owner=null,discoveryContext={},requestVersion=0,handoff=null;
-  let shelfRevision=0;
+  let shelfRevision=0,shelfUsesPersonalContext=false;
   const layout=U.el('div',null,'ex-discovery-layout');layout.id='exDiscoveryLayout';layout.dataset.hasSaved='false';
   const mainColumn=U.el('div',null,'ex-discovery-main');mainColumn.id='exDiscoveryMain';
   const savedAside=U.el('aside',null,'ex-saved-places');savedAside.id='exSavedPlaces';savedAside.hidden=true;savedAside.setAttribute('aria-labelledby','exSavedPlacesHeading');
@@ -22,7 +22,7 @@
   const canonicalId=item=>item.destination_id||item.id;
   const name=item=>item.name||item.destination_name||'Destination';
   const headingText=value=>({
-    'within your budget':'Within your budget',
+    'within your budget':shelfUsesPersonalContext?'Within your budget':'Sample trips under ₹50,000',
     'recommended for you':'Recommended for you',
     'selected for your profile':'Selected for your profile',
     'trending destinations':'Trending destinations',
@@ -30,7 +30,7 @@
   })[String(value||'').trim().toLocaleLowerCase()]||String(value||'').trim().replace(/^\p{L}/u,letter=>letter.toLocaleUpperCase());
   const texts=value=>Array.isArray(value)?value.map(v=>typeof v==='string'?v:v.message||v.text||'').filter(Boolean):typeof value==='string'?[value]:[];
   const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation||item.because_you_said||item.why_it_suits).map(value=>A.text(value).replace(/\s*\(Q\d+\)/gi,'').replace(/_/g,' '));
-  function checkOwner(){if(owner!==A.uid()){owner=A.uid();shelfRevision++;compared.clear();items.clear();selection.hidden=true;discoveryContext={};shelves.replaceChildren();savedAside.replaceChildren();savedAside.hidden=true;layout.dataset.hasSaved='false';savedState.hidden=true;handoff=null;}}
+  function checkOwner(){if(owner!==A.uid()){owner=A.uid();shelfRevision++;compared.clear();items.clear();selection.hidden=true;discoveryContext={};shelfUsesPersonalContext=false;shelves.replaceChildren();savedAside.replaceChildren();savedAside.hidden=true;layout.dataset.hasSaved='false';savedState.hidden=true;handoff=null;}}
   function register(item){checkOwner();const id=canonicalId(item);if(typeof id!=='string'||isHome(item))return null;const known=items.get(id);if(typeof item.is_shortlisted!=='boolean'&&typeof known?.is_shortlisted==='boolean')item.is_shortlisted=known.is_shortlisted;items.set(id,item);return id;}
   function addComparison(item,feedback=notice){
     const id=register(item);if(!id)return;
@@ -151,6 +151,7 @@
         const nextContext={...body,adults:body.party.adults,children:body.party.children,seniors:body.party.seniors};
         if(JSON.stringify(nextContext)!==JSON.stringify(discoveryContext)){compared.clear();drawSelection();}
         discoveryContext=nextContext;results.replaceChildren();
+        loadShelves();
         const choices=returned.filter(item=>!isHome(item)).slice(0,3);
         if(!choices.length){results.append(U.el('p',response.message||'No matches fit these preferences. Increase the travel window, change the budget or choose a different mood.'));f.elements.total_budget.focus();return;}
         if(response.assumptions)d.notice.textContent=texts(response.assumptions).join(' · ');
@@ -185,7 +186,7 @@
     await A.capabilities();
     if(account!==A.uid()||revision!==shelfRevision)return;
     const savedTask=A.savedPlaces();
-    const shelvesTask=A.can('discovery')?A.shelves():Promise.resolve(null);
+    const shelvesTask=A.can('discovery')?A.shelves(discoveryContext):Promise.resolve(null);
     const [savedResult,shelvesResult]=await Promise.allSettled([savedTask,shelvesTask]);
     if(account!==A.uid()||revision!==shelfRevision)return;
 
@@ -207,6 +208,7 @@
     shelves.replaceChildren();
     if(shelvesResult.status==='fulfilled'&&shelvesResult.value){
       const response=shelvesResult.value;
+      shelfUsesPersonalContext=response.personalized_context===true;
       if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
       const groups=Array.isArray(response.groups)?response.groups:[];
       const shown=new Set();for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>{const id=canonicalId(item);if(isHome(item)||shown.has(id))return false;shown.add(id);return true;});if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',headingText(A.text(group.title))));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
@@ -219,6 +221,6 @@
   if(typeof oldNavUpdate==='function')window.updateNavUser=function(...args){const result=oldNavUpdate.apply(this,args);if(owner!==A.uid()){checkOwner();if(!document.getElementById('dashboardView').classList.contains('hidden'))loadShelves();}return result;};
   window.addEventListener('experience:recommendation-feedback',()=>{loadShelves();window.loadRecommendations?.(true);});
   window.addEventListener('load',loadShelves);
-  window.addEventListener('trip:context-cleared',()=>{owner=A.uid();shelfRevision++;compared.clear();items.clear();selection.hidden=true;selection.replaceChildren();shelves.replaceChildren();savedAside.replaceChildren();savedAside.hidden=true;savedState.replaceChildren();savedState.hidden=true;layout.dataset.hasSaved='false';discoveryContext={};handoff=null;});
+  window.addEventListener('trip:context-cleared',()=>{owner=A.uid();shelfRevision++;compared.clear();items.clear();selection.hidden=true;selection.replaceChildren();shelves.replaceChildren();savedAside.replaceChildren();savedAside.hidden=true;savedState.replaceChildren();savedState.hidden=true;layout.dataset.hasSaved='false';discoveryContext={};shelfUsesPersonalContext=false;handoff=null;});
   window.RecommendationDiscovery={open:openDiscovery,compare:compareDestinations,plan,refresh:loadShelves,addComparison};
 })();
