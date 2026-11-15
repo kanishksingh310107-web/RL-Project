@@ -283,7 +283,8 @@ body .bg-slate-50 { background-color: var(--app-sand); }
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    background: var(--page-photo) var(--photo-position) / cover no-repeat;
+    background: var(--rotating-photo, var(--page-photo))
+      var(--rotating-photo-position, var(--photo-position)) / cover no-repeat;
   }
 
   body[data-page] > header,

@@ -8,6 +8,48 @@
   const tripView = byId('tripExperienceView');
   if (!headerActions || !main || !dashboard) return;
 
+  // Each page starts with its original photo, followed by curated alternatives.
+  const backgroundAlternatives = {
+    auth: [['red-fort', '65% 58%'], ['stone-carving', '30% 50%'], ['palace-at-night', '65% 54%']],
+    onboarding: [['tea-garden', 'center 73%'], ['green-valley', 'center 62%'], ['forest-road', 'center 74%'], ['parrot', '68% 42%']],
+    discover: [['waterfall', '36% 70%']],
+    trips: [['hill-fort', 'center 67%'], ['india-gate', 'center 65%']],
+    plan: [['desert-sunset', '73% 65%'], ['sand-dunes', 'center 64%'], ['hill-sunrise', 'center 55%']],
+    trip: [['river-bridge', '38% 72%']],
+  };
+  const backgroundIndices = new Map();
+  let activeBackgroundPage;
+
+  function rotateBackground(page) {
+    if (page === activeBackgroundPage) return;
+    activeBackgroundPage = page;
+
+    const alternatives = backgroundAlternatives[page];
+    const key = `travel-guide-background:${page}`;
+    let previous = backgroundIndices.get(page) ?? -1;
+    if (!backgroundIndices.has(page)) {
+      try {
+        const saved = Number(sessionStorage.getItem(key) ?? -1);
+        if (Number.isInteger(saved) && saved >= 0 && saved <= alternatives.length) previous = saved;
+      } catch (_) {
+        // In-memory rotation still works when storage is unavailable.
+      }
+    }
+    const index = (previous + 1) % (alternatives.length + 1);
+    backgroundIndices.set(page, index);
+    try { sessionStorage.setItem(key, String(index)); } catch (_) {}
+
+    const style = document.body.style;
+    if (index === 0) {
+      style.removeProperty('--rotating-photo');
+      style.removeProperty('--rotating-photo-position');
+      return;
+    }
+    const [photo, position] = alternatives[index - 1];
+    style.setProperty('--rotating-photo', `url("/static/images/background-rotation/${photo}.jpg")`);
+    style.setProperty('--rotating-photo-position', position);
+  }
+
   const overview = document.createElement('div');
   overview.id = 'dashboardOverview';
   const basic = byId('dashBasicProfileCard');
@@ -127,6 +169,7 @@
       else page = 'trip';
     }
     document.body.dataset.page = page;
+    rotateBackground(page);
     for (const link of headerActions.querySelectorAll('a')) {
       if (link.hash === '#/' && path === '/' || link.hash === '#/trips' && path.startsWith('/trips') && path !== '/trips/new') link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
