@@ -210,10 +210,9 @@
   window.addEventListener('beforeunload',event=>{if(dirty && (location.hash==='#/trips/new'||location.hash.endsWith('/edit'))){saveDraft();event.preventDefault();event.returnValue='';}});
   const planner=el('itineraryPlannerSection'), modal=el('tripFormModal');
   if(!planner || !modal) return;
-  const placeholder=document.createComment('UI: planner lives in the dedicated trip workspace');planner.before(placeholder);
+  // Header navigation is the single dashboard entry point for trips.
   const view=document.createElement('section');view.id='tripExperienceView';view.hidden=true;view.innerHTML=`<nav class="te-workspace-nav" aria-label="Trip navigation"><a href="#/">← Back to main menu</a><a href="#/trips">My trips</a><a href="#/trips/new">Plan another trip</a></nav><p id="teRouteNotice" class="te-error" role="status" hidden></p><div id="teTripList" hidden></div>`;
   el('dashboardView').after(view);view.append(planner,modal);
-  const launcher=document.createElement('section');launcher.className='te-card';launcher.innerHTML='<h2>Your trips</h2><p>Plan a journey, continue your current trip or finish feedback.</p><a class="te-primary" href="#/trips/new">Plan new trip</a> <a href="#/trips">My trips & history</a>';placeholder.after(launcher);
   modal.classList.add('te-form-page');
   const rawOpen=window.openModal,rawClose=window.closeModal;
   window.openModal=function(id){if(id==='academicModal')return;if(id==='tripFormModal'){if(!Trip.allowPlanning())return;modal.classList.remove('hidden');if(!routing)location.hash=editingTripId?`/trips/${encodeURIComponent(editingTripId)}/edit`:'/trips/new';return;}return rawOpen(id);};
@@ -254,54 +253,93 @@
     window.dispatchEvent(new CustomEvent('trip:runtime',{detail:{tripId:ctx.tripId,snapshot:next}}));
     return true;
   };
-  async function listTrips() {
+  let emptyTripsDialog=null;
+  function closeEmptyTripsDialog() {
+    if(emptyTripsDialog){emptyTripsDialog.dataset.restoreFocus='false';emptyTripsDialog.close();emptyTripsDialog.remove();emptyTripsDialog=null;}
+  }
+  function showEmptyTripsDialog() {
+    closeEmptyTripsDialog();
+    const opener=document.activeElement;
+    const dialog=document.createElement('dialog');dialog.id='teNoTripsDialog';dialog.className='te-dialog';
+    dialog.setAttribute('aria-labelledby','teNoTripsMessage');
+    const message=document.createElement('h2');message.id='teNoTripsMessage';message.textContent='no trips';
+    const dismiss=document.createElement('button');dismiss.type='button';dismiss.className='te-primary';dismiss.textContent='Close';
+    dismiss.onclick=()=>dialog.close();
+    dialog.addEventListener('close',()=>{dialog.remove();if(emptyTripsDialog===dialog)emptyTripsDialog=null;if(dialog.dataset.restoreFocus!=='false'&&opener?.isConnected)opener.focus({preventScroll:true});},{once:true});
+    dialog.append(message,dismiss);document.body.append(dialog);emptyTripsDialog=dialog;dialog.showModal();dismiss.focus();
+  }
+  async function listTrips(epoch=routeEpoch) {
+    const actor=user()?.user_id;
+    if(!actor)return;
+    const current=()=>actor===user()?.user_id&&epoch===routeEpoch&&location.hash==='#/trips';
     const box=el('teTripList');box.hidden=false;box.innerHTML='<p role="status">Loading your trips…</p>';
     try{
-      const userPath=`/api/trips/${encodeURIComponent(user().user_id)}`;
-      const groups=await Promise.all([api(userPath),api(userPath+'/feedback-pending'),api(userPath+'/archive')]);
-      const trips=[...new Map(groups.flat().map(trip=>[trip.id,trip])).values()];
-      const enriched=await Promise.all(trips.map(async trip=>{try{return {...trip,runtime:await api(`/api/trips/${encodeURIComponent(trip.id)}/runtime?${query()}`)};}catch(_){return {...trip,runtime:null};}}));
-      if(location.hash!=='#/trips')return;
+      const userPath=`/api/trips/${encodeURIComponent(actor)}`;
+      const [all,pending,archived,history]=await Promise.all([api(userPath),api(userPath+'/feedback-pending'),api(userPath+'/archive'),api('/api/profile/history')]);
+      if(!current())return;
+      if(![all,pending,archived].every(Array.isArray)||!Array.isArray(history?.entries))throw new Error('Your trip history could not be read. Please retry.');
+      const completedIds=new Set([...pending,...archived].map(t=>t.id));
+      const trips=[...new Map([...all,...pending,...archived].map(trip=>[trip.id,trip])).values()];
+      const tripIds=new Set(trips.map(trip=>trip.id));
+      const recorded=history.entries.filter(entry=>entry.source==='manual'||!entry.trip_id||!tripIds.has(entry.trip_id));
+      const enriched=await Promise.all(trips.map(async trip=>{
+        try{return {...trip,runtime:await api(`/api/trips/${encodeURIComponent(trip.id)}/runtime?user_id=${encodeURIComponent(actor)}`)};}
+        catch(_){return {...trip,runtime:null};}
+      }));
+      if(!current())return;
+      const isPast=t=>t.runtime?.status==='completed'||completedIds.has(t.id)||['completed','archived'].includes(t.status);
       box.innerHTML='<h2>My trips</h2>'+['Active trips','Past trips'].map((heading,index)=>{
-        const group=enriched.filter(t=>index?t.runtime?.status==='completed':t.runtime?.status!=='completed');
-        return `<section class="te-card"><h3>${heading}</h3>${group.length?group.map(t=>`<article class="te-list-row"><div><h4>${esc(t.destination_name)}</h4><p>${esc(t.start_date)} – ${esc(t.end_date)}</p><small>${t.runtime?t.runtime.closed_out?'Feedback saved':t.runtime.status==='completed'?'Feedback pending':esc(t.runtime.status):'Progress unavailable — open to retry'}</small></div><a class="te-primary" href="#/trips/${encodeURIComponent(t.id)}">${t.runtime?.status==='completed'&&!t.runtime.closed_out?'Finish feedback':'Open trip'}</a></article>`).join(''):'<p>No trips here yet.</p>'}</section>`;
+        const group=enriched.filter(t=>index?isPast(t):!isPast(t));
+        if(!group.length)return '';
+        return `<section class="te-card"><h3>${heading}</h3>${group.map(t=>`<article class="te-list-row"><div><h4>${esc(t.destination_name)}</h4><p>${esc(t.start_date)} – ${esc(t.end_date)}</p><small>${t.runtime?t.runtime.closed_out?'Feedback saved':t.runtime.status==='completed'?'Feedback pending':esc(t.runtime.status):'Progress unavailable — open to retry'}</small></div><a class="te-primary" href="#/trips/${encodeURIComponent(t.id)}">${t.runtime?.status==='completed'&&!t.runtime.closed_out?'Finish feedback':'Open trip'}</a></article>`).join('')}</section>`;
       }).join('');
+      if(recorded.length)box.insertAdjacentHTML('beforeend',`<section class="te-card" aria-labelledby="teHistoryHeading"><h3 id="teHistoryHeading">Travel history</h3><p>Past travel recorded in your profile.</p>${recorded.map(entry=>`<article class="te-list-row"><div><h4>${esc(entry.destination||entry.city||'Recorded trip')}</h4><p>${esc(entry.visited_on||'Date not recorded')} · ${esc(entry.trip_type||'Trip type not recorded')}</p><details><summary>View history details</summary><p>Would revisit: ${entry.would_revisit===true?'Yes':entry.would_revisit===false?'No':'Not recorded'}</p>${Object.entries(entry.ratings||{}).map(([key,value])=>`<p>${esc(key.replace(/_/g,' '))}: ${esc(value)} / 5</p>`).join('')}${entry.notes?`<p>${esc(entry.notes)}</p>`:''}</details></div></article>`).join('')}</section>`);
+      if(!trips.length&&!recorded.length){box.innerHTML='<h2>My trips</h2><p>no trips</p>';showEmptyTripsDialog();}
       const select=el('userTripsSelect');[...select.options].forEach(option=>{const t=enriched.find(t=>t.id===option.value);if(t?.runtime?.status==='completed')option.remove();});
-    }catch(error){box.innerHTML=`<p role="alert">${esc(error.message)}</p><button id="teListRetry">Retry</button>`;el('teListRetry').onclick=listTrips;}
+    }catch(error){if(current()){closeEmptyTripsDialog();box.innerHTML=`<p role="alert">${esc(error.message)}</p><button id="teListRetry">Retry</button>`;el('teListRetry').onclick=()=>listTrips(routeEpoch);}}
   }
   async function route() {
     const epoch=++routeEpoch;
+    closeEmptyTripsDialog();
     const path=location.hash.slice(1)||'/';
     if(!path.startsWith('/trips')) {routing=false;view.hidden=true;if(user())el('dashboardView').classList.remove('hidden');return;}
     if(!user()){view.hidden=true;return;}
-    if(!await window.ProfileGate.require()){view.hidden=true;return;}
-    if(epoch!==routeEpoch)return;
-    if(!Trip.allowPlanning()){view.hidden=true;el('dashboardView').classList.remove('hidden');return;}
+    const actor=user().user_id;
+    const current=()=>epoch===routeEpoch&&actor===user()?.user_id;
+    // Reading history and resuming existing trips never requires a questionnaire.
+    if(path==='/trips/new'||path.endsWith('/edit')){
+      if(!await window.ProfileGate.require()){if(current()){view.hidden=true;history.replaceState(null,'','#/');el('dashboardView').classList.remove('hidden');}return;}
+      if(!current())return;
+      if(!Trip.allowPlanning()){view.hidden=true;el('dashboardView').classList.remove('hidden');history.replaceState(null,'','#/');return;}
+    }
+    if(!current())return;
+    if(path!=='/trips/new'&&!path.endsWith('/edit'))window.dispatchEvent(new Event('trip:history-opened'));
     routing=true;
     try {
-      view.hidden=false;el('dashboardView').classList.add('hidden');el('teTripList').hidden=true;planner.hidden=false;rawClose('tripFormModal');notice('');
+      view.hidden=false;el('authView').classList.add('hidden');el('onboardingView').classList.add('hidden');el('dashboardView').classList.add('hidden');el('teTripList').hidden=true;planner.hidden=false;rawClose('tripFormModal');notice('');
       if(path==='/trips/new') {
-        planner.hidden=true;await loadCapabilities();if(epoch!==routeEpoch)return;
-        await oldToggle();if(epoch!==routeEpoch)return;
+        planner.hidden=true;await loadCapabilities();if(!current())return;
+        await oldToggle();if(!current())return;
         let saved=false;try{saved=!!sessionStorage.getItem(draftKey());}catch(_){}
         if(saved)restoreDraft();else{el('tripDestSelect').value='';selectedDynamicLocation=null;el('tripNearbyPlacesArea')?.classList.add('hidden');}
         el('tripStartDateInput').min=indiaToday();el('tripEndDateInput').min=el('tripStartDateInput').value||indiaToday();
         modal.classList.remove('hidden');
         window.dispatchEvent(new CustomEvent('trip:creation-ready')); // E: explicit recommendation handoff.
       }
-      else if(path==='/trips') {planner.hidden=true;await listTrips();}
+      else if(path==='/trips') {planner.hidden=true;await listTrips(epoch);}
       else {
         const match=path.match(/^\/trips\/([^/]+)(\/edit)?$/);if(!match){notice('This trip link is invalid.');return;}
         const id=decodeURIComponent(match[1]);
         await loadCapabilities();
+        if(!current())return;
         const next=await api(`/api/trips/${encodeURIComponent(id)}/runtime?${query()}`);
-        if(epoch!==routeEpoch)return;
+        if(!current())return;
         currentPlannedTripId=id;
         const previous=getSnapshot(id);
         if(!previous||Number(next.runtime?.version||0)>=Number(previous.runtime?.version||0)){snapshot=next;snapshotTrip=id;}
         // Explicit selection avoids auto-generation while resuming a live or archived trip.
         const itinerary=await api(`/api/itinerary/${encodeURIComponent(id)}?${query()}`);
-        if(epoch!==routeEpoch)return;
+        if(!current())return;
         currentItinerary=itinerary;renderItinerary(itinerary);
         const effective=getSnapshot(id)||next;
         Trip.applySnapshot(getWorkspaceContext(),effective);
@@ -310,8 +348,8 @@
         else oldMode(effective.status==='completed'?'post':effective.status==='live'?'live':'pre');
         if(match[2]){if(next.status!=='draft'){notice('Reopen a finalized trip before editing. Live and completed trips cannot be edited.');return;}await editSelectedTrip();await fillExperience(id);restoreDraft();}
       }
-      view.querySelector('h2,h3')?.setAttribute('tabindex','-1');view.querySelector('h2,h3')?.focus();
-    }catch(error){notice(error.message);}
+      if(current()&&!emptyTripsDialog){view.querySelector('h2,h3')?.setAttribute('tabindex','-1');view.querySelector('h2,h3')?.focus();}
+    }catch(error){if(current())notice(error.message);}
     finally{if(epoch===routeEpoch)routing=false;}
   }
   async function fillExperience(id) {
@@ -338,10 +376,15 @@
   const oldSelect=window.onTripSelectChanged;
   window.onTripSelectChanged=id=>{if(id)location.hash=`/trips/${encodeURIComponent(id)}`;else oldSelect(id);};
   window.addEventListener('hashchange',route);
+  document.addEventListener('click',event=>{
+    if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    if(location.hash==='#/trips'&&event.target.closest?.('a[href="#/trips"]')){event.preventDefault();route();}
+  });
   window.addEventListener('load',()=>{if(view.hidden)route();});
   // Keep direct links private when the existing session controller signs out.
   new MutationObserver(()=>{
     if(!el('authView').classList.contains('hidden')){
+      routeEpoch++;routing=false;closeEmptyTripsDialog();el('teTripList').replaceChildren();
       view.hidden=true;
       // E: remove account-specific workspace state before a different sign-in.
       snapshot=null;snapshotTrip=null;currentPlannedTripId=null;currentItinerary=null;dirty=false;

@@ -473,6 +473,10 @@ function openModal(id) {
 
 function closeModal(id) {
   const el = typeof id === "string" ? document.getElementById(id) : id;
+  if ((typeof id === 'string' ? id : el?.id) === 'personalProfileModal') {
+    dismissPersonalProfileModal();
+    return;
+  }
   if (el) el.classList.add("hidden");
   if (id === "activityRejectModal" || id === "activityAlternativeModal") {
     pendingFeedbackContext = null;
@@ -1565,6 +1569,86 @@ async function toggleShortlist(destId, btnElement) {
 // UNIFIED PERSONAL PROFILE QUESTIONNAIRE
 // ==========================================
 
+let personalProfileEpoch = 0;
+let personalProfileDialogState = null;
+let personalProfileDraft = null;
+let personalProfileDirty = false;
+const personalProfileDraftKey = userId => 'rl_travel_personal_draft:' + userId;
+
+function savePersonalProfileDraft(changed = false) {
+  const owner = personalProfileDialogState?.userId;
+  if (!owner || owner !== state.currentUser?.user_id) return;
+  if (changed) personalProfileDirty = true;
+  if (!personalProfileDirty) return;
+  personalProfileDraft = {
+    userId: owner, answers: {...state.precision.answers}, tab: state.precision.tab,
+    additionalInfo: document.getElementById('personalAdditionalInfo')?.value || ''
+  };
+  try { sessionStorage.setItem(personalProfileDraftKey(owner), JSON.stringify(personalProfileDraft)); } catch (_) {}
+}
+
+function readPersonalProfileDraft(userId) {
+  if (personalProfileDraft?.userId === userId) return personalProfileDraft;
+  try {
+    const raw = sessionStorage.getItem(personalProfileDraftKey(userId));
+    if (!raw || raw.length > 200000) return null;
+    const draft = JSON.parse(raw);
+    if (draft?.userId === userId && draft.answers && typeof draft.answers === 'object' && !Array.isArray(draft.answers)) return draft;
+  } catch (_) {}
+  return null;
+}
+
+function clearPersonalProfileDraft(userId) {
+  try { sessionStorage.removeItem(personalProfileDraftKey(userId)); } catch (_) {}
+  if (personalProfileDraft?.userId === userId) personalProfileDraft = null;
+  personalProfileDirty = false;
+}
+
+function dismissPersonalProfileModal() {
+  personalProfileEpoch++; // Cancel an earlier opening request, including slow responses.
+  savePersonalProfileDraft();
+  const previous = personalProfileDialogState;
+  personalProfileDialogState = null;
+  document.getElementById('personalProfileModal')?.classList.add('hidden');
+  if (previous) {
+    document.body.style.overflow = previous.bodyOverflow;
+    const focusTarget = previous.returnFocus?.isConnected ? previous.returnFocus : document.getElementById('headerPlanTripBtn');
+    focusTarget?.focus({preventScroll:true});
+    window.scrollTo(previous.scrollX, previous.scrollY);
+    window.dispatchEvent(new CustomEvent('profile:questionnaire-dismissed', {detail:{userId:previous.userId}}));
+  }
+}
+
+const personalProfileOverlay = document.getElementById('personalProfileModal');
+personalProfileOverlay?.addEventListener('input', () => savePersonalProfileDraft(true));
+personalProfileOverlay?.addEventListener('change', () => savePersonalProfileDraft(true));
+personalProfileOverlay?.addEventListener('click', event => {
+  if (event.target === personalProfileOverlay) closePersonalProfileModal();
+});
+personalProfileOverlay?.addEventListener('keydown', event => {
+  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closePersonalProfileModal(); }
+  if (event.key !== 'Tab') return;
+  const focusable = [...personalProfileOverlay.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[tabindex="0"]')].filter(node => node.getClientRects().length);
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+});
+window.addEventListener('beforeunload', () => savePersonalProfileDraft());
+window.addEventListener('hashchange', () => {
+  const path = location.hash.slice(1);
+  if (path.startsWith('/trips') && path !== '/trips/new' && !path.endsWith('/edit')) closePersonalProfileModal();
+});
+window.addEventListener('trip:context-cleared', () => {
+  if (personalProfileDialogState && personalProfileDialogState.userId !== state.currentUser?.user_id) {
+    const owner = personalProfileDialogState.userId;
+    dismissPersonalProfileModal();
+    clearPersonalProfileDraft(owner);
+    document.getElementById('personalQuestions')?.replaceChildren();
+    const notes = document.getElementById('personalAdditionalInfo'); if (notes) notes.value = '';
+  }
+  if (personalProfileDraft && personalProfileDraft.userId !== state.currentUser?.user_id) clearPersonalProfileDraft(personalProfileDraft.userId);
+});
+
 function precEl(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -1617,19 +1701,33 @@ async function openPersonalProfileModal() {
     showAppNotice("Create an account or sign in with Google before completing Deep Personalisation. Your guest profile stays available for trip planning.");
     return;
   }
+  const actor = state.currentUser.user_id;
+  const epoch = ++personalProfileEpoch;
+  const current = () => epoch === personalProfileEpoch && actor === state.currentUser?.user_id;
+  if (personalProfileDialogState?.userId === actor) {
+    savePersonalProfileDraft();
+    document.querySelector('#personalProfileModal [onclick="closePersonalProfileModal()"]')?.focus();
+    return;
+  }
+  const returnFocus = document.activeElement && document.activeElement !== document.body
+    ? document.activeElement : document.getElementById('headerPlanTripBtn');
   try {
     if (!state.precision.bank) {
       const r = await fetch("/api/config/precision-questionnaire");
       if (!r.ok) throw new Error("Could not load the questionnaire");
-      state.precision.bank = await r.json();
+      const bank = await r.json();
+      if (!current()) return;
+      state.precision.bank = bank;
     }
     const res = await fetch(`/api/profile/precision/${state.currentUser.user_id}`);
     const data = await res.json();
+    if (!current()) return;
     if (!res.ok) throw new Error(formatApiError(data, "Could not load your saved answers"));
-    state.precision.answers = data.answers || {};
+    const draft = readPersonalProfileDraft(actor);
+    state.precision.answers = {...(draft ? draft.answers : data.answers || {})};
     state.precision.context = data.context_answers || {};
     const additionalInfoField = document.getElementById("personalAdditionalInfo");
-    if (additionalInfoField) additionalInfoField.value = data.additional_info || "";
+    if (additionalInfoField) additionalInfoField.value = typeof draft?.additionalInfo === 'string' ? draft.additionalInfo : data.additional_info || '';
     state.precision.exists = !!data.exists;
 
     // Pre-seed default non-empty answers for scale & multi questions if uncalibrated
@@ -1650,17 +1748,25 @@ async function openPersonalProfileModal() {
       return ids.some(id => !precAnswered(state.precision.answers[id]));
     });
     state.precision.tab = firstUnansSec ? firstUnansSec.id : state.precision.bank.sections[0].id;
+    if (draft && state.precision.bank.sections.some(section => section.id === draft.tab)) state.precision.tab = draft.tab;
     showPersonalPane("form");
     renderPersonalSection();
     openModal("personalProfileModal");
+    personalProfileDialogState = {userId:actor,returnFocus,bodyOverflow:document.body.style.overflow,scrollX:window.scrollX,scrollY:window.scrollY};
+    personalProfileDirty = !!draft;
+    document.body.style.overflow = 'hidden';
+    personalProfileOverlay?.setAttribute('role','dialog');
+    personalProfileOverlay?.setAttribute('aria-modal','true');
+    personalProfileOverlay?.setAttribute('aria-label','Deep Personalisation');
+    const close = document.querySelector('#personalProfileModal [onclick="closePersonalProfileModal()"]');
+    if (close) { close.type = 'button'; close.setAttribute('aria-label','Close Deep Personalisation'); close.focus({preventScroll:true}); }
   } catch (err) {
-    showAppNotice("Could not open Deep Personalisation: " + err.message);
+    if (current()) showAppNotice("Could not open Deep Personalisation: " + err.message);
   }
 }
 
-async function closePersonalProfileModal() {
+function closePersonalProfileModal() {
   closeModal("personalProfileModal");
-  if (state.currentUser) await renderDashboard(state.currentProfile);
 }
 
 function showPersonalPane(which) {
@@ -1731,6 +1837,7 @@ function setPrecisionAnswer(qid, value, rerender = true) {
 
   const full = precFull();
   Object.keys(a).forEach(id => { if (!precVisible(id, full)) delete a[id]; });
+  savePersonalProfileDraft(true);
 
   if (rerender) {
     renderPersonalSection();
@@ -1914,8 +2021,11 @@ function precText(q, cur) {
 // Submit Unified Profile
 async function submitPersonalProfile() {
   if (!state.currentUser) return;
+  const actor = state.currentUser.user_id;
   const btn = document.getElementById("personalSaveBtn");
   btn.disabled = true;
+  const fields = [...document.querySelectorAll('#personalQuestions input,#personalQuestions button,#personalQuestions select,#personalQuestions textarea,#personalAdditionalInfo')].map(node => [node,node.disabled]);
+  fields.forEach(([node]) => { node.disabled = true; });
 
   // Guarantee default values for climate tolerance, allergies, and health logistics before sending
   const ans = { ...(state.precision.answers || {}) };
@@ -1939,26 +2049,34 @@ async function submitPersonalProfile() {
       body: JSON.stringify({ answers: state.precision.answers, additional_info: document.getElementById("personalAdditionalInfo")?.value || "" })
     });
     const data = await res.json();
+    if (state.currentUser?.user_id !== actor) return;
     if (!res.ok) {
       throw new Error(formatApiError(data, "Save failed"));
     }
 
     state.precision.answers = data.answers;
     state.precision.exists = true;
+    clearPersonalProfileDraft(actor);
 
-    renderPersonalResult(data);
+    if (personalProfileDialogState?.userId === actor) renderPersonalResult(data);
     // Refresh completeness status and unlock trip planner
     if (state.currentUser) {
       const statusRes = await fetch('/api/profile/' + state.currentUser.user_id + '/status');
       if (statusRes.ok) {
-        state.profileStatus = await statusRes.json();
+        const status = await statusRes.json();
+        if (state.currentUser?.user_id !== actor) return;
+        state.profileStatus = status;
       }
+      await syncUnifiedProfileCard(actor);
+      if (state.currentUser?.user_id !== actor) return;
+      loadRecommendations();
       loadUserTrips();
     }
   } catch (err) {
     alert("Error: " + err.message);
   } finally {
-    btn.disabled = false;
+    fields.forEach(([node,disabled]) => { if(node.isConnected)node.disabled=disabled; });
+    if (state.currentUser?.user_id === actor && personalProfileDialogState?.userId === actor) updatePersonalProgress();
   }
 }
 
