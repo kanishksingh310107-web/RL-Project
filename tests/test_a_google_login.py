@@ -67,12 +67,14 @@ const context={console,AbortController,setTimeout,clearTimeout,JSON,Object,Numbe
  document:{readyState:'complete',getElementById:id=>nodes.get(id)||null},
  addEventListener(){},removeEventListener(){},
  google:{accounts:{id:{initialize(value){initialization=value;initializations++;},renderButton(node){node.childElementCount++;}}}},
- localStorage:{setItem(key,value){stored=JSON.parse(value);}},updateNavUser(){},resetAnswers(){resets++;},showView(value){view=value;},
+ localStorage:{setItem(key,value){stored=JSON.parse(value);}},sessionStorage:{removeItem(){}},updateNavUser(){},resetAnswers(){resets++;},showView(value){view=value;},
  formatApiError(data,fallback){return data.detail||fallback;},
  fetch:async url=>({ok:true,json:async()=>{
   if(url.includes('/config/google')){configRequests++;return {client_id:'123456789-example.apps.googleusercontent.com',can_configure:true};}
   return {user_id:'verified-user',token:'session-token',has_profile:false};
  }})};context.window=context;vm.createContext(context);
+const appSource=fs.readFileSync('static/app.js','utf8');
+vm.runInContext(appSource.slice(appSource.indexOf('function persistCurrentUser()'),appSource.indexOf('// Switch between views')),context);
 vm.runInContext(fs.readFileSync('static/modules/google_login.js','utf8'),context);
 (async()=>{
  await Promise.all([context.initGoogleGIS(),context.initGoogleGIS()]);

@@ -16,9 +16,9 @@
   const canonicalId=item=>item.destination_id||item.id;
   const name=item=>item.name||item.destination_name||'Destination';
   const texts=value=>Array.isArray(value)?value.map(v=>typeof v==='string'?v:v.message||v.text||'').filter(Boolean):typeof value==='string'?[value]:[];
-  const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation||item.because_you_said||item.why_it_suits);
+  const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation||item.because_you_said||item.why_it_suits).map(value=>A.text(value).replace(/\s*\(Q\d+\)/gi,'').replace(/_/g,' '));
   function checkOwner(){if(owner!==A.uid()){owner=A.uid();compared.clear();items.clear();selection.hidden=true;discoveryContext={};shelves.replaceChildren();handoff=null;}}
-  function register(item){checkOwner();const id=canonicalId(item);if(typeof id!=='string'||isHome(item))return null;items.set(id,item);return id;}
+  function register(item){checkOwner();const id=canonicalId(item);if(typeof id!=='string'||isHome(item))return null;const known=items.get(id);if(typeof item.is_shortlisted!=='boolean'&&typeof known?.is_shortlisted==='boolean')item.is_shortlisted=known.is_shortlisted;items.set(id,item);return id;}
   function addComparison(item,feedback=notice){
     const id=register(item);if(!id)return;
     if(compared.has(id))compared.delete(id);
@@ -34,7 +34,7 @@
   }
   function feedbackControls(item,parent,context={}) {
     const id=register(item);if(!id)return;
-    const bar=U.el('div',null,'ex-actions'),message=U.status(parent);
+    const bar=U.el('div',null,'ex-actions ex-feedback-actions'),message=U.status(parent);
     const compare=U.button(compared.has(id)?'Remove comparison':'Compare',()=>addComparison(item,message));compare.dataset.exCompare=id;compare.setAttribute('aria-pressed',String(compared.has(id)));bar.append(compare);
     const send=async(action,reason,control)=>U.busy(control,message,async()=>{
       if(!await window.ProfileGate.require())return;await A.capabilities();
@@ -58,9 +58,12 @@
   const rawCard=window.renderRecommendationCard;
   if(typeof rawCard==='function')window.renderRecommendationCard=function(item,category){
     const card=rawCard(item,category);register(item);
-    const explanation=U.el('div',null,'ex-card-explanation');U.lines(explanation,'Why this place?',reasons(item).slice(0,2));
+    const explanation=U.el('div',null,'ex-card-explanation');
+    if(!item.because_you_said&&!item.why_it_suits)U.lines(explanation,'Why this place?',reasons(item).slice(0,2));
     const downside=item.tradeoff||item.trade_off||item.drawback;if(downside)explanation.append(U.el('p','Trade-off: '+A.text(downside),'ex-muted'));
-    const target=card.lastElementChild||card;target.append(explanation);feedbackControls(item,target,{});return card;
+    const target=U.el('div',null,'destination-card-feedback');
+    if(explanation.childElementCount)target.append(explanation);
+    feedbackControls(item,target,{});card.append(target);return card;
   };
   function card(item,context={}) {
     register(item);const box=U.el('article',null,'ex-destination-card');box.append(U.el('h3',name(item)));

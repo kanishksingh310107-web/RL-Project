@@ -11,7 +11,7 @@ const elements=new Map(),requests=[];
 for(const id of ['schedulePrefsMount','freeBlocksList','freeBlocksError','addFreeBlockBtn','tripCreateForm',...Object.keys(values),...Object.keys(values).map(id=>id+'Error')])
   elements.set(id,{value:values[id]||'',children:[],textContent:'',events:{},addEventListener(name,fn){this.events[name]=fn;}});
 const context={console,URL,Headers,Request,Map,Set,Number,String,JSON,Object,Error,encodeURIComponent,
-  location:{href:'http://localhost/'},localStorage:{getItem:()=>JSON.stringify({token:'signed-in-token'})},
+  location:{href:'http://localhost/'},localStorage:{getItem:()=>JSON.stringify({token:'signed-in-token'})},sessionStorage:{getItem:()=>null},
   document:{getElementById:id=>elements.get(id)||null,querySelectorAll:()=>[],querySelector:()=>null,addEventListener(){}},
   addEventListener(){},fetch:async(url,init)=>{requests.push({url,init});return {ok:true,json:async()=>({})};}};
 context.window=context;

@@ -1149,7 +1149,7 @@ async function refreshRecommendations() {
 
 function renderRecommendationCard(item, category) {
   const card = document.createElement("div");
-  card.className = "bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden group";
+  card.className = "destination-card bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition overflow-hidden group";
 
   // Category badge
   let badgeHtml = "";
@@ -1173,6 +1173,9 @@ function renderRecommendationCard(item, category) {
   `).join("");
 
   const isShortlisted = !!item.is_shortlisted;
+  const reason = String(item.because_you_said || item.why_it_suits || '')
+    .replace(/\s*\(Q\d+\)/gi, '').replace(/_/g, ' ')
+    .replace(/^Because you said\s*/i, '').trim();
 
   card.innerHTML = `
     <div>
@@ -1211,21 +1214,21 @@ function renderRecommendationCard(item, category) {
 
         <!-- Tagline & Because you said attribution -->
         ${Number.isFinite(item.estimated_cost_inr) ? `<p class="text-xs font-semibold text-slate-700">Indicative trip estimate: ${escapeHtml(formatINR(item.estimated_cost_inr))}</p>` : ''}
-        ${item.because_you_said ? `
+        ${reason ? `
           <div class="p-2 rounded-lg bg-indigo-50/90 border border-indigo-100 text-[11px] text-indigo-900 leading-snug">
-            <span class="font-bold text-indigo-700 block text-[10px] uppercase tracking-wider mb-0.5"><i class="fa-solid fa-sparkles text-amber-500 mr-1"></i>Because you said:</span>
-            ${item.because_you_said}
+            <span class="font-bold text-indigo-700 block text-[10px] uppercase tracking-wider mb-0.5">Why it fits</span>
+            ${escapeHtml(reason)}
           </div>
         ` : `
           <p class="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-            <strong class="text-slate-800 font-semibold">Why this fits you:</strong> ${item.why_it_suits}
+            Selected around your travel preferences. Explore the details to learn more.
           </p>
         `}
       </div>
     </div>
 
     <!-- Actions -->
-    <div class="p-4 pt-0 flex items-center gap-2">
+    <div class="destination-card-actions p-4 pt-0 flex items-center gap-2">
       <button type="button" onclick="openExploreModal('${item.id}')" class="flex-1 py-2 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition text-center">
         Explore Details
       </button>

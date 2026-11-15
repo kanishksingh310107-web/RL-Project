@@ -1,0 +1,107 @@
+/* Responsive application shell. Authentication keeps its own readable width. */
+:root { --app-gutter: clamp(16px, 2.5vw, 48px); --app-ink: #18243a; --app-muted: #64748b; }
+body { background: #f5f7fb; color: var(--app-ink); }
+body > header { background: rgba(255,255,255,.97); box-shadow: 0 1px 8px rgb(15 23 42 / .025); }
+.app-header-inner { display: flex; align-items: center; gap: 24px; min-height: 76px; padding: 12px var(--app-gutter); width: 100%; }
+.app-brand { color: var(--app-ink); flex-shrink: 0; text-decoration: none; }
+.app-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-left: auto; }
+.app-nav-link { padding: 10px 14px; border-radius: 9px; font-size: 14px; font-weight: 600; color: #526178; text-decoration: none; }
+.app-nav-link:hover,.app-nav-link[aria-current] { background: #eef2ff; color: #4338ca; }
+.app-plan-button { border: 1px solid #4338ca; background: #4338ca; color: white; padding: 11px 18px; border-radius: 10px; font-size: 14px; font-weight: 650; white-space: nowrap; box-shadow: 0 3px 8px rgb(67 56 202 / .12); }
+.app-plan-button:hover:not(:disabled) { background: #3730a3; }
+.app-account-actions { display: flex; gap: 12px; align-items: center; margin-left: auto; }
+.app-header-actions:not([hidden]) + .app-account-actions { margin-left: 0; }
+.app-main { max-width: none; padding: 26px var(--app-gutter) 72px; margin-block: 0; min-width: 0; }
+.app-main[data-screen=auth] { display: flex; align-items: center; padding-block: 40px; }
+.app-main[data-screen=onboarding] { max-width: 1060px; }
+#dashboardView { display: flex; flex-direction: column; gap: 24px; }
+#dashboardView.hidden { display: none; }
+#dashboardView > * { margin-block: 0; min-width: 0; }
+#dashboardOverview { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+#dashboardOverview > *, .app-personal-profile > * { min-width: 0; margin: 0; }
+#dashBasicProfileCard,#personalProfileSummaryCard,#personalProfileBanner,#recommendationsSection,#itineraryPlannerSection,.ex-discovery { padding: 24px; border-radius: 16px; box-shadow: 0 2px 8px rgb(15 23 42 / .035); }
+#dashBasicProfileCard > div:first-child { padding-bottom: 16px; }
+#dashBasicProfileCard > .pt-5 { padding-top: 16px; }
+#dashBasicProfileCard .pt-5 > div:has(> #dashGoalsContainer:empty),
+#dashBasicProfileCard .pt-5 > div:has(> #dashPlacesContainer:empty),
+#dashAvoidancesWrapper:has(#dashAvoidancesContainer:empty),
+#dashRulesWrapper:has(#personalProfileRulesList:empty),
+#dashPastTripsWrapper:has(#dashPastTripsContainer:empty) { display: none; }
+#personalProfileSummaryCard > div:first-child { flex-wrap: wrap; gap: 12px; }
+#personalProfileBanner { align-items: flex-start; flex-direction: column; gap: 16px; }
+#personalProfileBanner p { max-width: 65ch; }
+.ex-discovery { background: white; }
+.ex-entry-actions { margin: 16px 0 20px; padding-bottom: 20px; }
+#exRecommendationShelves > section > h3 { font-size: 18px; margin-block: 22px 12px; }
+.ex-result-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 20px; align-items: start; }
+.ex-destination-card { padding: 20px; border-radius: 14px; box-shadow: none; gap: 4px; }
+.ex-destination-card > h3 { font-size: 18px; line-height: 1.4; }
+.ex-destination-card p,.ex-destination-card ul { font-size: 14px; line-height: 1.6; margin-block: 4px; }
+.ex-destination-card h4 { font-size: 12px; font-weight: 650; color: #64748b; margin-top: 10px; }
+.ex-status:empty { min-height: 0; margin: 0; padding: 0; }
+.ex-destination-card > .ex-actions { margin-top: 12px; padding-top: 0; }
+.ex-card-explanation { margin: 0; padding: 0; border: 0; }
+.ex-card-explanation:empty { display: none; }
+#recommendedGrid,#trendingGrid,#seasonalGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; align-items: start; }
+#recommendationsSection > div:has(> #trendingGrid:empty),
+#recommendationsSection > div:has(> #seasonalGrid:empty) { display: none; }
+.destination-card { display: flex; flex-direction: column; height: auto; min-width: 0; }
+.destination-card > div:first-child { min-width: 0; }
+.destination-card > div:first-child > div:first-child { height: 196px; }
+.destination-card .destination-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 18px 14px; margin: 0; }
+.destination-card-actions > button { min-height: 38px; flex: 1 1 auto; white-space: nowrap; }
+.destination-card-feedback { border-top: 1px solid #edf0f5; padding: 14px 18px 16px; min-width: 0; }
+.destination-card-feedback .ex-card-explanation { margin-bottom: 12px; }
+.destination-card-feedback .ex-card-explanation h4 { margin-top: 0; }
+.destination-card-feedback .ex-card-explanation ul { font-size: 13px; line-height: 1.6; }
+.destination-card-feedback .ex-card-explanation p { font-size: 13px; }
+.ex-feedback-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.ex-feedback-actions > button { min-height: 36px; padding: 7px 11px; font-size: 12px; border-color: #dce2ec; border-radius: 8px; white-space: nowrap; }
+.ex-feedback-more { flex: 1 0 100%; margin-top: 2px; }
+.ex-feedback-more summary { font-size: 12px; color: #64748b; padding-block: 6px; }
+.ex-feedback-more .ex-actions { margin: 4px 0 0; padding: 10px; gap: 8px; }
+.ex-feedback-more button { min-height: 34px; padding: 6px 10px; font-size: 12px; }
+.destination-card .ex-status:empty { display: none; }
+.ex-more-destinations > summary { padding: 16px 20px; background: white; }
+.ex-more-destinations[open] > summary { margin-bottom: 20px; }
+.ex-assistant-launcher { font-size: 13px; padding: 12px 18px; box-shadow: 0 4px 16px rgb(67 56 202 / .18); }
+#itineraryPlannerSection > div:first-child { gap: 16px; }
+.te-card,.ex-budget,.ex-shopping { border-color: #e0e6ef; box-shadow: 0 2px 6px rgb(15 23 42 / .025); }
+.te-workspace-nav { margin-top: 0; }
+body:has(#headerTripActions:not([hidden])) .te-workspace-nav a:not(:first-child) { display: none; }
+.te-timeline { max-width: none; }
+.te-form-page > div { padding: 28px; }
+@media(min-width:1900px) { #recommendedGrid,#trendingGrid,#seasonalGrid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+@media(max-width:1100px) {
+  .app-header-inner { flex-wrap: wrap; gap: 12px; }
+  .app-account-actions { margin-left: auto!important; }
+  .app-header-actions { order: 3; flex-basis: 100%; justify-content: flex-start; margin: 0; padding-top: 8px; border-top: 1px solid #edf0f5; }
+  #dashboardOverview { grid-template-columns: 1fr; gap: 20px; }
+  #recommendedGrid,#trendingGrid,#seasonalGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:640px) {
+  .app-main { padding-top: 18px; }
+  .app-header-inner { min-height: 64px; gap: 10px; padding-block: 10px; }
+  .app-brand > div:last-child > span:last-child { display: none; }
+  .app-brand > div:last-child > span:first-child { font-size: 14px; }
+  .app-account-actions { gap: 4px; }
+  .app-account-actions > button { display: none; }
+  #navUserBadge { padding-left: 0; border-left: 0; gap: 2px; }
+  #navAvatar { display: none; }
+  #navUserBadge button { padding: 6px; margin-left: 0; }
+  .app-header-actions { gap: 4px; justify-content: space-between; }
+  .app-nav-link { padding: 10px; font-size: 13px; }
+  .app-plan-button { padding: 11px 13px; font-size: 13px; }
+  #dashboardView { gap: 18px; }
+  #dashBasicProfileCard,#personalProfileSummaryCard,#personalProfileBanner,#recommendationsSection,#itineraryPlannerSection,.ex-discovery { padding: 18px; border-radius: 14px; }
+  #recommendedGrid,#trendingGrid,#seasonalGrid { grid-template-columns: 1fr; gap: 16px; }
+  .ex-entry-actions { flex-direction: row; }
+  .ex-entry-actions button { flex: 1 1 140px; width: auto; }
+  .ex-destination-card { padding: 16px; }
+  .ex-destination-card .ex-actions button { flex: 0 1 auto; }
+  .ex-feedback-actions { gap: 6px; }
+  .ex-feedback-actions > button { flex: 0 1 auto; }
+  .ex-assistant-launcher { font-size: 12px; padding: 10px 14px; }
+  .te-form-page > div { padding: 18px; }
+}
+@media print { body > header,.app-header-actions { display: none!important; }.app-main { padding: 0; } }
