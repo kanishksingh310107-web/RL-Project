@@ -1328,6 +1328,8 @@ def create_trip(user_id: str, payload: TripCreate, _profile_gate=Depends(require
         food_style=(payload.trip_preferences or {}).get('food_style') or (payload.trip_preferences or {}).get('dietary'),
         include_shopping=(payload.trip_preferences or {}).get('include_shopping',False),
         destination_lat=payload.destination_lat,destination_lon=payload.destination_lon,
+        accommodation_cost_inr=((payload.trip_preferences or {}).get('accommodation') or {}).get('expected_total_cost_inr'),
+        intercity_cost_inr=(payload.trip_preferences or {}).get('intercity_cost_inr'),
     )
     bare_min = min_budget_data["bare_minimum_budget"]
     rec_budget = min_budget_data["recommended_budget"]
@@ -1888,6 +1890,8 @@ def estimate_minimum_budget(payload: MinimumBudgetRequest):
         party=payload.party.model_dump() if payload.party else None,
         food_style=payload.food_style,
         destination_lat=payload.destination_lat, destination_lon=payload.destination_lon,
+        accommodation_cost_inr=payload.accommodation_cost_inr,
+        intercity_cost_inr=payload.intercity_cost_inr,
     )
     return MinimumBudgetResponse(**data)
 

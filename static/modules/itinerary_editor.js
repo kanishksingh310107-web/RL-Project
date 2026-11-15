@@ -13,13 +13,13 @@ TravelModules.register('itinerary_editor', {
     const activity=b=>['activity','shopping'].includes(b.type)||['activity','shopping'].includes(b.slot_type);
     const money=n=>n!=null&&Number.isFinite(Number(n))?formatINR(Number(n)):'Cost unavailable';
     const costLabel=b=>{const kind=b.type||b.slot_type;return ['transit','travel'].includes(kind)?'Covered by your local transport allowance':kind==='meal'?'Covered by your food allowance':kind==='unplanned'?'No fixed spend planned':money(b.cost_estimate);};
-    let data,runtime,selectedDay=window.ItineraryInsights?.selectedDay(tripId)||1,busy=false,dragId=null;
+    let data,runtime,weatherData=null,selectedDay=window.ItineraryInsights?.selectedDay(tripId)||1,busy=false,dragId=null;
     function message(text){const node=container.querySelector('[data-status]');if(node)node.textContent=text;}
     async function action(control,work){if(busy||control.disabled)return;busy=true;control.disabled=true;message('');try{await work();}catch(error){if(current())message(error.message);}finally{busy=false;if(control.isConnected)control.disabled=false;}}
     async function load(){
       container.innerHTML='<p role="status">Loading your saved itinerary…</p>';
       try{
-        [data,runtime]=await Promise.all([api(endpoint('/timed-view')),api(`/api/trips/${encodeURIComponent(tripId)}/runtime?${query}`)]);
+        [data,runtime,weatherData]=await Promise.all([api(endpoint('/timed-view')),api(`/api/trips/${encodeURIComponent(tripId)}/runtime?${query}`),api(`/api/prep/${encodeURIComponent(tripId)}/weather?${query}`).catch(()=>null)]);
         if(!current())return;T.applySnapshot(ctx,runtime);render();
       }catch(error){if(current()){container.innerHTML=`<p role="alert" class="te-error">${esc(error.message)}</p><button data-retry>Retry</button>`;container.querySelector('[data-retry]').onclick=load;}}
     }
@@ -30,14 +30,23 @@ TravelModules.register('itinerary_editor', {
       selectedDay=day.day_number;
       const editable=runtime.status==='draft'&&state.profileStatus?.complete===true, all=days.flatMap(d=>d.timeline||[]).filter(activity), blocks=day.timeline||[];
       const accepted=all.filter(b=>T.acceptance(b)==='accepted').length;
-      container.innerHTML=`<section class="te-card"><h3>${esc(data.trip?.destination_name||'Your itinerary')}</h3><p>${editable?'Review each activity, then finalize when ready.':'Saved itinerary · read only'}</p>
+      const calendarDate=data.trip?.start_date?new Date(`${data.trip.start_date}T00:00:00Z`):null;
+      if(calendarDate&&!Number.isNaN(calendarDate.valueOf()))calendarDate.setUTCDate(calendarDate.getUTCDate()+day.day_number-1);
+      const dayDate=calendarDate&&!Number.isNaN(calendarDate.valueOf())?calendarDate.toISOString().slice(0,10):null;
+      const weatherDay=(weatherData?.daily||[]).find(item=>item.date===dayDate);
+      const topWeather=document.getElementById('itinWeatherCard');if(topWeather)topWeather.hidden=true;
+      const weatherHtml=weatherDay?`<p class="te-day-weather" role="note">Weather · ${esc(weatherDay.temp_min_c)}–${esc(weatherDay.temp_max_c)}°C · ${esc(weatherDay.rain_probability_pct)}% rain · ${esc(weatherDay.label||weatherData.label||'Estimate')}</p>`:`<p class="te-day-weather" role="note">Weather unavailable for this day. Check again when a forecast is available.</p>`;
+      const tripPrefs=data.trip?.trip_preferences||{};const stay=tripPrefs.accommodation||{};
+      const stayReminder=(!stay.property_name||stay.expected_total_cost_inr==null)?'<aside class="te-marker"><strong>Accommodation details needed before finalizing.</strong> Review the suggested neighbourhood in Stays, then enter the property name and full expected cost in Edit trip. The app does not book accommodation.</aside>':'';
+      const dayTitle=`Day ${selectedDay}${dayDate?` · ${new Date(`${dayDate}T00:00:00Z`).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric',timeZone:'UTC'})}`:''}`;
+      container.innerHTML=`<section class="te-card"><h3>${esc(data.trip?.destination_name||'Your itinerary')}</h3><p>${editable?'Review each activity, then finalize when ready.':'Saved itinerary · read only'}</p>${stayReminder}
         <p>${accepted} of ${all.length} activities accepted${T.can('occurrence_acceptance')?'':' · Individual acceptance awaits the server update.'}</p>
         <nav class="te-day-nav" aria-label="Itinerary day">${days.map(d=>`<button data-day="${d.day_number}" aria-current="${d.day_number===selectedDay}">Day ${d.day_number}</button>`).join('')}</nav>
         <div class="te-toolbar"><button data-print>Print itinerary</button><button data-map>Open day route</button>
         ${editable?`<button data-balance ${T.can('itinerary_preview')?'':'disabled'}>Balance all days</button><button data-all ${T.can('occurrence_acceptance')?'':'disabled'}>Accept all activities</button><button data-custom ${T.can('custom_activities')?'':'disabled'}>Add custom activity</button><button data-undo ${data.undo_token&&T.can('itinerary_preview')?'':'disabled'}>Undo last edit</button>`:''}
         <button data-expenses ${T.can('expenses')?'':'disabled'}>Expenses</button><button data-share ${T.can('readonly_sharing')?'':'disabled'}>Share read-only</button></div>
-        <p data-status role="status" class="te-error"></p><h4 class="font-bold">Day ${selectedDay} · ${esc(day.formatted_date||'')}</h4>
-        ${(day.markers||[{label:'Hotel arrival',time:day.arrival_marker},{label:'Hotel checkout',time:day.departure_marker}]).filter(m=>m.time).map(m=>`<p class="te-marker">${esc(m.label)} · ${esc(m.time)}</p>`).join('')}
+        <p data-status role="status" class="te-error"></p><h4 class="font-bold">${dayTitle}${day.formatted_date&& !/^Day\s+\d+$/i.test(day.formatted_date)?` · ${esc(day.formatted_date)}`:''}</h4>${weatherHtml}
+        ${(day.markers||[{label:'Accommodation arrival',time:day.arrival_marker},{label:'Accommodation check-out',time:day.departure_marker}]).filter(m=>m.time).map(m=>`<p class="te-marker">${esc(m.label)} · ${esc(m.time)}</p>`).join('')}
         ${day.note?`<p class="te-marker">${esc(T.publicText(day.note))}</p>`:''}
         ${(day.conflicts||[]).map(c=>`<p role="alert" class="te-error">${esc(T.publicText(c.message||c))}</p>`).join('')}
         <ol class="te-timeline">${blocks.map((b,index)=>{
@@ -45,6 +54,7 @@ TravelModules.register('itinerary_editor', {
           const disabled=!T.can('itinerary_preview')||b.pinned?'disabled':'';
           return `<li class="te-stop" data-occurrence="${esc(id||'')}" ${edit&&!disabled?'draggable="true"':''}><div class="te-stop-time">${esc(b.time_range||[b.start_time,b.end_time].filter(Boolean).join(' – ')||'Time unavailable')}</div><article class="te-stop-content" data-kind="${esc(kind)}"><small>${index+1} · ${esc(b.slot_type_label||kind.replace(/_/g,' '))}${b.duration_minutes!=null?' · '+esc(b.duration_minutes)+' min':''}</small><h4>${esc(b.title||b.name)}</h4><p>${esc(b.neighborhood||b.location||'')}</p><p>${esc(T.publicText(b.description))}</p><p>${esc(costLabel(b))}${b.is_estimate?' · estimate':''}</p>
           ${activity(b)?`<p>${choice==='unreviewed'?'Not reviewed':choice==='accepted'?'Accepted':'Rejected'}${b.pinned?' · Fixed booking / pinned':''}${b.must_visit?' · Must visit':''}</p>`:''}
+          ${b.provenance?.booking_required?`<p class="te-booking-note">Booking required · proposed Day ${esc(b.provenance.proposed_day||day.day_number)}, ${esc(b.provenance.proposed_start_time||'time not set')}–${esc(b.provenance.proposed_end_time||'time not set')}. Confirm availability directly with the venue.</p>`:''}
           ${edit?`<div class="te-stop-actions"><button data-choice="accept" ${T.can('occurrence_acceptance')?'':'disabled'}>Accept</button><button data-choice="reject" ${T.can('occurrence_acceptance')?'':'disabled'}>Reject</button><button data-edit="earlier" ${disabled} aria-label="Move ${esc(b.title)} earlier">↑ Earlier</button><button data-edit="later" ${disabled} aria-label="Move ${esc(b.title)} later">↓ Later</button><button data-edit="move_day" ${disabled}>Move day</button><button data-edit="swap" ${disabled}>Swap</button><button data-edit="remove" ${disabled}>Remove</button><button data-edit="pin" ${T.can('itinerary_preview')?'':'disabled'}>${b.pinned?'Unpin':'Pin booking'}</button><button data-edit="must_visit" ${T.can('itinerary_preview')?'':'disabled'}>${b.must_visit?'Unmark':'Mark'} must visit</button></div>`:''}</article></li>`;
         }).join('')}</ol><p>Times and travel costs are estimates unless marked verified. Missing travel times must be resolved before finalizing.</p></section>`;
       container.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{selectedDay=Number(b.dataset.day);render();});
