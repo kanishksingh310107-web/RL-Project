@@ -184,16 +184,33 @@
     if (authMessage) { authMessage.textContent = "Your sign-in session has expired. Sign in again, then try planning your trip."; authMessage.classList.remove("hidden"); }
   }
   let gateCheckInFlight = null;
+  let questionnaireEpoch = 0;
+  let autoPromptDismissedFor = null;
+  const readingTrips = () => location.hash === '#/trips' || (/^#\/trips\/[^/]+$/.test(location.hash) && location.hash !== '#/trips/new');
+  window.addEventListener('profile:questionnaire-dismissed', event => {
+    if (event.detail?.userId === user()?.user_id) autoPromptDismissedFor = event.detail.userId;
+  });
+  window.addEventListener('trip:context-cleared', () => { if (!user()) autoPromptDismissedFor = null; });
+  window.addEventListener('trip:history-opened', () => {
+    questionnaireEpoch++;
+    byId('aHistoryPanel')?.classList.add('hidden');
+  });
 
-  async function openQuestionnaire() {
+  async function openQuestionnaire(automatic = false) {
+    const actor = user()?.user_id;
+    const epoch = ++questionnaireEpoch;
+    const current = () => !!actor && actor === user()?.user_id && epoch === questionnaireEpoch
+      && (automatic !== true || (!readingTrips() && autoPromptDismissedFor !== actor));
+    if (!current()) return;
     if (typeof state !== 'undefined' && !state.currentProfile?.residence_country) {
       if (typeof editProfile === 'function') editProfile();
       return;
     }
-    ensurePanel(); await loadHistory(); byId("aHistoryPanel").classList.remove("hidden");
+    ensurePanel(); await loadHistory(); if (!current()) return; byId("aHistoryPanel").classList.remove("hidden");
     const choice = byId("aHistoryChoice");
     choice.querySelectorAll("button").forEach(b => b.classList.remove("hidden"));
     const historyState = await fetch("/api/profile/history").then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!current()) return;
     choice.querySelector("button:first-child").textContent = historyState?.history_choice === "none" ? "✓ I have no travel history" : "I have no travel history";
     if (historyState?.history_choice === "provided") choice.querySelector("button:last-child").textContent = "Add another past trip";
     if (historyState?.history_choice === "none") choice.querySelector("button:last-child").textContent = "Add past trips instead";
@@ -219,8 +236,10 @@
 
   window.ProfileGate = {
     async require(callback) {
-      try { const s = await status(); if (s.profile_complete) { callback?.(); return true; } showMessage("Finish the required profile and travel history to plan a trip.", false); await openQuestionnaire(); return false; }
+      const actor=user()?.user_id;
+      try { const s = await status(); if(actor!==user()?.user_id)return false; if (s.profile_complete) { callback?.(); return true; } showMessage("Finish the required profile and travel history to plan a trip.", false); await openQuestionnaire(); return false; }
       catch (error) {
+        if(actor!==user()?.user_id)return false;
         const authFailed = error.code === "AUTH_REQUIRED" || error.code === "SESSION_EXPIRED";
         if (authFailed) {
           handleAuthFailure();
@@ -230,9 +249,17 @@
     },
     async checkAndPrompt() {
       if (!user() || gateCheckInFlight) return gateCheckInFlight;
+      const actor = user().user_id;
       gateCheckInFlight = (async () => {
-        try { const s = await status(); setGateState(!s.profile_complete); if (!s.profile_complete) await openQuestionnaire(); else { await refreshRevisits(); } }
-        catch (error) { if (error.code === "AUTH_REQUIRED" || error.code === "SESSION_EXPIRED") handleAuthFailure(); }
+        try {
+          const s = await status();
+          if (actor !== user()?.user_id) return;
+          setGateState(!s.profile_complete);
+          if (!s.profile_complete) {
+            if (!readingTrips() && autoPromptDismissedFor !== actor) await openQuestionnaire(true);
+          } else { await refreshRevisits(); }
+        }
+        catch (error) { if (actor===user()?.user_id && (error.code === "AUTH_REQUIRED" || error.code === "SESSION_EXPIRED")) handleAuthFailure(); }
       })();
       try { await gateCheckInFlight; } finally { gateCheckInFlight = null; }
     }
