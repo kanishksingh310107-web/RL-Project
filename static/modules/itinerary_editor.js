@@ -28,7 +28,7 @@ TravelModules.register('itinerary_editor', {
       const days=data.days||[], day=days.find(d=>d.day_number===selectedDay)||days[0];
       if(!day){container.innerHTML='<p>No timed activities fit this trip. Review the dates and preferences before regenerating.</p>';return;}
       selectedDay=day.day_number;
-      const editable=runtime.status==='draft', all=days.flatMap(d=>d.timeline||[]).filter(activity), blocks=day.timeline||[];
+      const editable=runtime.status==='draft'&&state.profileStatus?.complete===true, all=days.flatMap(d=>d.timeline||[]).filter(activity), blocks=day.timeline||[];
       const accepted=all.filter(b=>T.acceptance(b)==='accepted').length;
       container.innerHTML=`<section class="te-card"><h3>${esc(data.trip?.destination_name||'Your itinerary')}</h3><p>${editable?'Review each activity, then finalize when ready.':'Saved itinerary · read only'}</p>
         <p>${accepted} of ${all.length} activities accepted${T.can('occurrence_acceptance')?'':' · Individual acceptance awaits the server update.'}</p>

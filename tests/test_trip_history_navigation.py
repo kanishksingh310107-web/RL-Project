@@ -223,8 +223,9 @@ def test_questionnaire_closes_without_submitting_and_resumes_draft(history_ui,di
 def test_my_trips_cancels_a_slow_questionnaire_open_and_has_no_bottom_launcher(history_ui):
     from playwright.sync_api import expect
     page, options, _, held = history_ui
+    page.set_default_timeout(10000)
     options['delay_precision'] = True
-    page.evaluate("const openDeep=window.openPersonalProfileModal;window.openPersonalProfileModal=(...args)=>(window.pendingDeepOpen=openDeep(...args));")
+    page.evaluate("() => { const openDeep=window.openPersonalProfileModal;window.openPersonalProfileModal=(...args)=>(window.pendingDeepOpen=openDeep(...args)); }")
     with page.expect_request('**/api/profile/precision/history-owner'):
         page.locator('#headerPlanTripBtn').click()
     open_history(page)
@@ -232,7 +233,7 @@ def test_my_trips_cancels_a_slow_questionnaire_open_and_has_no_bottom_launcher(h
     assert held
     for route in held:
         route.fulfill(status=200,json={'answers':{},'context_answers':{},'exists':False})
-    page.evaluate('()=>window.pendingDeepOpen')
+    page.evaluate("()=>Promise.race([window.pendingDeepOpen,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Questionnaire opening did not finish')),10000))])")
     expect(page.locator('#personalProfileModal')).to_be_hidden()
     assert page.locator('#dashboardView a.te-primary[href="#/trips/new"]').count() == 0
     expect(page.locator('#headerPlanTripBtn')).to_be_visible()

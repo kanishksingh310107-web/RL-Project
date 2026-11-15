@@ -185,22 +185,22 @@
   }
   let gateCheckInFlight = null;
   let questionnaireEpoch = 0;
-  let autoPromptDismissedFor = null;
-  const readingTrips = () => location.hash === '#/trips' || (/^#\/trips\/[^/]+$/.test(location.hash) && location.hash !== '#/trips/new');
-  window.addEventListener('profile:questionnaire-dismissed', event => {
-    if (event.detail?.userId === user()?.user_id) autoPromptDismissedFor = event.detail.userId;
+  window.addEventListener('trip:context-cleared', () => {
+    questionnaireEpoch++;
+    byId('aHistoryPanel')?.classList.add('hidden');
+    byId('aHistoryForm')?.reset();
+    byId('aHistoryEntries')?.replaceChildren();
+    entries=[];editing=null;
   });
-  window.addEventListener('trip:context-cleared', () => { if (!user()) autoPromptDismissedFor = null; });
   window.addEventListener('trip:history-opened', () => {
     questionnaireEpoch++;
     byId('aHistoryPanel')?.classList.add('hidden');
   });
 
-  async function openQuestionnaire(automatic = false) {
+  async function openQuestionnaire() {
     const actor = user()?.user_id;
     const epoch = ++questionnaireEpoch;
-    const current = () => !!actor && actor === user()?.user_id && epoch === questionnaireEpoch
-      && (automatic !== true || (!readingTrips() && autoPromptDismissedFor !== actor));
+    const current = () => !!actor && actor === user()?.user_id && epoch === questionnaireEpoch;
     if (!current()) return;
     if (typeof state !== 'undefined' && !state.currentProfile?.residence_country) {
       if (typeof editProfile === 'function') editProfile();
@@ -255,9 +255,9 @@
           const s = await status();
           if (actor !== user()?.user_id) return;
           setGateState(!s.profile_complete);
-          if (!s.profile_complete) {
-            if (!readingTrips() && autoPromptDismissedFor !== actor) await openQuestionnaire(true);
-          } else { await refreshRevisits(); }
+          // Background checks expose the completion notice; only an explicit
+          // planning/profile action opens a questionnaire over the current page.
+          if (s.profile_complete) await refreshRevisits();
         }
         catch (error) { if (actor===user()?.user_id && (error.code === "AUTH_REQUIRED" || error.code === "SESSION_EXPIRED")) handleAuthFailure(); }
       })();

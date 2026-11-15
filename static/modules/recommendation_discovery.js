@@ -27,7 +27,7 @@
     'selected for your profile':'Selected for your profile',
     'trending destinations':'Trending destinations',
     'seasonal & upcoming experiences':'Seasonal & upcoming experiences'
-  })[String(value||'').trim().toLocaleLowerCase()]||String(value||'');
+  })[String(value||'').trim().toLocaleLowerCase()]||String(value||'').trim().replace(/^\p{L}/u,letter=>letter.toLocaleUpperCase());
   const texts=value=>Array.isArray(value)?value.map(v=>typeof v==='string'?v:v.message||v.text||'').filter(Boolean):typeof value==='string'?[value]:[];
   const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation||item.because_you_said||item.why_it_suits).map(value=>A.text(value).replace(/\s*\(Q\d+\)/gi,'').replace(/_/g,' '));
   function checkOwner(){if(owner!==A.uid()){owner=A.uid();shelfRevision++;compared.clear();items.clear();selection.hidden=true;discoveryContext={};shelves.replaceChildren();savedAside.replaceChildren();savedAside.hidden=true;layout.dataset.hasSaved='false';savedState.hidden=true;handoff=null;}}
@@ -78,13 +78,15 @@
     if(explanation.childElementCount)target.append(explanation);
     feedbackControls(item,target,{});card.append(target);return card;
   };
-  function card(item,context={}) {
+  function card(item,context={},savedOnly=false) {
     register(item);const box=U.el('article',null,'ex-destination-card');box.append(U.el('h3',name(item)));
+    if(!savedOnly){
     box.append(U.el('strong',window.TripExperience.matchLabel(item)));
     U.lines(box,'Why this fits',reasons(item));
     box.append(U.el('p','Estimated full-trip cost: '+A.money(item.estimated_total_inr??item.total_cost_inr)),U.el('p','Travel time: '+(item.travel_time_label||'Not available')));
     const drawback=item.tradeoff||item.drawback;box.append(U.el('p',drawback?'Trade-off: '+A.text(drawback):'Trade-off information is not available.','ex-muted'));
-    if(item.estimate_note)box.append(U.el('p',A.text(item.estimate_note),'ex-muted'));U.safeLinks(box,item.sources);
+    if(item.estimate_note){const details=U.el('details',null,'ex-estimate-details');details.append(U.el('summary','Estimate details'),U.el('p',A.text(item.estimate_note),'ex-muted'));box.append(details);}U.safeLinks(box,item.sources);
+    }
     const actionBar=U.el('div',null,'ex-actions');
     actionBar.append(U.button('Explore',()=>explore(item,context)),U.button('Plan this trip',()=>plan(item,context),'ex-primary'));
     const save=U.button(item.is_shortlisted?'Saved · remove':'Save for later',()=>U.busy(save,notice,async()=>{
@@ -194,7 +196,7 @@
       if(destinations.length){
         const heading=U.el('h2','Saved places');heading.id='exSavedPlacesHeading';
         const grid=U.el('div',null,'ex-result-grid');
-        for(const item of destinations)grid.append(card(item,{}));
+        for(const item of destinations)grid.append(card(item,{},true));
         savedAside.append(heading,grid);savedAside.hidden=false;
       }else savedAside.hidden=true;
     }else{
@@ -217,6 +219,6 @@
   if(typeof oldNavUpdate==='function')window.updateNavUser=function(...args){const result=oldNavUpdate.apply(this,args);if(owner!==A.uid()){checkOwner();if(!document.getElementById('dashboardView').classList.contains('hidden'))loadShelves();}return result;};
   window.addEventListener('experience:recommendation-feedback',()=>{loadShelves();window.loadRecommendations?.(true);});
   window.addEventListener('load',loadShelves);
-  window.addEventListener('trip:context-cleared',()=>{owner=A.uid();compared.clear();items.clear();selection.hidden=true;selection.replaceChildren();shelves.replaceChildren();discoveryContext={};handoff=null;});
+  window.addEventListener('trip:context-cleared',()=>{owner=A.uid();shelfRevision++;compared.clear();items.clear();selection.hidden=true;selection.replaceChildren();shelves.replaceChildren();savedAside.replaceChildren();savedAside.hidden=true;savedState.replaceChildren();savedState.hidden=true;layout.dataset.hasSaved='false';discoveryContext={};handoff=null;});
   window.RecommendationDiscovery={open:openDiscovery,compare:compareDestinations,plan,refresh:loadShelves,addComparison};
 })();

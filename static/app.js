@@ -853,10 +853,12 @@ function editProfile() {
 // ==========================================
 
 async function loadUserProfile(userId) {
+  if (state.currentProfile?.user_id !== userId) state.profileStatus = null;
   try {
     const res = await fetch(`/api/profile/${userId}`);
     if (res.ok) {
       const data = await res.json();
+      if (state.currentUser?.user_id !== userId) return;
       state.currentProfile = data;
       if (!data.residence_country) { editProfile(); return; }
       renderDashboard(data);
@@ -938,7 +940,9 @@ async function syncUnifiedProfileCard(userId) {
     // Check real completeness status from status endpoint
     const statusRes = await fetch(`/api/profile/${userId}/status`);
     if (statusRes.ok) {
-      state.profileStatus = await statusRes.json();
+      const status = await statusRes.json();
+      if (state.currentUser?.user_id !== userId) return;
+      state.profileStatus = status;
     }
 
     const res = await fetch(`/api/profile/precision/${userId}`);
@@ -948,8 +952,10 @@ async function syncUnifiedProfileCard(userId) {
       return;
     }
     const data = await res.json();
+    if (state.currentUser?.user_id !== userId) return;
     
     const hasPrecision = !!(data && data.exists);
+    if (state.currentProfile?.user_id === userId) state.currentProfile.has_precision_profile = hasPrecision;
     state.precision.exists = hasPrecision;
     state.precision.answers = data.answers || {};
 
@@ -1730,18 +1736,21 @@ async function openPersonalProfileModal() {
     if (additionalInfoField) additionalInfoField.value = typeof draft?.additionalInfo === 'string' ? draft.additionalInfo : data.additional_info || '';
     state.precision.exists = !!data.exists;
 
-    // Pre-seed default non-empty answers for scale & multi questions if uncalibrated
-    if (!state.precision.answers.d05_monsoon_rain) state.precision.answers.d05_monsoon_rain = 3;
-    if (!state.precision.answers.d06_high_altitude) state.precision.answers.d06_high_altitude = 3;
-    if (!state.precision.answers.d07_heat_humidity) state.precision.answers.d07_heat_humidity = 3;
-    if (!state.precision.answers.d08_winter_cold) state.precision.answers.d08_winter_cold = 3;
-    if (!state.precision.answers.d11_food_allergens || state.precision.answers.d11_food_allergens.length === 0) {
-      state.precision.answers.d11_food_allergens = ["no_allergies"];
-    }
-    if (!state.precision.answers.d21_medical_logistics || state.precision.answers.d21_medical_logistics.length === 0) {
-      state.precision.answers.d21_medical_logistics = ["no_medical_logistics"];
-    }
+    if (!draft) {
+      // Pre-seed default non-empty answers for scale & multi questions if uncalibrated
+      if (!state.precision.answers.d05_monsoon_rain) state.precision.answers.d05_monsoon_rain = 3;
+      if (!state.precision.answers.d06_high_altitude) state.precision.answers.d06_high_altitude = 3;
+      if (!state.precision.answers.d07_heat_humidity) state.precision.answers.d07_heat_humidity = 3;
+      if (!state.precision.answers.d08_winter_cold) state.precision.answers.d08_winter_cold = 3;
+      if (!state.precision.answers.d11_food_allergens || state.precision.answers.d11_food_allergens.length === 0) {
+        state.precision.answers.d11_food_allergens = ["no_allergies"];
+      }
+      if (!state.precision.answers.d21_medical_logistics || state.precision.answers.d21_medical_logistics.length === 0) {
+        state.precision.answers.d21_medical_logistics = ["no_medical_logistics"];
+      }
     
+    }
+
     // Auto-focus first section with unanswered applicable questions for smooth completion
     const firstUnansSec = state.precision.bank.sections.find(sec => {
       const ids = precVisibleIds(sec.id);
@@ -3322,7 +3331,8 @@ let currentPreSubtab = "itin";
 
 function switchWorkspaceMode(mode) {
   const deepProfileComplete = !!(state.profileStatus && state.profileStatus.complete);
-  if ((mode === "live" || mode === "post") && !deepProfileComplete) {
+  const savedRuntime = window.TripExperience?.getSnapshot(currentPlannedTripId);
+  if ((mode === "live" || mode === "post") && !deepProfileComplete && !savedRuntime) {
     mode = "pre";
     currentPreSubtab = "itin";
     const lockedState = document.getElementById("itineraryLockedState");
@@ -3491,9 +3501,10 @@ function renderItinerary(itin) {
   const daysContainer = document.getElementById("itineraryDaysContainer");
   const lockedState = document.getElementById("itineraryLockedState");
 
-  // Trip planner should not show info if deep personalization is not completed
+  // An owner-verified saved trip remains readable even if planning is locked.
   const isDeepComplete = state.profileStatus ? state.profileStatus.complete : false;
-  if (!isDeepComplete) {
+  const savedRuntime = window.TripExperience?.getSnapshot(itin?.trip_id || currentPlannedTripId);
+  if (!isDeepComplete && !savedRuntime) {
     if (displayContainer) displayContainer.classList.add("hidden");
     if (emptyState) emptyState.classList.add("hidden");
     if (lockedState) lockedState.classList.remove("hidden");

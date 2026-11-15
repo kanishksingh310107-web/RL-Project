@@ -4,6 +4,7 @@ import pytest
 playwright = pytest.importorskip("playwright.sync_api")
 expect = playwright.expect
 from test_e_browser import experience
+from test_ui_upgrade_browser import static_url
 
 
 def test_dashboard_overview_tracks_visible_profile_panels_and_account(experience):
@@ -13,6 +14,7 @@ def test_dashboard_overview_tracks_visible_profile_panels_and_account(experience
       state.currentUser={user_id:'owner',display_name:'Owner'};
       state.currentProfile={user_id:'owner',has_precision_profile:false,summary_text:'Basic profile summary'};
       state.precision.exists=false;
+      state.profileStatus={complete:false};
       updateNavUser();DashboardLayout.refresh();
     }""")
     overview = page.locator("#dashboardOverview")
@@ -28,6 +30,16 @@ def test_dashboard_overview_tracks_visible_profile_panels_and_account(experience
 
     page.evaluate("""() => {
       state.currentProfile.has_precision_profile=true;state.precision.exists=true;
+      state.profileStatus={complete:false};
+      document.getElementById('personalProfileBanner').classList.add('hidden');
+      DashboardLayout.refresh();
+    }""")
+    expect(page.locator("#personalProfileBanner")).to_be_visible()
+    expect(page.locator("#personalProfileSummaryCard")).to_be_hidden()
+
+    page.evaluate("""() => {
+      state.currentProfile.has_precision_profile=true;state.precision.exists=true;
+      state.profileStatus={complete:true};
       document.getElementById('dashBasicProfileCard').classList.remove('hidden');DashboardLayout.refresh();
     }""")
     expect(page.locator("#personalProfileBanner")).to_be_hidden()
@@ -41,6 +53,7 @@ def test_dashboard_overview_tracks_visible_profile_panels_and_account(experience
     expect(overview).to_be_hidden()
     page.evaluate("""() => {
       state.currentProfile={user_id:'another-account',has_precision_profile:false,summary_text:'New account'};
+      state.precision.exists=false;state.profileStatus={complete:false};
       DashboardLayout.refresh();
     }""")
     expect(overview).to_have_attribute("data-panels", "2")
@@ -63,6 +76,8 @@ def test_saved_places_visibility_shortlist_state_and_account_isolation(experienc
         route.fulfill(status=200, json={"destinations": list(saved.get(active_account[0], []))})
 
     def shortlist_api(route):
+        req = route.request
+        writes.append((req.method,req.url.split('/api/',1)[1].split('?',1)[0],req.post_data_json,req.headers))
         destination_id = route.request.post_data_json["destination_id"]
         values = saved.setdefault(active_account[0], [])
         exists = any(item["id"] == destination_id for item in values)

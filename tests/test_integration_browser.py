@@ -73,6 +73,7 @@ def test_browser_against_real_trip_apis(client,deep_user):
             page.set_viewport_size({'width':1280,'height':900})
             page.get_by_role('button',name='Finalize itinerary',exact=True).click()
             page.get_by_role('button',name='Start trip',exact=True).click()
+            page.wait_for_function("TripExperience.getSnapshot(currentPlannedTripId)?.status==='live'")
             for _ in range(60):
                 saved=client.get(f"/api/trips/{trip['id']}/runtime?user_id={deep_user}").json()
                 if saved['status']=='completed':break

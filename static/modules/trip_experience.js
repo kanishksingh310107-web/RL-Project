@@ -243,7 +243,7 @@
     const previous=getSnapshot(ctx.tripId);
     if(previous&&Number(next.runtime?.version||0)<Number(previous.runtime?.version||0))return false;
     snapshot=next;snapshotTrip=ctx.tripId;
-    const allowed=access(next);
+    const allowed={...access(next),edit:access(next).edit&&state.profileStatus?.complete===true};
     ['pre','live','post'].forEach(mode=>{const btn=el('wsTabBtn-'+mode);if(btn){btn.disabled=!allowed[mode];btn.setAttribute('aria-disabled',String(!allowed[mode]));btn.title=allowed[mode]?'':mode==='live'?'Start this trip to unlock live activities.':'Complete the trip to unlock feedback.';}});
     document.querySelectorAll('[onclick="editSelectedTrip()"],[onclick="regenerateEntireItinerary()"],[onclick="deleteSelectedTrip()"],#preSubContent-stay button').forEach(button=>{button.disabled=!allowed.edit;});
     const preferred=next.status==='completed'?'post':next.status==='live'?'live':'pre';

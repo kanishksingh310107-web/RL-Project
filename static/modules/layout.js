@@ -38,6 +38,11 @@
     ['personal travel profile saved!', 'Personal travel profile saved!']
   ]);
   const setText = (node, value) => { if (node && node.textContent !== value) node.textContent = value; };
+  const setHidden = (node, hidden) => { if (node && node.hidden !== hidden) node.hidden = hidden; };
+  const setProfileHidden = (node, hidden) => {
+    setHidden(node, hidden);
+    if (node && node.classList.contains('hidden') !== hidden) node.classList.toggle('hidden', hidden);
+  };
   function sentenceCaseDashboardHeadings() {
     for (const heading of dashboard.querySelectorAll('h1,h2,h3,h4')) {
       const replacement = labels.get(heading.textContent.trim().toLocaleLowerCase());
@@ -53,31 +58,32 @@
     const nextAccount = user?.user_id || null;
     if (accountId !== nextAccount) {
       accountId = nextAccount;
-      overview.hidden = true;
-      basic.hidden = true;
-      for (const card of personal.children) card.hidden = true;
+      setHidden(overview, true);
+      setHidden(basic, true);
+      for (const card of personal.children) setHidden(card, true);
     }
 
     const profileLoaded = !!nextAccount && profile?.user_id === nextAccount;
     if (!profileLoaded) {
-      overview.hidden = true;
+      setHidden(overview, true);
       overview.dataset.panels = '0';
       return;
     }
 
-    basic.hidden = false;
+    setHidden(basic, false);
     const basicBadge = basic.querySelector('.inline-flex');
     setText(basicBadge, 'Basic profile complete');
 
     const banner = byId('personalProfileBanner');
     const summary = byId('personalProfileSummaryCard');
     const precision = typeof state !== 'undefined' ? state.precision : null;
-    const hasPrecision = typeof profile.has_precision_profile === 'boolean'
+    const savedPrecision = typeof profile.has_precision_profile === 'boolean'
       ? profile.has_precision_profile : precision?.exists === true;
-    const precisionKnown = typeof profile.has_precision_profile === 'boolean' || typeof precision?.exists === 'boolean';
+    const hasPrecision = savedPrecision && state.profileStatus?.complete === true;
+    const precisionKnown = profile.has_precision_profile === false || typeof state.profileStatus?.complete === 'boolean';
 
     if (banner) {
-      banner.hidden = hasPrecision;
+      setProfileHidden(banner, hasPrecision);
       const badge = banner.querySelector('.inline-flex');
       const title = banner.querySelector('h3');
       const description = banner.querySelector('p');
@@ -88,20 +94,21 @@
         ? 'Your basic travel profile is complete. Add your comfort, accessibility and travel preferences to tailor recommendations and itineraries further.'
         : 'We could not verify your Deep Personalisation status. Retry after reconnecting to check your saved profile.');
       setText(button, precisionKnown ? 'Complete Deep Personalisation' : 'Retry profile status');
-      if (button && !precisionKnown) button.onclick = () => window.renderDashboard?.(state.currentProfile);
+      if (button) button.onclick = () => precisionKnown
+        ? window.openPersonalProfileModal?.() : window.renderDashboard?.(state.currentProfile);
     }
     if (summary) {
-      summary.hidden = !hasPrecision;
+      setProfileHidden(summary, !hasPrecision);
       const badge = summary.querySelector('.bg-emerald-50');
       const status = byId('personalProfileStatus');
       setText(badge, 'Deep Personalisation complete');
       setText(status, 'Your detailed answers are tailoring recommendations and trip plans.');
     }
 
-    personal.hidden = ![banner, summary].some(card => card && !card.hidden && !card.classList.contains('hidden'));
+    setHidden(personal, ![banner, summary].some(card => card && !card.hidden && !card.classList.contains('hidden')));
     const count = [basic, personal].filter(panel => !panel.hidden && !panel.classList.contains('hidden')).length;
     overview.dataset.panels = String(count);
-    overview.hidden = count === 0;
+    setHidden(overview, count === 0);
     sentenceCaseDashboardHeadings();
   }
 
