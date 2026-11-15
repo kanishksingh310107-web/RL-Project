@@ -5,19 +5,32 @@
   if(!A||!U||typeof document==='undefined')return;
   const root=document.getElementById('recommendationsSection');if(!root)return;
   const items=new Map(),compared=new Map();let owner=null,discoveryContext={},requestVersion=0,handoff=null;
+  let shelfRevision=0;
+  const layout=U.el('div',null,'ex-discovery-layout');layout.id='exDiscoveryLayout';layout.dataset.hasSaved='false';
+  const mainColumn=U.el('div',null,'ex-discovery-main');mainColumn.id='exDiscoveryMain';
+  const savedAside=U.el('aside',null,'ex-saved-places');savedAside.id='exSavedPlaces';savedAside.hidden=true;savedAside.setAttribute('aria-labelledby','exSavedPlacesHeading');
+  root.before(layout);layout.append(mainColumn,savedAside);mainColumn.append(root);
   const entry=U.el('section',null,'ex-discovery');entry.id='exDiscovery';
   entry.append(U.el('h2','Where will you go next?'),U.el('p','Discover places that fit you, compare your choices, then turn a favourite into a trip.','ex-muted'));
   const actions=U.el('div',null,'ex-entry-actions');
   actions.append(U.button('I know my destination',()=>window.toggleTripFormModal(),'ex-primary'),U.button('Help me choose',()=>openDiscovery()),U.button('Explore my budget',()=>window.BudgetExperience?.openOptions()));entry.append(actions);
-  const shelves=U.el('div');shelves.id='exRecommendationShelves';const selection=U.el('aside',null,'ex-comparison-bar');selection.id='exComparisonBar';selection.hidden=true;entry.append(shelves,selection);root.before(entry);
-  const moreDestinations=U.el('details',null,'ex-more-destinations');moreDestinations.append(U.el('summary','More destinations & seasonal ideas'));root.before(moreDestinations);moreDestinations.append(root);
+  const shelves=U.el('div');shelves.id='exRecommendationShelves';const selection=U.el('aside',null,'ex-comparison-bar');selection.id='exComparisonBar';selection.hidden=true;entry.append(shelves,selection);mainColumn.prepend(entry);
+  const moreDestinations=U.el('details',null,'ex-more-destinations');moreDestinations.append(U.el('summary','More destinations & seasonal ideas'));mainColumn.append(moreDestinations);moreDestinations.append(root);
   const notice=U.status(entry);
+  const savedState=U.el('div',null,'ex-saved-state');savedState.hidden=true;savedState.setAttribute('role','status');savedState.setAttribute('aria-live','polite');entry.append(savedState);
   const isHome=item=>window.TripExperience?.isHomeDestination(item);
   const canonicalId=item=>item.destination_id||item.id;
   const name=item=>item.name||item.destination_name||'Destination';
+  const headingText=value=>({
+    'within your budget':'Within your budget',
+    'recommended for you':'Recommended for you',
+    'selected for your profile':'Selected for your profile',
+    'trending destinations':'Trending destinations',
+    'seasonal & upcoming experiences':'Seasonal & upcoming experiences'
+  })[String(value||'').trim().toLocaleLowerCase()]||String(value||'');
   const texts=value=>Array.isArray(value)?value.map(v=>typeof v==='string'?v:v.message||v.text||'').filter(Boolean):typeof value==='string'?[value]:[];
   const reasons=item=>texts(item.reasons||item.why_recommended||item.why_recommended_for_you||item.explanation||item.because_you_said||item.why_it_suits).map(value=>A.text(value).replace(/\s*\(Q\d+\)/gi,'').replace(/_/g,' '));
-  function checkOwner(){if(owner!==A.uid()){owner=A.uid();compared.clear();items.clear();selection.hidden=true;discoveryContext={};shelves.replaceChildren();handoff=null;}}
+  function checkOwner(){if(owner!==A.uid()){owner=A.uid();shelfRevision++;compared.clear();items.clear();selection.hidden=true;discoveryContext={};shelves.replaceChildren();savedAside.replaceChildren();savedAside.hidden=true;layout.dataset.hasSaved='false';savedState.hidden=true;handoff=null;}}
   function register(item){checkOwner();const id=canonicalId(item);if(typeof id!=='string'||isHome(item))return null;const known=items.get(id);if(typeof item.is_shortlisted!=='boolean'&&typeof known?.is_shortlisted==='boolean')item.is_shortlisted=known.is_shortlisted;items.set(id,item);return id;}
   function addComparison(item,feedback=notice){
     const id=register(item);if(!id)return;
@@ -164,17 +177,44 @@
     const note=U.el('p',choice.replace?'Suggested dates, party and budget were transferred. Review every field before creating your trip.':'Destination selected. Existing dates, party and budget were kept.','ex-note');document.getElementById('teFormError')?.before(note);select.dispatchEvent(new Event('change',{bubbles:true}));
   });
   async function loadShelves() {
-    checkOwner();if(!A.uid())return;const account=A.uid();await A.capabilities();if(account!==A.uid())return;if(!A.can('discovery')){moreDestinations.open=true;return;}
-    try{const [response,saved]=await Promise.all([A.shelves(),A.savedPlaces()]);if(account!==A.uid())return;shelves.replaceChildren();if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
-      const savedSection=U.el('section');savedSection.append(U.el('h3','Your saved places'));const savedGrid=U.el('div',null,'ex-result-grid');
-      for(const item of saved.destinations||[])savedGrid.append(card(item,{}));
-      if(!savedGrid.childElementCount)savedGrid.append(U.el('p','Places you save will appear here.','ex-muted'));
-      savedSection.append(savedGrid);shelves.append(savedSection);
+    checkOwner();if(!A.uid())return;
+    const account=A.uid(),revision=++shelfRevision;
+    savedState.replaceChildren(U.el('span','Loading saved places…'));savedState.hidden=false;
+    await A.capabilities();
+    if(account!==A.uid()||revision!==shelfRevision)return;
+    const savedTask=A.savedPlaces();
+    const shelvesTask=A.can('discovery')?A.shelves():Promise.resolve(null);
+    const [savedResult,shelvesResult]=await Promise.allSettled([savedTask,shelvesTask]);
+    if(account!==A.uid()||revision!==shelfRevision)return;
+
+    if(savedResult.status==='fulfilled'&&Array.isArray(savedResult.value.destinations)){
+      const destinations=savedResult.value.destinations.filter(item=>typeof canonicalId(item)==='string'&&canonicalId(item));
+      savedState.hidden=true;savedState.replaceChildren();savedAside.replaceChildren();
+      layout.dataset.hasSaved=String(destinations.length>0);
+      if(destinations.length){
+        const heading=U.el('h2','Saved places');heading.id='exSavedPlacesHeading';
+        const grid=U.el('div',null,'ex-result-grid');
+        for(const item of destinations)grid.append(card(item,{}));
+        savedAside.append(heading,grid);savedAside.hidden=false;
+      }else savedAside.hidden=true;
+    }else{
+      savedAside.replaceChildren();savedAside.hidden=true;layout.dataset.hasSaved='false';
+      savedState.replaceChildren(U.el('span','Saved places could not be checked. Your saved list has not been changed.'),U.button('Retry',loadShelves));savedState.hidden=false;
+    }
+
+    shelves.replaceChildren();
+    if(shelvesResult.status==='fulfilled'&&shelvesResult.value){
+      const response=shelvesResult.value;
+      if(response.sample_context)shelves.append(U.el('p',response.sample_context,'ex-muted'));
       const groups=Array.isArray(response.groups)?response.groups:[];
-      const shown=new Set();for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>{const id=canonicalId(item);if(isHome(item)||shown.has(id))return false;shown.add(id);return true;});if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',A.text(group.title)));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
-    }catch(error){if(account===A.uid()){moreDestinations.open=true;U.unavailable(shelves,error.message,loadShelves);}}
+      const shown=new Set();for(const group of groups){const entries=(group.destinations||group.items||[]).filter(item=>{const id=canonicalId(item);if(isHome(item)||shown.has(id))return false;shown.add(id);return true;});if(!entries.length)continue;const section=U.el('section');section.append(U.el('h3',headingText(A.text(group.title))));const grid=U.el('div',null,'ex-result-grid');for(const item of entries)grid.append(card(item,{}));section.append(grid);shelves.append(section);}
+    }else if(A.can('discovery')){
+      moreDestinations.open=true;U.unavailable(shelves,shelvesResult.reason?.message||'Recommendations could not be loaded. Please retry.',loadShelves);
+    }else moreDestinations.open=true;
   }
   new MutationObserver(()=>{const visible=!document.getElementById('dashboardView').classList.contains('hidden');if(visible&&owner!==A.uid()){checkOwner();loadShelves();}}).observe(document.getElementById('dashboardView'),{attributes:true,attributeFilter:['class']});
+  const oldNavUpdate=window.updateNavUser;
+  if(typeof oldNavUpdate==='function')window.updateNavUser=function(...args){const result=oldNavUpdate.apply(this,args);if(owner!==A.uid()){checkOwner();if(!document.getElementById('dashboardView').classList.contains('hidden'))loadShelves();}return result;};
   window.addEventListener('experience:recommendation-feedback',()=>{loadShelves();window.loadRecommendations?.(true);});
   window.addEventListener('load',loadShelves);
   window.addEventListener('trip:context-cleared',()=>{owner=A.uid();compared.clear();items.clear();selection.hidden=true;selection.replaceChildren();shelves.replaceChildren();discoveryContext={};handoff=null;});

@@ -11,14 +11,19 @@ body > header { background: rgba(255,255,255,.97); box-shadow: 0 1px 8px rgb(15 
 .app-plan-button:hover:not(:disabled) { background: #3730a3; }
 .app-account-actions { display: flex; gap: 12px; align-items: center; margin-left: auto; }
 .app-header-actions:not([hidden]) + .app-account-actions { margin-left: 0; }
-.app-main { max-width: none; padding: 26px var(--app-gutter) 72px; margin-block: 0; min-width: 0; }
+.app-main { width: 100%; max-width: 2200px; padding: 26px var(--app-gutter) 72px; margin: 0 auto; min-width: 0; }
 .app-main[data-screen=auth] { display: flex; align-items: center; padding-block: 40px; }
 .app-main[data-screen=onboarding] { max-width: 1060px; }
 #dashboardView { display: flex; flex-direction: column; gap: 24px; }
 #dashboardView.hidden { display: none; }
 #dashboardView > * { margin-block: 0; min-width: 0; }
-#dashboardOverview { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+#dashboardOverview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+#dashboardOverview[data-panels="2"] { grid-template-columns: repeat(2,minmax(0,1fr)); }
+#dashboardOverview[hidden],#dashboardOverview > [hidden],.app-personal-profile[hidden] { display: none!important; }
 #dashboardOverview > *, .app-personal-profile > * { min-width: 0; margin: 0; }
+.app-personal-profile { display: grid; align-content: start; gap: 24px; min-width: 0; }
+#dashBasicProfileCard,#personalProfileSummaryCard,#personalProfileBanner { height: auto; min-height: 0; align-self: start; }
+#dashBasicProfileCard #dashSummaryText,#personalProfileBanner p,#personalProfileSummaryCard p { max-width: 65ch; line-height: 1.65; }
 #dashBasicProfileCard,#personalProfileSummaryCard,#personalProfileBanner,#recommendationsSection,#itineraryPlannerSection,.ex-discovery { padding: 24px; border-radius: 16px; box-shadow: 0 2px 8px rgb(15 23 42 / .035); }
 #dashBasicProfileCard > div:first-child { padding-bottom: 16px; }
 #dashBasicProfileCard > .pt-5 { padding-top: 16px; }
@@ -31,6 +36,15 @@ body > header { background: rgba(255,255,255,.97); box-shadow: 0 1px 8px rgb(15 
 #personalProfileBanner { align-items: flex-start; flex-direction: column; gap: 16px; }
 #personalProfileBanner p { max-width: 65ch; }
 .ex-discovery { background: white; }
+.ex-discovery-layout { display: grid; grid-template-columns: minmax(0,1fr); align-items: start; gap: 24px; min-width: 0; }
+.ex-discovery-main { display: grid; align-content: start; gap: 24px; min-width: 0; }
+.ex-saved-places { min-width: 0; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background: white; box-shadow: 0 2px 8px rgb(15 23 42 / .035); }
+.ex-saved-places[hidden] { display: none!important; }
+.ex-saved-places h2 { margin: 0 0 14px; font-size: 18px; line-height: 1.4; font-weight: 700; color: #18243a; }
+.ex-saved-places .ex-result-grid { grid-template-columns: minmax(0,1fr); gap: 16px; }
+.ex-saved-places .ex-destination-card { padding: 16px; border: 1px solid #e5eaf1; }
+.ex-saved-state { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; color: #8a3412; font-size: 13px; }
+.ex-saved-state[hidden] { display: none!important; }
 .ex-entry-actions { margin: 16px 0 20px; padding-bottom: 20px; }
 #exRecommendationShelves > section > h3 { font-size: 18px; margin-block: 22px 12px; }
 .ex-result-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 20px; align-items: start; }
@@ -42,7 +56,7 @@ body > header { background: rgba(255,255,255,.97); box-shadow: 0 1px 8px rgb(15 
 .ex-destination-card > .ex-actions { margin-top: 12px; padding-top: 0; }
 .ex-card-explanation { margin: 0; padding: 0; border: 0; }
 .ex-card-explanation:empty { display: none; }
-#recommendedGrid,#trendingGrid,#seasonalGrid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; align-items: start; }
+#recommendedGrid,#trendingGrid,#seasonalGrid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,320px),1fr)); gap: 20px; align-items: start; }
 #recommendationsSection > div:has(> #trendingGrid:empty),
 #recommendationsSection > div:has(> #seasonalGrid:empty) { display: none; }
 .destination-card { display: flex; flex-direction: column; height: auto; min-width: 0; }
@@ -71,13 +85,14 @@ body > header { background: rgba(255,255,255,.97); box-shadow: 0 1px 8px rgb(15 
 body:has(#headerTripActions:not([hidden])) .te-workspace-nav a:not(:first-child) { display: none; }
 .te-timeline { max-width: none; }
 .te-form-page > div { padding: 28px; }
-@media(min-width:1900px) { #recommendedGrid,#trendingGrid,#seasonalGrid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
+@media(min-width:1200px) {
+  #exDiscoveryLayout[data-has-saved="true"] { grid-template-columns: minmax(0,1fr) minmax(300px,clamp(320px,24vw,420px)); }
+}
 @media(max-width:1100px) {
   .app-header-inner { flex-wrap: wrap; gap: 12px; }
   .app-account-actions { margin-left: auto!important; }
   .app-header-actions { order: 3; flex-basis: 100%; justify-content: flex-start; margin: 0; padding-top: 8px; border-top: 1px solid #edf0f5; }
-  #dashboardOverview { grid-template-columns: 1fr; gap: 20px; }
-  #recommendedGrid,#trendingGrid,#seasonalGrid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ex-saved-places { padding: 20px; }
 }
 @media(max-width:640px) {
   .app-main { padding-top: 18px; }
@@ -93,7 +108,9 @@ body:has(#headerTripActions:not([hidden])) .te-workspace-nav a:not(:first-child)
   .app-nav-link { padding: 10px; font-size: 13px; }
   .app-plan-button { padding: 11px 13px; font-size: 13px; }
   #dashboardView { gap: 18px; }
-  #dashBasicProfileCard,#personalProfileSummaryCard,#personalProfileBanner,#recommendationsSection,#itineraryPlannerSection,.ex-discovery { padding: 18px; border-radius: 14px; }
+  #dashboardOverview,#dashboardOverview[data-panels="2"] { grid-template-columns: minmax(0,1fr); gap: 18px; }
+  .app-personal-profile { gap: 18px; }
+  #dashBasicProfileCard,#personalProfileSummaryCard,#personalProfileBanner,#recommendationsSection,#itineraryPlannerSection,.ex-discovery,.ex-saved-places { padding: 18px; border-radius: 14px; }
   #recommendedGrid,#trendingGrid,#seasonalGrid { grid-template-columns: 1fr; gap: 16px; }
   .ex-entry-actions { flex-direction: row; }
   .ex-entry-actions button { flex: 1 1 140px; width: auto; }
