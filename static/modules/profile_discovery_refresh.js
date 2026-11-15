@@ -92,7 +92,10 @@
       if (genderError || budgetError) {
         event.preventDefault(); event.stopImmediatePropagation();
         const target = genderError ? gender : daily;
-        if (target) { target.focus(); target.scrollIntoView({block: 'center', behavior: 'smooth'}); }
+        if (genderError && typeof window.goToStep === 'function') {
+          window.goToStep(1);
+          setTimeout(() => { target?.focus(); target?.scrollIntoView({block: 'center', behavior: 'smooth'}); }, 0);
+        } else if (target) { target.focus(); target.scrollIntoView({block: 'center', behavior: 'smooth'}); }
         return;
       }
       state.basicAnswers.gender = gender.value;

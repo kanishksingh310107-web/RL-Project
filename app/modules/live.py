@@ -925,7 +925,7 @@ class CRuntimeGuard(BaseHTTPMiddleware):
                 return JSONResponse(c_finalize(trip_id,request,CActor()))
             if path==f'/api/trip-actions/{trip_id}/start':
                 return JSONResponse(c_start(trip_id,request,CActor()))
-            if category=='edit' and runtime['status']!='draft':
+            if category=='edit' and runtime['status']!='draft' and not (request.method=='DELETE' and path==f'/api/trips/{trip_id}' and runtime['status']=='finalized'):
                 c_error(409,'The itinerary is locked. Reopen a finalized trip before editing, or use a confirmed live-trip adjustment.','ITINERARY_LOCKED')
             if category=='live':
                 if runtime['status']!='live': c_error(409,'This action requires a live trip.','NOT_LIVE')

@@ -328,8 +328,12 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             and haversine_distance_km(location['lat'],location['lon'],c['latitude'],c['longitude']) <= 40]
     from app.activity_data import CURATED_ACTIVITIES
     for candidate in all_candidates:
-        if (candidate.get('neighborhood') or '').startswith('Central '):
-            nearest = min(CURATED_ACTIVITIES,key=lambda a:haversine_distance_km(candidate['latitude'],candidate['longitude'],a['latitude'],a['longitude']))
+        if ((candidate.get('neighborhood') or '').startswith('Central ')
+                and candidate.get('latitude') is not None and candidate.get('longitude') is not None):
+            located = [a for a in CURATED_ACTIVITIES if a.get('latitude') is not None and a.get('longitude') is not None]
+            if not located:
+                continue
+            nearest = min(located,key=lambda a:haversine_distance_km(candidate['latitude'],candidate['longitude'],a['latitude'],a['longitude']))
             distance = haversine_distance_km(candidate['latitude'],candidate['longitude'],nearest['latitude'],nearest['longitude'])
             candidate['neighborhood'] = nearest['neighborhood'] if distance <= 5 else 'Near ' + candidate['name']
     prefs = trip.get('trip_preferences_json') or '{}'
@@ -443,7 +447,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
             # maximum between every pair of stops); meals may use another area.
             if day_activities:
                 valid_candidates = [c for c in valid_candidates if all(
-                    c.get('latitude') is not None and a.get('latitude') is not None and
+                    c.get('latitude') is not None and c.get('longitude') is not None and a.get('latitude') is not None and a.get('longitude') is not None and
                     haversine_distance_km(c['latitude'],c['longitude'],a['latitude'],a['longitude']) <= 12
                     for a in day_activities)]
             if not valid_candidates:
@@ -469,7 +473,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                 )
                 score, exploitation, exploration = policy.predict_score(arm_id, context_x)
 
-                if anchor and not preceding_act and c.get('latitude') is not None:
+                if anchor and not preceding_act and all(value is not None for value in (anchor.get('lat'),anchor.get('lon'),c.get('latitude'),c.get('longitude'))):
                     score -= haversine_distance_km(anchor['lat'],anchor['lon'],c['latitude'],c['longitude']) * .1
                 # Small neighborhood clustering bonus
                 if c["neighborhood"] == day_neighborhood:
@@ -492,7 +496,7 @@ def generate_itinerary(conn, user_id: str, trip_id: str) -> Dict[str, Any]:
                     transit_text = f"15-20 min transit from {preceding_act['neighborhood']} to {chosen_act['neighborhood']}"
                     transit_mins = 18
             else:
-                if anchor:
+                if anchor and all(value is not None for value in (anchor.get('lat'),anchor.get('lon'),chosen_act.get('latitude'),chosen_act.get('longitude'))):
                     distance = haversine_distance_km(anchor['lat'],anchor['lon'],chosen_act['latitude'],chosen_act['longitude'])
                     transit_mins = max(5,round(distance*1.35/25*60+5))
                     transit_text = f"From {anchor['name']} to {chosen_act['neighborhood']} ({distance:.1f} km straight-line estimate)"

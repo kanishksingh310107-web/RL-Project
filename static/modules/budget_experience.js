@@ -47,7 +47,8 @@
     }catch(error){if(current(key)&&ticket===epoch){panel.replaceChildren(U.el('h2','Budget & expenses'),U.el('p',error.message,'ex-error'),U.button('Retry',load));}}
     finally{if(ticket===epoch)panel.removeAttribute('aria-busy');}
   }
-  function heading(){const h=U.el('h2','Budget & expenses');h.id='exBudgetTitle';panel.append(h);panel.append(U.el('p','Enter the full agreed cost for booked stay and travel. Record deposits and payments separately. Estimates update as the itinerary changes; actual payments replace the matching estimate.','ex-muted'));}
+  function returnToItinerary(){window.switchWorkspaceMode('pre');window.switchPreSubtab('itin');document.getElementById('workspaceEditorContainer')?.scrollIntoView({behavior:'smooth',block:'start'});}
+  function heading(){panel.append(U.button('← Back to daily itinerary',returnToItinerary));const h=U.el('h2','Budget & expenses');h.id='exBudgetTitle';panel.append(h);panel.append(U.el('p','Enter the full agreed cost for booked stay and travel. Record deposits and payments separately. Estimates update as the itinerary changes; actual payments replace the matching estimate.','ex-muted'));}
   function renderLegacy(data,trip,key) {
     if(!Array.isArray(data.expenses))throw new Error('The expense list could not be read. Please retry.');
     panel.replaceChildren();heading();const totals=data.planned_vs_actual||{};ledger=data.expenses;

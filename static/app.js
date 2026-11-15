@@ -1171,7 +1171,6 @@ function renderRecommendationCard(item, category) {
     <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-medium">${tag}</span>
   `).join("");
 
-  const isShortlisted = !!item.is_shortlisted;
   const reason = String(item.because_you_said || item.why_it_suits || '')
     .replace(/\s*\(Q\d+\)/gi, '').replace(/_/g, ' ')
     .replace(/^Because you said\s*/i, '').trim();
@@ -1184,11 +1183,6 @@ function renderRecommendationCard(item, category) {
           onerror="this.onerror=null; this.src='/static/images/destination-placeholder.svg';">
         <div class="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent"></div>
         <div class="absolute top-3 left-3">${badgeHtml}</div>
-        <button type="button" onclick="toggleShortlist('${item.id}', this)" data-shortlist-dest="${item.id}"
-          class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 shadow flex items-center justify-center transition"
-          title="${isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}">
-          <i class="${isShortlisted ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark text-xs"></i>
-        </button>
         <div class="absolute bottom-2.5 left-3 text-white">
           <h4 class="text-base font-bold tracking-tight leading-tight">${item.name}</h4>
           <span class="text-[11px] text-slate-200 font-medium">${item.country}</span>
@@ -1230,11 +1224,6 @@ function renderRecommendationCard(item, category) {
     <div class="destination-card-actions p-4 pt-0 flex items-center gap-2">
       <button type="button" onclick="openExploreModal('${item.id}')" class="flex-1 py-2 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition text-center">
         Explore Details
-      </button>
-      <button type="button" onclick="toggleShortlist('${item.id}', this)" data-shortlist-btn="${item.id}"
-        class="px-3 py-2 text-xs font-semibold rounded-xl border transition flex items-center gap-1.5 ${isShortlisted ? 'bg-amber-50 border-amber-200 text-amber-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}">
-        <i class="${isShortlisted ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark"></i>
-        <span>${isShortlisted ? 'Saved' : 'Shortlist'}</span>
       </button>
     </div>
   `;
@@ -1441,19 +1430,6 @@ async function openExploreModal(destId) {
       });
     }
 
-    // Shortlist action button in modal
-    const shortBtn = document.getElementById("exploreShortlistBtn");
-    if (shortBtn) {
-      const isShortlisted = !!item.is_shortlisted;
-      shortBtn.innerHTML = `
-        <i class="${isShortlisted ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark"></i>
-        <span>${isShortlisted ? 'Shortlisted ✓' : 'Shortlist'}</span>
-      `;
-      shortBtn.onclick = () => {
-        toggleShortlist(destId, shortBtn);
-      };
-    }
-
     if (loadingEl) loadingEl.classList.add("hidden");
     if (contentEl) contentEl.classList.remove("hidden");
   } catch (err) {
@@ -1510,54 +1486,6 @@ function planTripFromExplore() {
 
   // Trigger recalculation so slider and breakdown adapt immediately
   calculateTripMinimumBudget();
-}
-
-// Toggle Shortlist
-async function toggleShortlist(destId, btnElement) {
-  if (!state.currentUser) {
-    showAppNotice("Please sign in to open Deep Personalisation.");
-    return;
-  }
-
-  try {
-    const res = await fetch(`/api/shortlist/${state.currentUser.user_id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ destination_id: destId })
-    });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => null);
-      throw new Error(formatApiError(errData, "Could not update shortlist"));
-    }
-    const data = await res.json();
-    const isShort = data.is_shortlisted;
-
-    if (recCache[destId]) {
-      recCache[destId].is_shortlisted = isShort;
-    }
-
-    // Update all icon bookmark buttons on cards
-    document.querySelectorAll(`[data-shortlist-dest="${destId}"]`).forEach(btn => {
-      btn.innerHTML = `<i class="${isShort ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark text-xs"></i>`;
-    });
-
-    // Update text shortlist buttons on cards
-    document.querySelectorAll(`[data-shortlist-btn="${destId}"]`).forEach(btn => {
-      btn.className = `px-3 py-2 text-xs font-semibold rounded-xl border transition flex items-center gap-1.5 ${isShort ? 'bg-amber-50 border-amber-200 text-amber-800' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`;
-      btn.innerHTML = `<i class="${isShort ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark"></i> <span>${isShort ? 'Saved' : 'Shortlist'}</span>`;
-    });
-
-    // Update modal button if currently open
-    const modalBtn = document.getElementById("exploreShortlistBtn");
-    if (modalBtn) {
-      modalBtn.innerHTML = `
-        <i class="${isShort ? 'fa-solid text-amber-500' : 'fa-regular'} fa-bookmark"></i>
-        <span>${isShort ? 'Shortlisted ✓' : 'Shortlist This Destination'}</span>
-      `;
-    }
-  } catch (err) {
-    alert("Error updating shortlist: " + err.message);
-  }
 }
 
 // ==========================================
@@ -3315,11 +3243,16 @@ async function handleTripCreateSubmit(e) {
       await loadUserTrips(newTrip.id);
     } else {
       const errData = await itinRes.json();
-      alert("Could not generate itinerary: " + formatApiError(errData, "Server error"));
+      const errorField = document.getElementById('teFormError');
+      const message = "Could not generate itinerary: " + formatApiError(errData, "Please retry.");
+      if (errorField) { errorField.textContent = message; errorField.setAttribute('role', 'alert'); errorField.scrollIntoView({block:'center'}); }
+      else alert(message);
     }
   } catch (err) {
     console.error("Trip creation error:", err);
-    alert("Could not generate itinerary: " + err.message);
+    const errorField = document.getElementById('teFormError');
+    if (errorField) { errorField.textContent = "Could not generate itinerary: " + err.message; errorField.setAttribute('role', 'alert'); }
+    else alert("Could not generate itinerary: " + err.message);
   } finally {
     if (btn) btn.disabled = false;
     if (btn) btn.textContent = "Create personalised itinerary →";

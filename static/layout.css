@@ -12,7 +12,9 @@ body > header { background: rgba(255,255,255,.97); box-shadow: 0 1px 8px rgb(15 
 .app-account-actions { display: flex; gap: 12px; align-items: center; margin-left: auto; }
 .app-header-actions:not([hidden]) + .app-account-actions { margin-left: 0; }
 .app-main { width: 100%; max-width: 2200px; padding: 26px var(--app-gutter) 72px; margin: 0 auto; min-width: 0; }
-.app-main[data-screen=auth] { display: flex; align-items: center; padding-block: 40px; }
+.app-main[data-screen=auth] { display: flex; flex-direction: column; align-items: center; justify-content: center; padding-block: 40px; }
+.app-main[data-screen=auth] > #authView { flex: 0 0 auto; }
+.app-main[data-screen=auth] > footer { width: 100%; max-width: 72rem; margin: 2rem auto 0; }
 .app-main[data-screen=onboarding] { max-width: 1060px; }
 #dashboardView { display: flex; flex-direction: column; gap: 24px; }
 #dashboardView.hidden { display: none; }

@@ -537,10 +537,10 @@ class TripCreate(BaseModel):
     terminal_arrival_buffer_minutes: int = Field(120, ge=0, le=360, strict=True)
     station_arrival_buffer_minutes: int = Field(45, ge=30, le=60, strict=True)
     terminal_journey_minutes: int = Field(0, ge=0, le=600, strict=True)
-    lunch_start_time: str = '12:30'
+    lunch_start_time: str = '14:00'
     lunch_end_time: str = '14:30'
     lunch_duration_minutes: int = Field(60, ge=15, le=180, strict=True)
-    dinner_start_time: str = '19:00'
+    dinner_start_time: str = '20:00'
     dinner_end_time: str = '21:00'
     dinner_duration_minutes: int = Field(60,ge=15,le=180,strict=True)
     rest_preference: Literal['none','short','standard','long'] = 'standard'
@@ -610,10 +610,10 @@ class TripResponse(BaseModel):
     terminal_arrival_buffer_minutes: int = 120
     station_arrival_buffer_minutes: int = 45
     terminal_journey_minutes: int = 0
-    lunch_start_time: str = '12:30'
+    lunch_start_time: str = '14:00'
     lunch_end_time: str = '14:30'
     lunch_duration_minutes: int = 60
-    dinner_start_time: str = '19:00'
+    dinner_start_time: str = '20:00'
     dinner_end_time: str = '21:00'
     dinner_duration_minutes: int = Field(60,ge=15,le=180,strict=True)
     rest_preference: str = 'standard'

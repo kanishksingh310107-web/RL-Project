@@ -26,7 +26,7 @@
     return errors;
   }
   function access(snapshot) {
-    return {pre:!!snapshot, live:snapshot?.status === 'live', post:snapshot?.status === 'completed', edit:snapshot?.status === 'draft'};
+    return {pre:!!snapshot, live:snapshot?.status === 'live', post:snapshot?.status === 'completed', edit:['draft','finalized'].includes(snapshot?.status)};
   }
   const occurrenceId = block => block.itinerary_activity_id || block.occurrence_id || block.id || null;
   const acceptance = block => ['accepted','rejected'].includes(block.acceptance_status) ? block.acceptance_status : 'unreviewed';
@@ -101,8 +101,8 @@
       <fieldset data-te-capability="schedule_preferences_v2" disabled><legend>Meals, rest and shopping</legend>
       <p>Meal times are preferences. The itinerary can move lunch or dinner by up to one hour to fit activities. Confirmed bookings and departure times stay fixed.</p>
       <div class="te-grid">
-      ${timeField('teLunchTime','Preferred lunch time','13:00')}${numberField('teLunchDuration','Lunch duration (minutes)',60,15,180)}
-      ${timeField('teDinnerTime','Preferred dinner time','19:00')}${numberField('teDinnerDuration','Dinner duration (minutes)',60,15,180)}
+      ${timeField('teLunchTime','Preferred lunch time','14:00')}${numberField('teLunchDuration','Lunch duration (minutes)',60,15,180)}
+      ${timeField('teDinnerTime','Preferred dinner time','20:00')}${numberField('teDinnerDuration','Dinner duration (minutes)',60,15,180)}
       <label>Daily rest<select id="teRestDuration"><option value="0">None</option><option value="20">Short · 20 minutes</option><option value="30" selected>Standard · 30 minutes</option><option value="60">Long · 60 minutes</option></select></label>
       <label><input type="checkbox" id="teShopping"> Include shopping</label>
       ${numberField('teShoppingDuration','Shopping time per trip (minutes)',90,15,480)}
@@ -216,7 +216,7 @@
     });
     el('teDepartureMode').addEventListener('change',updateCheckoutGapPrompt);
     const dateMin=()=>{el('tripStartDateInput').min=editingTripId && el('tripStartDateInput').value<indiaToday()?el('tripStartDateInput').value:indiaToday();el('tripEndDateInput').min=el('tripStartDateInput').value || indiaToday();};
-    ['tripStartDateInput','tripEndDateInput'].forEach(id=>el(id)?.addEventListener('change',dateMin)); dateMin();
+    ['tripStartDateInput','tripEndDateInput'].forEach(id=>el(id)?.addEventListener('input',dateMin)); dateMin();
     form.addEventListener('invalid',event=>{const input=event.target;if(input.id)fieldError(input.id,input.validationMessage||'Check this value.');},true);
     window.addEventListener('submit',event=>{
       if(event.target!==form)return;
@@ -342,7 +342,7 @@
   };
   const rawEdit=window.editSelectedTrip;
   window.editSelectedTrip=async()=>{
-    if(!routing){location.hash=`/trips/${encodeURIComponent(currentPlannedTripId)}/edit`;return;}
+    if(!routing){if(getSnapshot(currentPlannedTripId)?.status==='finalized'){await api(`/api/trips/${encodeURIComponent(currentPlannedTripId)}/unfinalize?${query()}`,{method:'POST',body:JSON.stringify({})});}location.hash=`/trips/${encodeURIComponent(currentPlannedTripId)}/edit`;return;}
     await rawEdit();
   };
   const oldMode=window.switchWorkspaceMode;
@@ -357,9 +357,9 @@
     const previous=getSnapshot(ctx.tripId);
     if(previous&&Number(next.runtime?.version||0)<Number(previous.runtime?.version||0))return false;
     snapshot=next;snapshotTrip=ctx.tripId;
-    const allowed={...access(next),edit:access(next).edit&&state.profileStatus?.complete===true};
+    const allowed={...access(next)};
     ['pre','live','post'].forEach(mode=>{const btn=el('wsTabBtn-'+mode);if(btn){btn.disabled=!allowed[mode];btn.setAttribute('aria-disabled',String(!allowed[mode]));btn.title=allowed[mode]?'':mode==='live'?'Start this trip to unlock live activities.':'Complete the trip to unlock feedback.';}});
-    document.querySelectorAll('[onclick="editSelectedTrip()"],[onclick="regenerateEntireItinerary()"],[onclick="deleteSelectedTrip()"],#preSubContent-stay button').forEach(button=>{button.disabled=!allowed.edit;});
+    document.querySelectorAll('[onclick="editSelectedTrip()"],[onclick="regenerateEntireItinerary()"],#preSubContent-stay button').forEach(button=>{button.disabled=!allowed.edit;});
     const preferred=next.status==='completed'?'post':next.status==='live'?'live':'pre';
     if(!allowed[currentWorkspaceMode]&&!window.BudgetExperience?.isOpen(ctx.tripId)&&!window.ShoppingExperience?.isOpen(ctx.tripId))oldMode(preferred);
     el('itinSummaryNotes').textContent=next.status==='completed'?(next.closed_out?'Archived trip · feedback saved':'Trip ended · finish your feedback'):'Your personalised itinerary.';

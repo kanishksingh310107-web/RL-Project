@@ -36,7 +36,7 @@
       });
     }
     document.querySelectorAll('#btnFinalizeTrip,#btnStartTrip').forEach(control=>{control.hidden=true;});
-    document.querySelectorAll('[onclick="editSelectedTrip()"]').forEach(control=>{control.disabled=locked;});
+    document.querySelectorAll('[onclick="editSelectedTrip()"]').forEach(control=>{control.disabled=!['draft','finalized'].includes(snapshot.status);});
   }
 
   function rememberLifecycleOrigin(box){if(!lifecycleOrigin&&box?.parentNode)lifecycleOrigin={parent:box.parentNode,next:box.nextSibling};}
@@ -48,11 +48,10 @@
   function placeLifecycle(snapshot){
     let box=document.getElementById('cTripLifecycle');
     if(!['draft','finalized'].includes(snapshot?.status)){if(box)restoreLifecycle(box);return box;}
-    const editor=document.getElementById('workspaceEditorContainer'),card=editor?.querySelector('.te-card');
-    // The editor replaces its card contents on every refresh. Recreate the
-    // lifecycle footer after that replacement so finalize/start never vanishes.
-    if(!box&&card){box=document.createElement('div');box.id='cTripLifecycle';box.className='rounded-xl border border-slate-200 bg-white p-3 text-xs';}
-    if(box){rememberLifecycleOrigin(box);if(card&&box.parentElement!==card)card.append(box);}
+    const editor=document.getElementById('workspaceEditorContainer');
+    // Keep the action footer outside the timeline's replaceable contents.
+    if(!box&&editor){box=document.createElement('div');box.id='cTripLifecycle';box.className='rounded-xl border border-slate-200 bg-white p-3 text-xs';}
+    if(box){rememberLifecycleOrigin(box);if(editor?.parentElement&&editor.nextElementSibling!==box)editor.after(box);}
     return box;
   }
   function addItineraryReturnTab(){
@@ -60,7 +59,7 @@
     const anchor=document.getElementById('shoppingTab')||document.getElementById('exBudgetTab')||document.getElementById('wsTabBtn-post')?.parentElement;
     if(!anchor)return null;
     itineraryReturnTab=document.createElement('button');itineraryReturnTab.type='button';itineraryReturnTab.id='cItineraryReturnTab';
-    itineraryReturnTab.className='ex-button';itineraryReturnTab.textContent='Itinerary';itineraryReturnTab.hidden=true;
+    itineraryReturnTab.className='ex-button';itineraryReturnTab.textContent='Daily itinerary';itineraryReturnTab.hidden=false;
     itineraryReturnTab.setAttribute('aria-label','Return to the itinerary');
     itineraryReturnTab.onclick=()=>{window.switchWorkspaceMode?.('pre');window.switchPreSubtab?.('itin');document.getElementById('workspaceEditorContainer')?.scrollIntoView({behavior:'smooth',block:'start'});};
     anchor.after(itineraryReturnTab);return itineraryReturnTab;
@@ -80,7 +79,7 @@
     const action=snapshot.status==='draft'?'Finalize itinerary':snapshot.status==='finalized'?'Start trip':null;
     const stateText=snapshot.status==='draft'?'Review your plan before locking it.':snapshot.status==='finalized'?'Your itinerary is ready to start.':snapshot.status==='live'?'Trip in progress.':snapshot.closed_out?'Trip closed out. Feedback saved.':'Trip ended. Feedback is required to close it out.';
     box.innerHTML=`<div class="flex flex-wrap items-center gap-3">${snapshot.status==='draft'?'':`<strong>${esc(stateText)}</strong>`}
-      ${action?`<button class="${button}" data-c-lifecycle>${action}</button>`:''}
+      ${action?`<button type="button" class="${button}" data-c-lifecycle>${action}</button>`:''}
       ${snapshot.status==='finalized'?'<button class="border rounded-lg px-3 py-2" data-c-reopen>Reopen to edit</button>':''}
       <span>${snapshot.feedback_required?'Post-trip feedback required to close out this trip.':snapshot.status==='live'?`Day ${snapshot.runtime.current_day} of ${snapshot.total_days}`:snapshot.status==='draft'?stateText:''}</span></div><div data-c-error></div>`;
     box.querySelector('[data-c-lifecycle]')?.addEventListener('click',async event=>{
@@ -100,7 +99,7 @@
       });
     });
     addItineraryReturnTab();
-    if(itineraryReturnTab)itineraryReturnTab.hidden=snapshot.status!=='live';
+    if(itineraryReturnTab)itineraryReturnTab.hidden=false;
     applyLocks(snapshot);
   }
 
@@ -222,12 +221,12 @@
       let next=await api(ctx,`/days/${snapshot.runtime.current_day}/end`,{dispositions:{}});
       if(!isCurrent(ctx)) return;
       if(snapshot.runtime.current_day===snapshot.total_days) {
-        next=await api(ctx,'/end'); if(!isCurrent(ctx)) return; lifecycle(ctx,next); switchWorkspaceMode('post');
+        if(!confirm('End this trip and open post-trip feedback?')){refresh(next);return;} next=await api(ctx,'/end'); if(!isCurrent(ctx)) return; lifecycle(ctx,next); switchWorkspaceMode('post');
       } else refresh(next);
     };
     container.querySelector('[data-c-close-day]')?.addEventListener('click',event=>submitButton(event.currentTarget,container,boundary));
     container.querySelector('[data-c-next]')?.addEventListener('click',event=>submitButton(event.currentTarget,container,async()=>{
-      if(snapshot.runtime.current_day===snapshot.total_days) { const next=await api(ctx,'/end'); if(!isCurrent(ctx)) return; lifecycle(ctx,next); switchWorkspaceMode('post'); }
+      if(snapshot.runtime.current_day===snapshot.total_days) { if(!confirm('End this trip and open post-trip feedback?'))return; const next=await api(ctx,'/end'); if(!isCurrent(ctx)) return; lifecycle(ctx,next); switchWorkspaceMode('post'); }
       else refresh(await api(ctx,`/days/${snapshot.runtime.current_day+1}/start`));
     }));
     if(snapshot.pending_review) renderReview(container.querySelector('[data-c-review]'),container,ctx,snapshot,refresh);
@@ -349,8 +348,8 @@
     const editor=document.getElementById('workspaceEditorContainer');
     if(editor) new MutationObserver(()=>{if(state.snapshot){applyLocks(state.snapshot);lifecycle(getWorkspaceContext(),state.snapshot);}}).observe(editor,{childList:true});
     addItineraryReturnTab();
-    window.addEventListener('trip:runtime',event=>{addItineraryReturnTab();if(itineraryReturnTab&&event.detail?.tripId===getWorkspaceContext()?.tripId)itineraryReturnTab.hidden=event.detail.snapshot?.status!=='live';});
-    window.addEventListener('trip:timeline-rendered',event=>{if(state.snapshot&&event.detail?.tripId===getWorkspaceContext()?.tripId)lifecycle(getWorkspaceContext(),state.snapshot);});
+    window.addEventListener('trip:runtime',()=>{addItineraryReturnTab();if(itineraryReturnTab)itineraryReturnTab.hidden=false;});
+    window.addEventListener('trip:timeline-rendered',event=>{if(event.detail?.tripId===getWorkspaceContext()?.tripId&&event.detail.runtime)lifecycle(getWorkspaceContext(),event.detail.runtime);});
     document.getElementById('userTripsSelect')?.addEventListener('change',()=>loadLifecycle());
     loadLifecycle();
   }
