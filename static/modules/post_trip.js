@@ -30,14 +30,9 @@
         return;
       }
       const draft=snapshot.post_feedback || {};
-      const trip=await window.TripExperience.api(`/api/trips/detail/${encodeURIComponent(ctx.tripId)}?user_id=${encodeURIComponent(ctx.userId)}`);
-      if(request!==epoch || !C.isCurrent(ctx)) return;
-      const savedType=draft.trip_type||trip.trip_type||({partner:'couple',family_kids:'family',family_seniors:'family'}[trip.companions]||trip.companions);
-      const tripType=['solo','couple','friends','family'].includes(savedType)?savedType:'';
       const placeDraft=Object.fromEntries((draft.per_place_ratings||[]).map(p=>[p.activity_id,p.ratings?.overall||'']));
       container.innerHTML=`${tripSummary}<form class="space-y-4" novalidate><h3 class="font-bold text-sm">Post-trip feedback</h3><p class="text-xs">Submission is required to close out this trip. Save a draft at any time to resume later.</p>
         <div class="grid grid-cols-2 gap-3">${C.ratingFields(snapshot.rating_keys,draft.ratings)}</div>
-        <details><summary class="text-xs">Trip type: ${C.esc(tripType?C.label(tripType):'Not available — please confirm')} · correct if needed</summary><label class="block text-xs">Correct trip type (optional when already saved)<select name="trip_type" class="block border rounded-lg p-2 w-full"><option value="">Choose a type</option>${['solo','couple','friends','family'].map(v=>`<option value="${v}" ${tripType===v?'selected':''}>${C.label(v)}</option>`).join('')}</select><span data-field-error="trip_type" class="text-rose-700"></span></label></details>
         <label class="block text-xs">Would you revisit?<select name="would_revisit" class="block border rounded-lg p-2 w-full" required><option value="">Choose an answer</option>${['yes','no','maybe'].map(v=>`<option value="${v}" ${draft.would_revisit===v?'selected':''}>${C.label(v)}</option>`).join('')}</select><span data-field-error="would_revisit" class="text-rose-700"></span></label>
         ${['liked','disliked','notes'].map(key=>`<label class="block text-xs">${C.label(key)}${key==='notes'?' (optional)':''}<textarea name="${key}" maxlength="2000" class="block border rounded-lg p-2 w-full">${C.esc(draft[key]||'')}</textarea><span data-field-error="${key}" class="text-rose-700"></span></label>`).join('')}
         <details class="border rounded-lg p-3"><summary class="text-xs font-semibold">Optional per-place overall ratings</summary>${snapshot.schedule.map(slot=>`<label class="block text-xs mt-2">Day ${slot.day_number}: ${C.esc(slot.title)}<select class="border rounded p-1 ml-2" data-c-place="${C.esc(slot.id)}"><option value="">Not rated</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${Number(placeDraft[slot.id])===n?'selected':''}>${n}</option>`).join('')}</select></label>`).join('')}</details>
@@ -47,10 +42,9 @@
         const ratings=C.readRatings(form,!isDraft);
         let valid=ratings!==null;
         const body={draft:isDraft,ratings:ratings||{},per_place_ratings:[]};
-        for(const key of ['trip_type','would_revisit','liked','disliked','notes']) {
+        for(const key of ['would_revisit','liked','disliked','notes']) {
           const value=form.elements[key].value.trim();
-          const invalidEnum=(key==='trip_type' && value && !['solo','couple','friends','family'].includes(value)) ||
-            (key==='would_revisit' && value && !['yes','no','maybe'].includes(value));
+          const invalidEnum=key==='would_revisit' && value && !['yes','no','maybe'].includes(value);
           const bad=(!isDraft && key!=='notes' && !value) || value.length>2000 || invalidEnum;
           form.querySelector(`[data-field-error="${key}"]`).textContent=bad?(invalidEnum?'Choose a valid option.':value.length>2000?'Use at most 2,000 characters.':'This field is required.'):'';
           if(bad) valid=false;
