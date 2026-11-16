@@ -88,3 +88,36 @@ def test_tampered_trip_options_are_rejected(client,demo_user,field,value):
     response=client.post('/api/trips/'+demo_user,json={'destination_id':'jaipur_india','start_date':'2027-03-01','end_date':'2027-03-03',field:value})
     assert response.status_code==422,response.text
     assert response.json()['field']==field
+
+
+@pytest.mark.parametrize('dining_replacement',[False,True])
+def test_live_swap_updates_timed_schedule_and_starts_replacement(client,c_trip,dining_replacement):
+    from app.services.timed_itinerary import regenerate_timed_itinerary_for_trip
+    tid=c_trip['trip_id']
+    with get_connection() as conn:
+        conn.execute("UPDATE itinerary_activities SET activity_id='kyoto_nijo_castle',category='culture_history' WHERE id='c-food'")
+        conn.execute('INSERT INTO trip_schedule_prefs VALUES(?,?,?,?,?,?,?)',
+                     (tid,'08:00','22:00','07:00','23:00','09:00','[]'))
+        regenerate_timed_itinerary_for_trip(conn,tid)
+    start(client,c_trip)
+    end_review(client,c_trip,'change')
+    before=snapshot(client,c_trip)
+    assert any(slot['id']=='c-food' for slot in before['schedule'])
+    suggestions=client.get(f"/api/trips/{tid}/suggestions?user_id={c_trip['user_id']}")
+    assert suggestions.status_code==200,suggestions.text
+    alternative=next(a for a in suggestions.json()['alternatives'] if (a['category']=='food_dining')==dining_replacement)
+    replacement=alternative['id']
+    preview=call(client,c_trip,'/adjustments/preview',{
+        'operation':'swap','target_activity_id':'c-food','replacement_activity_id':replacement})
+    result=call(client,c_trip,'/adjustments/confirm',{'token':preview['preview']['token']})
+    assert result['current_activity'] is not None
+    assert result['current_activity']['id']=='c-food'
+    assert result['current_activity']['catalogue_activity_id']==replacement
+    with get_connection() as conn:
+        assert conn.execute('SELECT 1 FROM timed_itinerary_slots WHERE trip_id=? AND activity_id=?',
+                            (tid,replacement)).fetchone()
+        run=conn.execute("SELECT activity_id,outcome FROM activity_runs WHERE trip_id=? AND itinerary_activity_id='c-food'",(tid,)).fetchone()
+        assert tuple(run)==(replacement,'in_progress')
+    assert snapshot(client,c_trip)['current_activity']==result['current_activity']
+    replay=call(client,c_trip,'/adjustments/confirm',{'token':preview['preview']['token']})
+    assert replay['current_activity']['id']=='c-food'

@@ -204,8 +204,8 @@ def test_manali_destination_schedule(client, demo_user):
     t_res = client.post(f"/api/trips/{demo_user}", json={
         "destination_id": "manali_spiti_india",
         "destination_name": "Manali & Spiti Valley",
-        "start_date": "2026-11-15",
-        "end_date": "2026-11-17",
+        "start_date": "2099-11-15",
+        "end_date": "2099-11-17",
         "travellers_count": 2,
         "total_budget": 800,
         "travel_pace": "relaxed",

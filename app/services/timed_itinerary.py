@@ -695,13 +695,20 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             is_shopping = activity.get('category') in ('shopping_local','shopping')
             if activity.get('category') in ('food_dining','restaurant','cafe','café') and not activity.get('is_fixed_booking'):
                 dinner_venue = minute_of_day(activity.get('preferred_meal_time') or '19:00') >= 16*60
-                meal_start, meal_duration = (dinner_start,dinner_duration) if dinner_venue else (lunch_start,lunch_duration)
-                visit_duration = max(15, int(activity.get('duration_minutes') or meal_duration))
                 opening = minute_of_day(activity['opening_time']) if activity.get('opening_time') else None
                 closing = minute_of_day(activity['closing_time']) if activity.get('closing_time') else None
                 if opening is not None and closing is not None and closing <= opening:
                     closing += 1440
-                at = fit_meal(meal_start, visit_duration, opening=opening, closing=closing)
+                # Meal preference is soft: a daytime venue may be closed by
+                # dinner, so try lunch before dropping the selected visit.
+                at = None
+                for candidate_dinner in (dinner_venue, not dinner_venue):
+                    meal_start, meal_duration = (dinner_start,dinner_duration) if candidate_dinner else (lunch_start,lunch_duration)
+                    visit_duration = max(15, int(activity.get('duration_minutes') or meal_duration))
+                    at = fit_meal(meal_start, visit_duration, opening=opening, closing=closing)
+                    if at is not None:
+                        dinner_venue = candidate_dinner
+                        break
                 if at is None:
                     continue
                 append_meal(at, visit_duration,

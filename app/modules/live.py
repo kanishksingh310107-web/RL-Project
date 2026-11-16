@@ -308,7 +308,9 @@ def c_schedule(conn,trip_id):
         custom = conn.execute('SELECT 1 FROM trip_schedule_prefs WHERE trip_id=?',(trip_id,)).fetchone()
         timed = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='timed_itineraries'").fetchone()
         if custom and timed and conn.execute('SELECT 1 FROM timed_itineraries WHERE trip_id=?',(trip_id,)).fetchone():
-            scheduled = {(r[0],r[1]) for r in conn.execute("SELECT day_number,activity_id FROM timed_itinerary_slots WHERE trip_id=? AND slot_type IN ('activity','shopping')",(trip_id,))}
+            # A selected cafe/restaurant visit can occupy a meal slot. Keep its
+            # itinerary occurrence playable; generic meals have no activity ID.
+            scheduled = {(r[0],r[1]) for r in conn.execute("SELECT day_number,activity_id FROM timed_itinerary_slots WHERE trip_id=? AND activity_id IS NOT NULL AND slot_type IN ('activity','shopping','meal')",(trip_id,))}
             # Historical runs survive later changes to the remaining schedule.
             rows = [row for row in rows if (row['day_number'],row['activity_id']) in scheduled or
                     row.get('is_pinned') or row.get('is_fixed_booking') or c_run(conn,trip_id,row['id'])]
