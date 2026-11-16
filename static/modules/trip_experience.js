@@ -172,9 +172,7 @@
     el('teTripType').addEventListener('change',syncType);
     document.querySelectorAll('input[name="tripCompanionsRadio"]').forEach(input=>input.addEventListener('change',()=>{el('teTripType').value=input.value==='partner'?'couple':input.value;}));
     el('teDepartureMode').addEventListener('change',()=>{el('teCheckinBuffer').value=({flight:120,train:60,road:0})[el('teDepartureMode').value]; departureWindow();});
-    extra.querySelector('fieldset:nth-of-type(2) legend')?.replaceChildren(document.createTextNode('Meals and optional evening plans'));
-    const nightLabel=document.createElement('label');nightLabel.innerHTML='<input type="checkbox" id="teNightActivities"> I would like to see optional activities after dinner';
-    extra.querySelector('fieldset:nth-of-type(2) .te-grid')?.append(nightLabel);
+    extra.querySelector('fieldset:nth-of-type(2) legend')?.replaceChildren(document.createTextNode('Meals and evening plans'));
     const overrideButton=document.createElement('button');overrideButton.type='button';overrideButton.textContent='Add a per-day meal time';
     overridesHost=document.createElement('div');overridesHost.id='teMealOverrides';overridesHost.className='space-y-2';
     const overrideLabel=document.createElement('div');overrideLabel.textContent='Per-day meal time overrides';overrideLabel.append(overrideButton,overridesHost);
@@ -284,7 +282,7 @@
             shopping_enabled:p.include_shopping,shopping_duration_minutes:p.include_shopping?p.shopping_duration_minutes:0,shopping_budget_inr:p.shopping_budget});
           const accommodationName=el('teAccommodationName')?.value.trim()||'', accommodationCost=el('teAccommodationCost')?.value.trim();
           const mealOverrides={};for(const row of overridesHost.querySelectorAll('.te-grid')){const day=row.querySelector('.teMealOverrideDay').value;if(!day)continue;mealOverrides[day]={};for(const [key,selector]of [['lunch_start_time','.teMealOverrideLunch'],['lunch_duration_minutes','.teMealOverrideLunchDuration'],['dinner_start_time','.teMealOverrideDinner'],['dinner_duration_minutes','.teMealOverrideDinnerDuration']]){const value=row.querySelector(selector).value;if(value)mealOverrides[day][key]=key.includes('duration')?Number(value):value;}}
-          body.trip_preferences={...body.trip_preferences,include_shopping:p.include_shopping,night_activities:el('teNightActivities')?.checked===true,meal_overrides:mealOverrides,checkout_gap_choice:el('teCheckoutGapChoice')?.value||null,intercity_cost_inr:el('teIntercityCost')?.value?Number(el('teIntercityCost').value):null,accommodation:{property_type:el('tripAccomSelect').value,property_name:accommodationName||null,expected_total_cost_inr:accommodationCost?Number(accommodationCost):null}};
+          body.trip_preferences={...body.trip_preferences,include_shopping:p.include_shopping,night_activities:true,meal_overrides:mealOverrides,checkout_gap_choice:el('teCheckoutGapChoice')?.value||null,intercity_cost_inr:el('teIntercityCost')?.value?Number(el('teIntercityCost').value):null,accommodation:{property_type:el('tripAccomSelect').value,property_name:accommodationName||null,expected_total_cost_inr:accommodationCost?Number(accommodationCost):null}};
           body.trip_preferences.accommodation=Object.fromEntries(Object.entries(body.trip_preferences.accommodation).filter(([,value])=>value!==null));
         }
         init={...init,body:JSON.stringify(body)};
@@ -484,7 +482,6 @@
     el('teAccommodationCost').value=accommodation.expected_total_cost_inr??'';
     el('teIntercityCost').value=trip.trip_preferences?.intercity_cost_inr??'';
     el('teJourneyMode').value=trip.trip_preferences?.intercity_transport_mode||'flight';
-    el('teNightActivities').checked=trip.trip_preferences?.night_activities===true;
     overridesHost.replaceChildren();Object.entries(trip.trip_preferences?.meal_overrides||{}).forEach(([day,meals])=>addMealOverride({day,...meals}));
     el('teCheckoutGapChoice').value=trip.trip_preferences?.checkout_gap_choice||'';updateCheckoutGapPrompt();
     el('teShopping').checked=!!prefs.include_shopping;el('teFinalActivities').value=prefs.final_day_activities===false?'no':'yes';

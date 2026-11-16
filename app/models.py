@@ -454,6 +454,10 @@ class TripCreate(BaseModel):
                 raise ValueError('Choose an option for the final-day check-out gap.') from exc
         if 'night_activities' in self.trip_preferences and type(self.trip_preferences['night_activities']) is not bool:
             raise ValueError('Choose whether you want activities after dinner.')
+        # Evening suggestions are included whenever the schedule has room.
+        # The old checkbox has been removed, so client-supplied false cannot
+        # silently disable this standard planning behavior.
+        self.trip_preferences['night_activities'] = True
         overrides = self.trip_preferences.get('meal_overrides', {})
         if not isinstance(overrides, dict) or len(overrides) > 90:
             raise ValueError('Meal overrides must be a day-keyed object with at most 90 days.')

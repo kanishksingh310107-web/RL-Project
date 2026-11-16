@@ -84,3 +84,10 @@ def test_international_destination_rejection():
         assert "Only Indian destinations are supported" in exc_info.value.detail
     finally:
         database.DB_PATH = orig_path
+
+
+def test_evening_activities_are_enforced_for_trip_payloads():
+    from app.models import TripCreate
+    trip=TripCreate(destination_id='manali_spiti_india',start_date='2026-11-20',end_date='2026-11-25',
+        trip_preferences={'night_activities':False})
+    assert trip.trip_preferences['night_activities'] is True

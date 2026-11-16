@@ -872,7 +872,8 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
         if dropped:
             notes.append(f'{dropped} lower-ranked activities were dropped because of accommodation and departure buffers, free time, opening hours or activity duration.')
         night_start = max([dinner_end] + [relative(s) + s['duration_mins'] for s in slots])
-        if prefs.get('night_activities') and end - night_start >= 45:
+        # Evening suggestions are part of every generated plan when time remains.
+        if end - night_start >= 45:
             append('optional',night_start,end-night_start,'Optional after-dinner activity time')
         if not scheduled:
             if end<=start:

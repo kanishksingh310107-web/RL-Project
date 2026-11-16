@@ -288,6 +288,21 @@ def test_departure_buffers_and_lunch_inputs_are_separate_from_checkout(ui):
     playwright.expect(page.locator('#teFinalActivities')).to_have_value('yes')
 
 
+def test_after_dinner_activities_are_enabled_without_a_form_choice(ui):
+    page, _, _, recorded = ui
+    page.evaluate("location.hash='/trips/new'")
+    playwright.expect(page.locator('#teNightActivities')).to_have_count(0)
+    page.locator('#headerPlanTripBtn').click()
+    page.locator('#teDestinationRecommendations button').click()
+    page.locator('#tripStartDateInput').fill('2099-01-01')
+    page.locator('#tripEndDateInput').fill('2099-01-02')
+    page.locator('#tripBudgetInput').fill('25000')
+    page.locator('#teCheckoutGapChoice').select_option('activity')
+    page.locator('#generateItinerarySubmitBtn').click()
+    body=next(body for method,path,body in recorded if method=='POST' and path=='/api/trips/ui-user')
+    assert body['trip_preferences']['night_activities'] is True
+
+
 def test_timeline_includes_travel_and_accessible_reordering(ui):
     page, _, _, _ = ui
     open_trip(page)
