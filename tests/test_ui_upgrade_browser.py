@@ -149,7 +149,6 @@ def test_create_trip_submits_preferences_and_generates_itinerary(ui, with_meal_o
     playwright.expect(page.locator('#teTripType')).to_be_hidden()
     playwright.expect(page.locator('#teRestDuration')).to_be_hidden()
     playwright.expect(page.locator('#teShopping')).to_be_hidden()
-    page.locator('#teCheckoutGapChoice').select_option('activity')
     page.locator('#tripNotesInput').fill('Keep my travel preferences')
     if with_meal_override:
         page.get_by_role('button', name='Add a per-day meal time', exact=True).click()
@@ -165,6 +164,7 @@ def test_create_trip_submits_preferences_and_generates_itinerary(ui, with_meal_o
     assert bodies[0]['trip_preferences']['intercity_transport_mode'] == 'train'
     assert bodies[0]['transit_pref'] == 'cab_rental'
     assert bodies[0]['trip_preferences']['notes'] == 'Keep my travel preferences'
+    assert bodies[0]['trip_preferences']['checkout_gap_choice'] == 'activity'
     overrides = bodies[0]['trip_preferences']['meal_overrides']
     assert overrides.get('1', {}).get('lunch_start_time') == ('13:30' if with_meal_override else None)
     assert any(method == 'POST' and path == '/api/itinerary/generate/trip-1' for method, path, _ in recorded)
@@ -177,7 +177,6 @@ def test_create_trip_submits_preferences_and_generates_itinerary(ui, with_meal_o
         page.locator('#tripStartDateInput').fill('2099-01-01')
         page.locator('#tripEndDateInput').fill('2099-01-02')
         page.locator('#tripBudgetInput').fill('25000')
-        page.locator('#teCheckoutGapChoice').select_option('activity')
         page.locator('#generateItinerarySubmitBtn').click()
         playwright.expect(page).to_have_url(re.compile(r'#/trips/trip-1$'))
         bodies = [body for method, path, body in recorded if method == 'POST' and path == '/api/trips/ui-user']
@@ -284,23 +283,23 @@ def test_departure_buffers_and_lunch_inputs_are_separate_from_checkout(ui):
     assert prefs["lunch_duration_minutes"] == 45
     page.locator("#teFinalActivities").select_option("no")
     playwright.expect(page.locator("#teDepartureWindow")).to_contain_text("reserved for departure")
-    page.locator('#teCheckoutGapChoice').select_option('activity')
-    playwright.expect(page.locator('#teFinalActivities')).to_have_value('yes')
+    playwright.expect(page.locator('#teCheckoutGapChoice')).to_have_count(0)
 
 
 def test_after_dinner_activities_are_enabled_without_a_form_choice(ui):
     page, _, _, recorded = ui
     page.evaluate("location.hash='/trips/new'")
     playwright.expect(page.locator('#teNightActivities')).to_have_count(0)
+    playwright.expect(page.locator('#teCheckoutGapChoice')).to_have_count(0)
     page.locator('#headerPlanTripBtn').click()
     page.locator('#teDestinationRecommendations button').click()
     page.locator('#tripStartDateInput').fill('2099-01-01')
     page.locator('#tripEndDateInput').fill('2099-01-02')
     page.locator('#tripBudgetInput').fill('25000')
-    page.locator('#teCheckoutGapChoice').select_option('activity')
     page.locator('#generateItinerarySubmitBtn').click()
     body=next(body for method,path,body in recorded if method=='POST' and path=='/api/trips/ui-user')
     assert body['trip_preferences']['night_activities'] is True
+    assert body['trip_preferences']['checkout_gap_choice'] == 'activity'
 
 
 def test_timeline_includes_travel_and_accessible_reordering(ui):

@@ -441,17 +441,17 @@ class TripCreate(BaseModel):
             raise ValueError('Confirmed intercity travel cost must be between ₹0 and ₹1,000,000,000.')
         checkout_choice=self.trip_preferences.get('checkout_gap_choice')
         if checkout_choice not in (None,'','activity','late_checkout'):
-            raise ValueError('Choose an option for the final-day check-out gap.')
-        if 'checkout_gap_choice' in self.trip_preferences and self.hotel_checkout_time and self.transport_departure_time:
+            raise ValueError('Choose a valid final-day plan.')
+        if self.hotel_checkout_time and self.transport_departure_time:
             try:
                 trip_days=(date.fromisoformat(self.end_date)-date.fromisoformat(self.start_date)).days+1
                 departure=datetime.strptime(self.transport_departure_time,'%H:%M').hour*60+datetime.strptime(self.transport_departure_time,'%H:%M').minute
                 checkout=datetime.strptime(self.hotel_checkout_time,'%H:%M').hour*60+datetime.strptime(self.hotel_checkout_time,'%H:%M').minute
                 buffer=self.terminal_arrival_buffer_minutes if self.departure_transport_mode=='flight' else self.station_arrival_buffer_minutes if self.departure_transport_mode=='train' else 30
-                if trip_days>1 and departure-buffer-self.terminal_journey_minutes-checkout>=180 and checkout_choice not in ('activity','late_checkout'):
-                    raise ValueError
+                if trip_days>1 and departure-buffer-self.terminal_journey_minutes-checkout>=180:
+                    self.trip_preferences['checkout_gap_choice']='activity'
             except (TypeError,ValueError) as exc:
-                raise ValueError('Choose an option for the final-day check-out gap.') from exc
+                raise ValueError('Check the final-day departure times.') from exc
         if 'night_activities' in self.trip_preferences and type(self.trip_preferences['night_activities']) is not bool:
             raise ValueError('Choose whether you want activities after dinner.')
         # Evening suggestions are included whenever the schedule has room.

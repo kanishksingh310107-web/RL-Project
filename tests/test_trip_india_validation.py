@@ -91,3 +91,11 @@ def test_evening_activities_are_enforced_for_trip_payloads():
     trip=TripCreate(destination_id='manali_spiti_india',start_date='2026-11-20',end_date='2026-11-25',
         trip_preferences={'night_activities':False})
     assert trip.trip_preferences['night_activities'] is True
+
+
+def test_long_final_day_gap_automatically_uses_an_activity():
+    from app.models import TripCreate
+    trip=TripCreate(destination_id='manali_spiti_india',start_date='2026-11-20',end_date='2026-11-25',
+        hotel_checkout_time='11:00',transport_departure_time='18:00',departure_transport_mode='flight',
+        terminal_arrival_buffer_minutes=120,terminal_journey_minutes=60,trip_preferences={})
+    assert trip.trip_preferences['checkout_gap_choice'] == 'activity'
