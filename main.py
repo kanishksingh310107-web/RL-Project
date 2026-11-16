@@ -54,6 +54,14 @@ include_c_router(app)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+@app.middleware("http")
+async def revalidate_frontend_assets(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or (path.startswith("/static/") and path.endswith((".html", ".js", ".css"))):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 @app.on_event("startup")
 def startup():
     init_db()

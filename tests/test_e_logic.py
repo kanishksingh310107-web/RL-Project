@@ -73,6 +73,18 @@ def test_financial_summary_uses_server_forecast_without_reconstructing_it():
     assert javascript("A.normalizeSummary({total_budget_inr:30000,actual_spending_inr:12000}).available_buffer") is None
 
 
+def test_frontend_assets_revalidate_after_updates():
+    from fastapi.testclient import TestClient
+    from main import app
+
+    with TestClient(app) as client:
+        for path in ('/', '/static/index.html', '/static/modules/experience_api.js?v=budget-summary-2'):
+            response=client.get(path)
+            assert response.status_code==200
+            assert response.headers['cache-control']=='no-cache'
+        assert 'experience_api.js?v=budget-summary-2' in client.get('/').text
+
+
 @pytest.mark.parametrize('field,value',[('amount_inr',0),('amount_inr',1.5),('category','credit_card'),('spent_on','2026-02-30'),('paid_by','x'*101)])
 def test_expense_validation(field,value):
     record={'amount_inr':650,'category':'food','spent_on':'2026-11-14','description':'','paid_by':''};record[field]=value

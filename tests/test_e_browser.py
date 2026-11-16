@@ -123,6 +123,32 @@ def test_budget_uses_server_remaining_costs_not_unspent_cash(experience):
     playwright.expect(page.locator('#exBudgetPane')).to_contain_text('Not entered')
 
 
+def test_budget_cards_display_server_totals_from_reported_trip(experience):
+    page,_,_,summary,_=experience
+    summary.update(total_budget_inr=150000,actual_spending_inr=None,
+                   remaining_to_pay_inr=43438,forecast_final_cost_inr=43438,
+                   forecast_with_reserve_inr=44864,emergency_reserve_inr=1426,
+                   shopping_remaining_inr=105136)
+    expected={
+        'Maximum total budget':'1,50,000',
+        'Paid so far':'Not entered',
+        'Remaining to pay (estimate)':'43,438',
+        'Expected trip cost':'43,438',
+        'Expected cost with reserve':'44,864',
+        'Contingency reserve':'1,426',
+        'Available for shopping / extras':'1,05,136',
+    }
+    for reload in (False,True):
+        if reload:
+            page.reload(wait_until='domcontentloaded')
+        open_budget(page)
+        for label,amount in expected.items():
+            cell=page.locator('#exBudgetPane .ex-metrics > div').filter(
+                has=page.get_by_text(label,exact=True))
+            playwright.expect(cell.locator('dd')).to_contain_text(amount)
+        playwright.expect(page.locator('#exBudgetPane .ex-metrics')).not_to_contain_text('Not available')
+
+
 def test_linked_partial_payment_edit_and_delete(experience):
     page,_,writes,_,_=experience;open_budget(page)
     page.locator('#exBudgetPane').get_by_role('button',name='Add expense',exact=True).click();dialog=page.get_by_role('dialog')
