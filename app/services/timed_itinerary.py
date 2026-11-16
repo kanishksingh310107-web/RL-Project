@@ -895,9 +895,13 @@ def _custom_schedule(activities, total_days, pace, prefs, selected_by_day=None):
             slot['order_index'] = index
         if day == total_days:
             slots = finish_departure_timeline(slots,prefs,day)
-        slots = _offer_shopping_gap(slots, start, end, prefs, day)
-        if any(slot['title'] == 'Shopping time' for slot in slots):
-            notes.append('Shopping time has been added in an available gap.')
+        # Shopping is a single trip-level block. Activity selection always runs
+        # first; this only uses one genuine gap after that work is complete.
+        if not shopping_added:
+            slots = _offer_shopping_gap(slots, start, end, prefs, day)
+            if any(slot['title'] == 'Shopping time' for slot in slots):
+                shopping_added = True
+                notes.append('Shopping time has been added in an available gap.')
         slots.sort(key=relative)
         for index, slot in enumerate(slots):
             slot['order_index'] = index

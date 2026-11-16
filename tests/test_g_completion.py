@@ -191,7 +191,7 @@ def test_single_activity_day_adds_a_sorted_shopping_window():
         assert before_end<=after_start
 
 
-def test_shopping_fills_gap_on_two_activity_day_and_survives_reload(client,deep_user):
+def test_one_shopping_block_fills_a_gap_and_survives_reload(client,deep_user):
     from test_integration_upgrade import planned
     trip,_=planned(client,deep_user)
     base='/api/trip-actions/'+trip['id']+'/timed-view'
@@ -202,7 +202,7 @@ def test_shopping_fills_gap_on_two_activity_day_and_survives_reload(client,deep_
     def breaks(response):
         return [(d['day_number'],s['time_range'],s['duration_minutes']) for d in response.json()['days']
             for s in d['timeline'] if s['title']=='Shopping time']
-    assert breaks(first) and breaks(first)==breaks(second)
+    assert len(breaks(first))==1 and breaks(first)==breaks(second)
     for day in first.json()['days']:
         assert sum(s['title']=='Shopping time' for s in day['timeline'])<=1
         for slot in day['timeline']:
@@ -219,12 +219,13 @@ def test_shopping_gap_does_not_overlap_meals_reserved_time_or_departure():
         'lunch_start_time':'13:00','lunch_duration_minutes':60}
     activities=[{'id':'first','name':'First visit','category':'culture_history','duration_minutes':60},
                 {'id':'second','name':'Second visit','category':'culture_history','duration_minutes':60}]
-    day=_custom_schedule([],2,'balanced',prefs,{2:activities})[-1]
-    shopping=next(s for s in day['slots'] if s['title']=='Shopping time')
-    assert shopping['end_time']<='15:00'
-    assert day['slots'][-1]['slot_type']=='departure'
-    for before,after in zip(day['slots'],day['slots'][1:]):
-        assert before['end_time']<=after['start_time']
+    days=_custom_schedule([],2,'balanced',prefs,{2:activities})
+    shopping=[s for day in days for s in day['slots'] if s['title']=='Shopping time']
+    assert len(shopping)==1
+    assert days[-1]['slots'][-1]['slot_type']=='departure'
+    for day in days:
+        for before,after in zip(day['slots'],day['slots'][1:]):
+            assert before['end_time']<=after['start_time']
 
 
 def test_no_shopping_suggestion_when_no_gap_or_shopping_already_planned():
