@@ -63,9 +63,13 @@ def test_unknown_amounts_stay_unknown_and_zero_is_distinct():
 
 
 def test_financial_summary_uses_server_forecast_without_reconstructing_it():
-    result=javascript("A.normalizeSummary({total_budget_inr:30000,actual_spending_inr:12000,estimated_remaining_costs_inr:15000,forecast_final_cost_inr:27000,available_buffer_inr:3000})")
+    result=javascript("A.normalizeSummary({total_budget_inr:30000,actual_spending_inr:12000,estimated_remaining_costs_inr:15000,remaining_to_pay_inr:15000,forecast_final_cost_inr:27000,forecast_with_reserve_inr:28500,emergency_reserve_inr:1500,shopping_remaining_inr:1500,available_buffer_inr:3000})")
     assert result['forecast_final_cost']==27000
     assert result['available_buffer']==3000
+    assert result['remaining_to_pay']==15000
+    assert result['forecast_with_reserve']==28500
+    assert result['emergency_reserve']==1500
+    assert result['shopping_remaining']==1500
     assert javascript("A.normalizeSummary({total_budget_inr:30000,actual_spending_inr:12000}).available_buffer") is None
 
 
